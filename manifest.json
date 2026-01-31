@@ -1,6 +1,6 @@
 {
-  "name": "测试版",
-  "short_name": "测试版",
+  "name": "-OuO-",
+  "short_name": "OuO",
   "start_url": ".",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"], 
@@ -31,6 +31,7 @@
   ]
 
 }
+
 
 
 
