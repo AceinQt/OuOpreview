@@ -1,0 +1,47 @@
+{
+  "name": "测试版",
+  "short_name": "测试版",
+  "start_url": ".",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"], 
+  "theme_color": "#00000000", 
+  "background_color": "#ffffff",
+  "description": "一个有趣的测试网页应用",
+  "icons": [
+    {
+      "src": "./icon/icon_cat.png",
+      "sizes": "125x125",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon/icon_cat.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon/icon_cat.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon/icon_cat.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+

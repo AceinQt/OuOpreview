@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Long+Cang&family=Ma+Shan+Zheng&family=Varela+Round&family=ZCOOL+KuaiLe&display=swap');
+
+/* --- 引入泰文字体，专门用于修复颜文字 --- */
+@font-face {
+    font-family: 'KaomojiFixed';
+    src: url('../font/NotoSansThai-Regular.ttf') format('truetype');
+    unicode-range: U+0E00-0E7F, U+0300-036F;
+    font-display: swap;
+}
+
+
+
+/* --- 全局与主题样式 --- */
+:root {
+    --bg-color: #DAF0FC;
+    --primary-color: #0099FF;
+    --secondary-color: #389CF4;
+    --accent-color: #90caf9;
+    --text-color: #444;
+    --white-color: #fff;
+    --border-radius: 8px;
+    --phone-corner-radius: 0px;
+    --font-family: 'KaomojiFixed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-miao: 'ZCOOL KuaiLe', cursive;
+    --top-pinned-bg: #EBF5FF;
+    --online-status-color: #4CAF50;
+    --handwriting-font: 'Ma Shan Zheng', var(--system-font);
+    --system-font: 'KaomojiFixed', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --paper-color: #fdfbf7;
+    /* 泛黄纸张色 */
+    --line-color: #e2e2e2;
+    /* 横线颜色 */
+    --ink-color: #2c3e50;
+    /* 墨水颜色 */
+    --font-pixel: 'DotGothic16', sans-serif;
+}

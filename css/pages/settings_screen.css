@@ -1,0 +1,138 @@
+/* =========================================
+   设置页面新样式 (Settings Screen - Card Style)
+   ========================================= */
+
+#settings-screen {
+    background-color: #f2f2f7; /* 与存储页面一致的浅灰色背景 */
+    
+}
+
+#settings-screen .content {
+    padding: 0 15px; /* 上下左右留出间距 */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 分组标题 */
+.settings-group-title {
+    font-size: 13px;
+    color: #888;
+    margin-left: 10px;
+    margin-bottom: -5px;
+    margin-top: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 卡片容器 */
+.settings-card {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden; /* 防止子元素溢出圆角 */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 设置项（行） */
+.settings-item {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+    border-bottom: 1px solid #f0f0f0; /* 分隔线 */
+}
+
+/* 每一组的最后一个项目去掉底部分隔线 */
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+/* 触摸反馈 */
+.settings-item:active {
+    background-color: #f9f9f9;
+}
+
+/* 左侧图标容器 */
+.setting-icon-box {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    color: var(--primary-color, #007bff); /* 使用主题色，默认蓝 */
+}
+
+.setting-icon-box svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* 中间文字 */
+.settings-item .item-details {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+}
+
+.settings-item .item-name {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+
+/* 右侧箭头图标 */
+.chevron-icon {
+    width: 20px;
+    height: 20px;
+    opacity: 0.6;
+}
+
+/* --- 特殊处理 --- */
+
+/* 存储分析图标颜色 */
+.storage-icon-alt {
+    color: var(--primary-color, #007bff);
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 5px;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 10px;
+    background-color: #fff;
+}
+
+
+
+/* 修正开关大小，使其在卡片中更协调 */
+#settings-screen .switch {
+    
+    width: 75px;
+    height: 28px;
+}
+
+#dark-mode-toggle:checked+.slider:before {
+    -webkit-transform: translateX(27px);
+    -ms-transform: translateX(27px);
+    transform: translateX(27px);
+}
+/* 默认状态（关闭）：灰色 */
+#dark-mode-toggle+.slider {
+    background-color: var(--primary-color);
+}
+
+/* 开启状态：使用主题色 */
+/* 使用 ID 选择器 #offline-mode-toggle 提高权重，不影响其他 .switch */
+#dark-mode-toggle:checked+.slider {
+    background-color: #FF9C38;
+}

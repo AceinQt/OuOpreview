@@ -1,0 +1,48 @@
+.wallpaper-preview {
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    max-height: 300px;
+    border-radius: var(--border-radius);
+    margin-bottom: 25px;
+    background-size: cover;
+    background-position: center;
+    border: 3px dashed var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-color);
+    font-style: italic;
+    background-color: #F5FBFF;
+}
+
+/* --- 颜色选择器美化样式 (全局生效) --- */
+
+/* 1. 隐藏原生外观 */
+#home-status-bar-color-picker {
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    width: 50px;
+    height: 50px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    /* 50%是圆形，12px是圆角矩形 */
+    background: none;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    vertical-align: middle;
+}
+
+/* 2. 核心：修改内部颜色块的样式 (针对 Chrome/Android) */
+#home-status-bar-color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+#home-status-bar-color-picker::-webkit-color-swatch {
+    border: 2px solid #fff;
+    /* 白色描边 */
+    border-radius: 50%;
+    /* 必须和外层保持一致 */
+    box-sizing: border-box;
+}
