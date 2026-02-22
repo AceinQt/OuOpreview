@@ -1,0 +1,594 @@
+/* --- Memory Journal Screen --- */
+#memory-journal-screen .content {
+    padding: 15px;
+    background-color: var(--gray-color);
+}
+
+#memory-journal-screen .app-header {
+    border-bottom: none;
+}
+
+/* --- Memory Tabs Styles --- */
+/* --- Memory Tabs Styles (复刻收藏页) --- */
+.mem-tab-header {
+    display: flex;
+    background-color: #fff;
+    padding: 0 10px;
+    height: 30px;
+    /* 严格保持30px高度 */
+    align-items: flex-start;
+    justify-content: space-around;
+    position: relative;
+    z-index: 10;
+    border: none;
+    flex-shrink: 0;
+    /* 防止被挤压 */
+}
+
+.mem-tab-btn {
+    flex: 1;
+    font-size: 15px;
+    color: #888;
+    background: none;
+    border: none;
+    height: 100%;
+    position: relative;
+    cursor: pointer;
+
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    /* 顶部对齐 */
+    line-height: 1;
+}
+
+.mem-tab-btn.active {
+    color: var(--primary-color);
+}
+
+.mem-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 3px;
+    background-color: var(--primary-color);
+    border-radius: 2px;
+}
+
+/* --- 记忆页面分栏布局 --- */
+.memory-layout-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    /* 防止外层滚动 */
+    height: 100%;
+    position: relative;    
+}
+
+/* 侧边栏样式 */
+.summary-sidebar {
+    padding: 20px 0px 20px 10px;
+    width: 70px;
+    background-color: var(--gray-color);
+    border:none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.3s ease;
+    gap:15px;
+}
+
+/* 侧边栏隐藏时的样式 (用于日记Tab) */
+.summary-sidebar.hidden {
+    display: none;
+}
+
+.summary-sidebar-item {
+    display: flex;
+    height: 60px;
+    width: 60px;
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+    font-size: 16px;
+    color: #999;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    border-radius: 50%;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    border: 1px dashed #ddd;
+}
+
+.summary-sidebar-item.active {
+    color: var(--primary-color);
+    background-color: #fdfdfd;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    border: 1px solid #fff;
+}
+
+
+
+/* --- 长期总结生成模态框样式 --- */
+.date-range-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.date-input-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.date-input-field {
+    width: 60px;
+    padding: 8px 5px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.date-label {
+    font-size: 14px;
+    color: #333;
+}
+
+.date-separator {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 5px;
+}
+
+/* --- 长期总结卡片特定样式 --- */
+.journal-card.long-term {
+    border-left: 2px solid var(--accent-color);
+    /* 蓝色区分长期总结 */
+}
+
+
+
+
+/* 详情页时间编辑样式 */
+.date-edit-container {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    color: #aaa;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.date-edit-input {
+    border: none;
+    border-bottom: none;
+    font-size: 12px;
+    color: #666;
+    margin-left: 5px;
+    width: 20%;
+    background: transparent;
+}
+
+.journal-card {
+    background-color: #fdfdfd;
+    border: 1px solid #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(130, 170, 200, 0.05);
+    margin-bottom: 15px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.journal-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.journal-card-title {
+    font-size: 18px;
+    font-weight: bold;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    color: #333;
+    flex-grow: 1;
+    margin-bottom: 8px;
+}
+
+/* 2. 移除旧的右上角定位样式 (如果为了兼容旧代码可以保留，但新结构不使用它) */
+/* 我们使用新的底部容器类 */
+
+/* --- 卡片样式优化 --- */
+
+/* --- 卡片底部样式优化 (修复对齐与高度) --- */
+
+.journal-card-footer {
+    display: flex;
+    justify-content: space-between;
+    /* 均匀分布：左-中-右 */
+    align-items: center;
+    /* 关键：强制垂直居中对齐 */
+
+    /* --- 减少高度设置 --- */
+    margin-top: 1px;
+    /* 减小与标题的距离 */
+    padding-top: 1px;
+    /* 减小分割线上方的距离 */
+
+    /* --- 字体与行高设置 --- */
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1;
+    /* 关键：统一行高，防止文字上下偏移 */
+}
+
+/* 统一文本元素的样式，消除潜在边距 */
+.journal-card-date,
+.journal-card-range {
+    display: block;
+    /* 变为块级行为以响应对齐 */
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    /* 强制行高为1，与图标对齐 */
+
+    /* 防止文本过长 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 按钮组样式 */
+.footer-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    /* 确保按钮组内部也垂直居中 */
+    height: 100%;
+    /* 充满高度 */
+    line-height: 1;
+    /* 继承行高 */
+}
+
+.footer-actions .action-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    color: #999;
+    display: flex;
+    /* Flex布局消除 inline-block 的基线间隙 */
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.footer-actions .action-icon-btn svg {
+    width: 18px;
+    /* 稍微缩小图标适配紧凑高度 */
+    height: 18px;
+    fill: currentColor;
+    display: block;
+    /* 消除 SVG 底部默认间隙 */
+}
+
+/* 收藏星星样式保持不变 */
+.footer-actions .favorite-journal-btn .star-solid {
+    display: none;
+    fill: #FFD700;
+}
+
+.footer-actions .favorite-journal-btn.favorited .star-solid {
+    display: inline;
+}
+
+.footer-actions .favorite-journal-btn.favorited .star-outline {
+    display: none;
+}
+
+
+
+
+/* ================= 日记本拟物化样式 ================= */
+
+/* 1. 让整个屏幕变成纸张背景 */
+#journal-detail-screen {
+    background-color: var(--paper-color);
+    /* 添加一点纸张纹理噪点（可选） */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.2'/%3E%3C/svg%3E");
+}
+
+/* 2. Header 融入纸张：背景透明，去除边框阴影 */
+#journal-detail-screen .app-header {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: none;
+    box-shadow: none;
+    padding-bottom: 0;
+    height: 50px;
+}
+
+#journal-detail-screen .app-header .back-btn {
+    color: var(--ink-color);
+}
+
+#journal-settings-btn svg {
+    fill: none;
+    color: var(--ink-color);
+}
+
+#edit-journal-btn svg {
+    fill: var(--ink-color);
+}
+
+/* 3. 日记主体容器 */
+#journal-detail-screen .content {
+    padding: 20px 25px;
+    /* 左右留白多一点 */
+    background: transparent;
+}
+
+/* 印刷体标签 (年/月/日) */
+.date-label-print {
+    font-family: 'Times New Roman', serif;
+    /* 印刷体 */
+    font-size: 14px;
+    font-weight: bold;
+    color: #555;
+    margin: 0 3px;
+}
+
+/* 具体数字 (跟随正文手写体) */
+.date-value-handwriting {
+    font-family: 'Long Cang', cursive;
+    font-size: 22px;
+    color: var(--ink-color);
+    border: none;
+    background: transparent;
+    text-align: center;
+    width: auto;
+    min-width: 30px;
+}
+
+/* 隐藏输入框的聚焦边框 */
+.date-value-handwriting:focus {
+    outline: none;
+    border-bottom: 1px dashed #999;
+}
+
+/* --- 修复后的日记正文样式 (横线对齐) --- */
+/* --- 日记正文：拟物化横线纸张 --- */
+/* --- 日记正文：拟物化横线纸张 (修正版) --- */
+.journal-paper-content {
+    font-family: var(--handwriting-font);
+    /* === 核心修改：使用缩放系数 === */
+    /* 默认系数为 1，如果 JS 设置了 --font-scale，则进行计算 */
+    font-size: 21px;
+    color: var(--ink-color);
+
+    /* === 1. 网格设定 === */
+    /* 行高与背景高度必须严格一致 */
+    line-height: 44px;
+    background-size: 100% 44px;
+
+    /* === 2. 绘制 1px 极细实线 (核心修复) === */
+    /* 语法解释：从上往下，0-43px透明，43px-44px显示线条颜色 */
+    /* 这样能保证线条只有 1px 且边缘锐利 */
+    background-image: linear-gradient(to bottom, transparent 42px, var(--line-color) 42px, var(--line-color) 44px);
+
+    background-attachment: local;
+    white-space: normal;
+    width: 100%;
+    min-height: 60vh;
+
+    /* === 3. 对齐微调 === */
+    padding-top: 0;
+
+    /* 垂直偏移量：控制线条上下移动去贴合文字 */
+    /* 如果觉得线太低（字悬空），把 -4px 改成 -6px */
+    /* 如果觉得线太高（切到字），把 -4px 改成 -2px */
+    background-position: 0 -10px;
+}
+
+/* --- 段落控制：缩进与去边距 --- */
+/* --- 段落控制：缩进、对齐与去边距 --- */
+.journal-paper-content p {
+    /* 1. 首行缩进 */
+    text-indent: 2em;
+
+    /* 2. 【核心】两端对齐设置 */
+    text-align: justify;
+    text-justify: inter-ideograph;
+    /* 专门针对中文/汉字的对齐优化 */
+
+    /* 3. 防止长英文单词撑破布局 */
+    word-break: break-all;
+
+    /* 4. 强制去除段落间距 (保护横线网格) */
+    margin-top: 0;
+    margin-bottom: 44px;
+    padding: 0;
+
+    display: block;
+}
+
+/* 4. 【新增】处理段内换行 (<br>) 的对齐 */
+/* 防止 <br> 导致行高塌陷 */
+.journal-paper-content br {
+    content: "";
+    display: block;
+    height: 0;
+    margin: 0;
+}
+
+/* 引用块样式微调 (防止缩进破坏引用样式) */
+.journal-paper-content blockquote {
+    margin: 10px 0;
+    /* 引用块外侧可以留一点空隙，但内部还是受 line-height 控制 */
+    padding-left: 15px;
+    border-left: 3px solid #ccc;
+}
+
+.journal-paper-content blockquote p {
+    text-indent: 0;
+    /* 引用块内部通常不缩进 */
+}
+
+/* 中文手写体倾斜后往往很难辨认，改为蓝色或红色强调更好看 */
+.journal-paper-content em {
+    font-style: normal;
+    /* 取消倾斜，日记里字歪歪扭扭不好看 */
+    color: #4E7FAB;
+    /* 使用蓝色墨水表示强调 */
+    font-weight: bold;
+    margin: 0 2px;
+}
+
+/* 标题样式微调 */
+#journal-detail-title {
+    text-align: center;
+    font-family: var(--handwriting-font) !important;
+    font-size: calc(28px * var(--font-scale, 1));
+    color: var(--ink-color);
+    margin-bottom: 15px;
+    /* 减小下方间距，因为日期在下面了 */
+    margin-top: 0;
+    font-weight: normal;
+    letter-spacing: 2px;
+
+    /* 确保边框样式可控 */
+    border: 1px solid transparent;
+}
+
+/* 5. 日期区域：右上角，特殊排版 */
+.journal-meta-container {
+    display: flex;
+    justify-content: flex-end;
+    /* 靠右 */
+    align-items: baseline;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #555;
+    /* 日期下面加一条粗线 */
+    padding-bottom: 5px;
+}
+
+/* 7. 拟物化 Markdown 样式微调 */
+.journal-paper-content strong {
+    font-weight: 900;
+    /* 加粗更明显，模拟用力写 */
+    color: #000;
+}
+
+.journal-paper-content del {
+    text-decoration-style: single;
+    /* 双删除线，模拟涂改 */
+    color: #888;
+    text-decoration-color: #888;
+}
+
+/* --- 颜文字专用样式 (兼容性修复版) --- */
+/* --- 1. 普通颜文字 (优先用系统字体，解决嘴歪、错位问题) --- */
+.kaomoji {
+    font-family: "KaomojiFixed", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", 'NotoGeneral' !important;
+    font-weight: normal !important;
+    color: var(--ink-color);
+    font-size: inherit;
+    line-height: 1 !important;
+    vertical-align: 1px;
+    letter-spacing: 0.5px;
+}
+
+/* --- 2. 泰文颜文字专用 (优先用 NotoThai，解决方框问题) --- */
+.kaomoji-thai {
+    /* 必须把 NotoThai 放在系统字体前面，强行覆盖系统的方框 */
+    font-family: 'KaomojiFixed', -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+
+    font-weight: normal !important;
+    color: var(--ink-color);
+    font-size: inherit;
+    line-height: 1 !important;
+    vertical-align: 1px;
+    letter-spacing: 0.5px;
+}
+
+/* --- 日记/总结 Markdown 专用样式 --- */
+.journal-markdown-content {
+    font-size: 17px;
+    color: #333;
+    line-height: 1.6;
+    /* 关键：允许 Markdown 渲染的 HTML 自动换行，不再保留原始空白符 */
+    white-space: normal !important;
+    text-align: justify;
+    text-justify: inter-ideograph;
+    word-break: break-all;
+    padding: 0 5px 20px;
+    font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+/* 段落控制 */
+.journal-markdown-content p {
+    display: block;
+    margin-top: 0;
+    margin-bottom: 12px;
+    min-height: 1em;
+    text-indent: 2em;
+}
+
+/* 标题和引用间距 */
+.journal-markdown-content h1,
+.journal-markdown-content h2,
+.journal-markdown-content h3,
+.journal-markdown-content blockquote {
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+/* 引用块样式 */
+.journal-markdown-content blockquote {
+    border-left: 4px solid var(--primary-color);
+    background-color: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.journal-markdown-content blockquote p {
+    margin-bottom: 0;
+    text-indent: 0;
+}
+
+/* 斜体优化 */
+.journal-markdown-content em {
+    color: #4E7FAB;
+    font-style: italic;
+    font-weight: 500;
+}
+
+/* 中文对话引用高亮 (仿照参考样式) */
+.journal-inline-quote {
+    background-color: rgba(230, 200, 100, 0.4);
+    border-radius: 8px;
+    padding: 1px 6px 1px;
+    margin: 0 1px;
+}
+
+/* 编辑模式下的样式：恢复等宽字体和原始换行，方便编辑 Markdown 源码 */
+.journal-markdown-content[contenteditable="true"] {
+    white-space: pre-wrap !important;
+    font-family: monospace, sans-serif;
+    background-color: #fffcfc;
+    padding: 10px;
+    border: 1px dashed var(--primary-color) !important;
+    color: #333;
+}

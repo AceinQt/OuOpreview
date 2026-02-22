@@ -1,0 +1,350 @@
+.settings-sidebar {
+    position: absolute;
+    top: 0;
+    right: -100%;
+    width: 80%;
+    height: 100%;
+    background: #fff;
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+    transition: right 0.4s ease-in-out;
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-sidebar.open {
+    right: 0;
+}
+
+.settings-sidebar .header {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+    font-weight: bold;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+.settings-sidebar .content {
+    padding: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.settings-sidebar .form-group textarea {
+    height: 100px;
+    resize: vertical;
+}
+
+.settings-sidebar .avatar-setting {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.settings-sidebar .avatar-preview {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-color);
+    cursor: pointer;
+}
+
+.avatar-setting .avatar-preview {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-color);
+    cursor: pointer;
+}
+
+
+/* --- settings_sidebar.css 追加/修改 --- */
+
+/* 提取的样式类 */
+.sidebar-avatar-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.sidebar-info-display {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.sidebar-info-label {
+    font-size: 12px;
+    color: #999;
+}
+
+.sidebar-info-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: #333;
+}
+
+.btn-sidebar-action {
+    flex-grow: 1;
+    margin-left: 10px;
+    font-size: 13px;
+}
+
+.readonly-field {
+    background-color: #f9f9f9;
+    color: #666;
+    border: 1px solid #eee;
+}
+
+/* 新增的提取样式 */
+.settings-sidebar .form-group-label {
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.settings-sidebar .form-group-row {
+    display: flex;
+    gap: 10px;
+}
+
+.settings-sidebar .form-group-col {
+    flex: 1;
+}
+
+.settings-sidebar hr.divider {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 20px 0;
+}
+
+.settings-sidebar .checkbox-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #DAF0FC;
+    border-radius: 10px;
+    background-color: #F5FBFF;
+}
+
+.settings-sidebar .checkbox-group label {
+    margin-bottom: 0;
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+
+.settings-sidebar .checkbox-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+}
+
+.settings-sidebar .bubble-css-preview {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.settings-sidebar .panel {
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #e8e8ef);
+    background: var(--panel-bg, #fff);
+    box-shadow: var(--panel-shadow, 0 4px 12px rgba(20, 20, 30, 0.04));
+    margin: 10px 0;
+}
+
+.settings-sidebar .panel-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.settings-sidebar .panel-label {
+    width: 88px;
+    color: var(--muted, #667);
+    font-size: 13px;
+}
+
+.settings-sidebar .select-preset {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--input-border, #e6e6ea);
+    background: var(--input-bg, #fff);
+    font-size: 14px;
+}
+
+.settings-sidebar .btn-preset {
+    margin-left: 8px;
+    padding: 7px 10px;
+    border-radius: 8px;
+}
+
+.settings-sidebar .panel-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+
+/* --- settings_sidebar.css 追加 --- */
+
+/* 侧边栏头像行 */
+.sidebar-avatar-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+/* 信息显示区 */
+.sidebar-info-display {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.sidebar-info-label {
+    font-size: 12px;
+    color: #999;
+}
+
+.sidebar-info-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: #333;
+}
+
+/* 侧边栏按钮 */
+.btn-sidebar-action {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 13px;
+    margin-left: 10px;
+}
+
+#bubble-presets-modal {
+        z-index: 102;
+}
+
+#bubble-presets-modal .modal-window{
+        width:90%;
+}
+
+#bubble-presets-modal  .list-container{
+        max-height:300px;
+        overflow:auto;
+        border:none;
+        padding:0;
+        border-radius:6px;
+        margin-bottom:20px;
+}
+
+#bubble-presets-modal  .list-item{
+        display:flex;
+        padding:10px 0;
+}
+
+#bubble-presets-modal  .list-item-title{
+        flex:1;
+        min-width:0;
+}
+
+#bubble-presets-modal  .list-item-btn{
+        display:flex;
+        gap:6px;
+}
+
+#bubble-presets-modal  .list-item-btn .btn{
+        padding:8px 10px;
+        white-space: nowrap;
+        border-radius:6px;
+        font-size: 14px;
+}
+
+
+
+#group-settings-sidebar .group-avatar-setting {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+#group-settings-sidebar .group-avatar-preview {
+    width: 60px;
+    height: 60px;
+    border-radius: 10px;
+    object-fit: cover;
+    border: 2px solid var(--primary-color);
+    cursor: pointer;
+}
+
+#group-settings-sidebar .group-members-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+#group-settings-sidebar .group-member,
+#group-settings-sidebar .add-member-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+}
+
+#group-settings-sidebar .group-member img {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 5px;
+    border: 2px solid #eee;
+}
+
+#group-settings-sidebar .add-member-btn .add-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px dashed #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #ccc;
+    margin-bottom: 5px;
+    transition: all 0.2s ease;
+}
+
+#group-settings-sidebar .add-member-btn:hover .add-icon {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+#group-settings-sidebar .group-member span,
+#group-settings-sidebar .add-member-btn span {
+    font-size: 12px;
+    text-align: center;
+    color: var(--text-color);
+}
+
+#setting-group-my-persona,
+#setting-group-my-realname {
+    border-color: var(--gray-color);
+    background: var(--gray-color);
+}

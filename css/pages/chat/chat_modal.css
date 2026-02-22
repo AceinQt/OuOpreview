@@ -1,0 +1,336 @@
+#message-edit-textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #DAF0FC;
+    border-radius: 10px;
+    background-color: #fff;
+    transition: border-color 0.3s;
+    font-family: var(--font-family);
+    font-size: 15px;
+    resize: vertical;
+    /* Allow vertical resizing */
+}
+
+#message-edit-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+#message-edit-select {
+     display:flex; 
+     flex-direction: row;
+     justify-content: center;   /* 水平居中 */
+     align-items: center;       /* 垂直居中 */
+}
+
+#message-edit-modal .form-group {
+     margin-bottom:15px; 
+}
+
+#message-edit-modal label {
+     white-space: nowrap; 
+     margin-bottom:1px; 
+     font-weight:bold;
+     font-size:16px;
+     color: var(--primary-color);
+}
+
+#message-edit-modal .form-control {
+     margin-left:10px; 
+     width: 100%; 
+     padding: 7px 8px; 
+     border-radius: 8px;
+     font-size:15px;
+     align-items: center;
+}
+
+#message-edit-modal .btn-group {
+     margin-top:0; 
+}
+
+
+#edit-group-member-modal,
+#create-member-for-group-modal {
+    z-index: 102;
+}
+
+#edit-group-member-modal .avatar-preview,
+#create-member-for-group-modal .avatar-preview {
+    width: 80px;
+    height: 80px;
+}
+
+#sticker-modal,
+#chat-expansion-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 35%;
+    max-height: 250px;
+    background: rgba(243, 242, 247, 0.98);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.1);
+    z-index: 65;
+    display: none;
+    flex-direction: column;
+}
+
+#sticker-modal.visible,
+#chat-expansion-panel.visible {
+    display: flex;
+    animation: slideUp 0.3s ease-out;
+}
+
+#sticker-modal .header {
+    padding: 10px 15px;
+    font-weight: bold;
+    color: var(--text-color);
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+}
+
+#sticker-modal .header span {
+    margin:0;
+}
+
+#sticker-modal .btn-group {
+    gap: 8px;
+    align-items: center;
+    text-align: center; 
+    margin:0;
+    height:40px;     
+}
+
+#sticker-modal .btn-group .btn{
+    padding: 6px 8px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
+#sticker-manage-bar {
+    display: none; 
+    padding: 10px; 
+    border-top: none; 
+    background-color: transparent;
+    justify-content: space-between;
+}
+
+#sticker-manage-bar .placeholder {
+    width: 60%;
+}
+
+#sticker-manage-bar .btn-danger {
+    width: 40%;
+    padding: 6px 8px;
+    font-size: 14px;
+    border-radius: 6px;
+    height:40px;
+}
+
+#delete-selected-btn {
+    width: auto; 
+    padding: 8px 16px;
+}
+
+.sticker-grid {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 15px;
+}
+
+.sticker-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+}
+
+.sticker-item.is-managing {
+    cursor: pointer;
+}
+
+.sticker-item.is-selected::after {
+    content: '✓';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background-color: var(--primary-color);
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.sticker-item.is-managing:not(.is-selected)::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+.sticker-item img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+.sticker-item span {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+    text-align: center;
+}
+
+#add-sticker-modal .modal-window {
+    max-width: 360px;
+}
+
+#sticker-preview {
+    width: 100px;
+    height: 100px;
+    border: 2px dashed #ddd;
+    border-radius: 10px;
+    margin: 0 auto 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    background-color: #f9f9f9;
+}
+
+#sticker-preview img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* --- Group Chat Specific Styles --- */
+#member-selection-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+#member-selection-list .list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 5px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+#member-selection-list .list-item:last-child {
+    border-bottom: none;
+}
+
+#member-selection-list .list-item input[type="checkbox"] {
+    margin-right: 15px;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+#member-selection-list .list-item img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 10px;
+}
+
+#member-selection-list .list-item label {
+    font-weight: 500;
+    color: var(--text-color);
+    margin-bottom: 0;
+    font-size: 14px;
+}
+
+#create-group-modal .btn-secondary {
+    margin-bottom: 0;
+}
+
+#edit-group-member-modal .avatar-setting {
+    display: flex;
+    justify-content: center;
+}
+
+#edit-group-member-modal input {
+    justify-content: center;
+    text-align: center;
+}
+
+#chat-expansion-grid {
+    padding: 20px 15px 15px;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- Chat Expansion Panel --- */
+.expansion-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+}
+
+.expansion-item-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 15px;
+    background-color: #fff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    transition: background-color 0.2s;
+}
+
+.expansion-item:hover .expansion-item-icon {
+    background-color: #f5f5f5;
+}
+
+.expansion-item-icon svg {
+    width: 32px;
+    height: 32px;
+    fill: #555;
+}
+
+.expansion-item-name {
+    font-size: 13px;
+    color: #666;
+}
+
+/* --- 扩展面板按钮激活状态（描边效果） --- */
+.expansion-item.active .expansion-item-icon {
+    border: 2px solid var(--primary-color);
+    /* 描边颜色，跟随主题 */
+    border-radius: 12px;
+    /* 圆角，根据你的图标背景调整 */
+    background-color: rgba(56, 155, 244, 0.1);
+    /* 浅色背景 */
+    color: var(--primary-color);
+    /* 图标变色 */
+    box-shadow: 0 0 5px rgba(56, 155, 244, 0.3);
+    /* 可选：加一点发光效果 */
+}

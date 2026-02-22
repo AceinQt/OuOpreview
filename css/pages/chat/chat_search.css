@@ -1,0 +1,60 @@
+/* 搜索结果页面样式 */
+#search-results-list {
+    padding: 0;    
+}
+
+#search-scroll-container {
+    padding: 0;    
+}
+
+.search-result-item {
+    background: var(--white-color); /* 假设您有这个变量，或者用 #fff */
+    padding: 12px 18px;
+    margin-bottom: 0;
+    cursor: pointer;
+    transition: transform 0.1s;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.search-result-item:active {
+    transform: scale(0.98);
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: #888;
+}
+
+.result-sender {
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.result-content {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* 限制显示两行 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+
+.message-highlight {
+    border-radius: 12px;
+    animation: highlight-pulse 2s ease-out;
+}
+
+.input-hint {
+    font-size: 12px;
+    color: #999;
+    margin-top: -10px;
+    margin-bottom: 15px;
+}

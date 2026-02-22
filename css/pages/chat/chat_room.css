@@ -1,0 +1,1176 @@
+#chat-room-screen {
+    background-color: #EEEDF2;
+    background-size: cover;
+    background-position: center;
+}
+
+/* 1. 只有当屏幕被激活时(.active)，才强制设为 block 并开启相对定位 */
+/* 注意：这里把选择器改为了 #chat-room-screen.active */
+#chat-room-screen.active {
+    display: block !important;
+    /* 覆盖默认的 display: flex */
+    position: relative;
+    height: 100%;
+    /* 确保占满全屏 */
+    overflow: hidden;
+    /* 防止整体滚动 */
+}
+
+#chat-room-screen .content {
+
+    flex-direction: column;
+    padding: 0;
+    padding-bottom: 0px;
+    transition: padding-bottom 0.3s ease;
+    display: block;
+    height: 100%;
+    width: 100%;
+
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: 0;
+}
+
+#chat-room-screen.active .content {
+    display: flex;
+    /* 关键：改为 Flex 布局 */
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    overflow: hidden;
+    /* 关键：禁止父容器滚动 */
+    z-index: 0;
+}
+
+
+#chat-room-screen.multi-select-active .content {
+    padding-bottom: 0;
+}
+
+.message-area {
+    /* 关键：允许容器收缩！绝不能设为 100% */
+    min-height: 0 !important;
+
+    flex-grow: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overflow-anchor: none;
+    /* 顶部避让 Header */
+    padding: 70px 10px 100px;
+
+    scroll-behavior: auto;
+    box-sizing: border-box;
+    width: 100%;
+    /* --- 新增：提升层级，确保气泡盖住 typing-indicator --- */
+    position: relative;
+    z-index: 20;
+}
+
+/* 2. 定义加载条容器 (负责居中和间距) */
+.history-loading-indicator {
+    display: flex;             /* 启用 Flex 布局 */
+    justify-content: center;   /* 水平居中 */
+    align-items: center;       /* 垂直居中 */
+    width: 100%;               /* 占满宽度 */
+    padding: 15px 0;           /* 上下留出一点空间 */
+    opacity: 0.8;              /* 稍微透明一点，不抢眼 */
+    transition: all 0.3s ease; /* 平滑过渡 */
+}
+
+.message-wrapper {
+    display: flex;
+    margin-bottom: 14px;
+    align-items: flex-start;
+    transition: background-color 0.2s;
+    flex-direction: column;
+
+}
+
+.message-wrapper.group-message {
+    margin-bottom: 14px;
+}
+
+.message-wrapper.sent {
+    align-items: flex-end;
+}
+
+.message-wrapper.received {
+    align-items: flex-start;
+}
+
+.message-wrapper.system-notification {
+    align-items: center;    
+}
+
+
+
+.message-bubble-row {
+    display: flex;
+    width: 100%;
+    align-items: flex-start; /* 顶部对齐 */
+    gap: 8px; /* 头像和气泡之间的间距 */
+}
+
+/* 发送的消息：反转方向 (头像在右，气泡在左) */
+.message-wrapper.sent .message-bubble-row {
+    flex-direction: row-reverse;
+}
+
+.message-wrapper.multi-select-selected {
+    background-color: rgba(144, 202, 249, 0.2);
+    border-radius: var(--border-radius);
+}
+
+.message-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+.new-message-anim {
+    animation: bubble-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.group-nickname {
+    /* 移除之前的 position: absolute 相关代码 */
+    position: static; 
+    width: auto;
+    font-size: 13px;
+    color: #888;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+    margin-bottom:2px;
+}
+
+.message-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+/* --- 3. 内容列 (包含：昵称/时间 + 气泡) --- */
+.message-content-col {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%; /* 限制气泡最大宽度，防止太宽 */
+    align-items: flex-start;
+    gap:4px;
+}
+
+/* 接收方内容左对齐 */
+.message-wrapper.received .message-content-col {
+    align-items: flex-start;
+
+}
+
+/* 发送方内容右对齐 */
+.message-wrapper.sent .message-content-col {
+    align-items: flex-end;
+}
+
+/* --- 4. 元数据行 (昵称 + 时间) --- */
+.message-meta-info {
+    display: flex;
+    align-items: center; /* 文字基线对齐 */
+    gap: 4px;
+    margin-bottom: 0; /* 昵称和气泡之间的间距 */
+    padding: 0 2px; /* 稍微缩进一点，和气泡对齐视觉 */
+}
+
+/* 发送方元数据排序：时间在前 (如果显示的话) */
+.message-wrapper.sent .message-meta-info {
+    flex-direction: row; 
+    justify-content: flex-end;
+}
+
+.role-badge {
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1.2;
+    font-weight: bold;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* --- 金色方框：群主 (用户) --- */
+.role-badge.owner {
+    background-color: #FFC73C; /* 浅金色背景 */
+    color: var(--white-color);           /* 深金色文字 */
+}
+
+/* --- 绿色方框：群成员 (其他人) --- */
+.role-badge.member {
+    background-color: #33D8C9; /* 浅绿色背景 */
+    color: var(--white-color);           /* 深绿色文字 */
+}
+
+
+.message-time {
+    font-size: 10px;
+    color: #aaa;
+    display: none;
+}
+
+.message-bubble {
+    max-width: 260px;
+    padding: 8px 12px;
+    border-radius: var(--border-radius);
+    word-wrap: break-word;
+    line-height: 1.4;
+    margin: 0;
+    cursor: pointer;
+    font-size: 16px;
+    position: relative;
+}
+
+.message-bubble.sent {    
+    border-radius: 8px;
+}
+
+.message-bubble.received {
+    border-radius: 8px;
+}
+
+.system-notification-bubble {
+    background-color: rgba(200, 200, 200, 0.5);
+    color: #666;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    text-align: center;
+    max-width: 90%;
+}
+
+/* --- 新增：撤回消息样式 --- */
+.withdrawn-message {
+    color: #666;
+    font-size: 12px;
+    padding: 4px 10px;
+    text-align: center;
+    cursor: pointer;
+    /* 新增：让提示可点击 */
+    display: inline-block;
+    /* 改为inline-block以适应内容宽度 */
+    background-color: rgba(200, 200, 200, 0.5);
+    /* 新增：灰色背景 */
+    border-radius: 12px;
+    /* 新增：圆角 */
+
+}
+
+.withdrawn-content {
+    font-size: 12px;
+    color: #666;
+    background-color: rgba(255, 255, 255, 0.5);
+    padding: 4px 10px;
+    margin-top: 5px;
+    border-radius: 10px;
+    line-height: 1.6;
+    max-width: calc(100% - 108px);
+    display: none;
+    /* 默认隐藏 */
+    animation: fadeInUp 0.3s ease;
+    align-self: center;
+    /* 居中显示 */
+}
+
+.withdrawn-content.active {
+    display: block;
+}
+
+.image-bubble {
+    max-width: 80%;
+    border-radius: var(--border-radius);
+    margin: 0;
+    padding: 4px;
+    background-color: rgba(255, 255, 255, 0.5);    
+    cursor: pointer;
+}
+
+.image-bubble img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: calc(var(--border-radius) - 4px);
+}
+
+.voice-bubble {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    margin: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 90px;
+    max-width: 200px;
+}
+
+.message-wrapper.sent .voice-bubble {
+    position: relative;
+    flex-direction: row-reverse;
+}
+
+.message-wrapper.received .voice-bubble {
+    position: relative;
+}
+
+.voice-bubble .play-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    flex:2;
+}
+
+.voice-bubble .duration {
+    font-size: 14px;
+    margin: 0 4px;
+    white-space: nowrap;
+    flex:3;
+}
+
+.message-wrapper.sent .play-icon {
+    transform: scaleX(-1);
+}
+
+.voice-bubble svg {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    flex:2;
+}
+
+.voice-transcript {
+    font-size: 14px;
+    color: #555;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 8px 12px;
+    margin-top: 5px;
+    margin-left: 54px;
+    margin-right: 54px;
+    border-radius: 10px;
+    line-height: 1.6;
+    max-width: calc(100% - 108px);
+    display: none;
+    animation: fadeInUp 0.3s ease;
+}
+
+.voice-transcript.active {
+    display: block;
+}
+
+.message-wrapper.sent .voice-transcript {
+    align-self: flex-end;
+    margin-right: 54px;
+    margin-left: auto;
+}
+
+.message-wrapper.received .voice-transcript {
+    align-self: flex-start;
+    margin-left: 54px;
+    margin-right: auto;
+}
+
+.message-bubble.sent .quoted-message {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-left: 3px solid rgba(255, 255, 255, 0.7);
+}
+
+.message-bubble.sent .quoted-message .quoted-sender {
+    font-size: 14px;
+    color: #ffffff !important;
+}
+
+.message-bubble.sent .quoted-message .quoted-text {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+
+.quoted-message {
+    background-color: rgba(0, 0, 0, 0.04);
+    padding: 6px 10px;
+    border-radius: 8px;
+    margin: 4px 0;
+    border-left: 3px solid var(--secondary-color);
+}
+
+.quoted-sender {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--secondary-color);
+    display: block;
+}
+
+.quoted-text {
+    font-size: 13px;
+    color: #555;
+    margin: 0;
+    white-space: pre-wrap;
+    /* Allow line breaks */
+    word-wrap: break-word;
+    /* Limit to 3 lines with ellipsis */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 1. 旁白气泡本体：默认状态（假设它是独立的，或者是最后一条） */
+.narration-bubble {
+    font-size: 15px;
+    color: #555;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 12px 15px;
+
+    /* 【默认】四个角都是圆角 */
+    border-radius: 6px;
+
+    width: 90%;
+    max-width: none;
+    box-sizing: border-box;
+    margin: 0 auto;
+    text-align: justify;
+    line-height: 1.4;
+    border-left: 3px solid var(--primary-color);
+
+    white-space: pre-wrap;
+    position: relative;
+    /* 确保层级正确 */
+    z-index: 1;
+}
+
+
+
+/* =========================================
+           核心逻辑：仅针对“旁白”进行无缝拼接
+           ========================================= */
+
+/* 
+           步骤 1: 处理【上方气泡】(我是旁白，且后面也是旁白)
+           目标: 1. 去掉底部圆角
+                 2. 【核心修复】强制把底部间距设为 0 (覆盖默认的 12px)
+        */
+.message-wrapper.narration-wrapper:has(+ .message-wrapper.narration-wrapper) {
+    margin-bottom: 0 !important;
+    /* 关键！不再撑开距离 */
+}
+
+.message-wrapper.narration-wrapper:has(+ .message-wrapper.narration-wrapper) .narration-bubble {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom: none;
+    padding-bottom: 4px;
+    /* 减少内部留白，让文字更紧凑 */
+    z-index: 2;
+}
+
+/* 
+           步骤 2: 处理【下方气泡】(我是旁白，且前面也是旁白)
+           目标: 1. 去掉顶部圆角
+                 2. 设置微小的负边距，仅用于重叠边框 (防止出现双边框粗线)
+        */
+.message-wrapper.narration-wrapper+.message-wrapper.narration-wrapper {
+    /* 
+               因为上方气泡的 margin-bottom 已经是 0 了，
+               这里只需要 -1px 让边框重叠即可，不需要 -15px 那么大了 
+            */
+    margin-top: 0 !important;
+}
+
+.message-wrapper.narration-wrapper+.message-wrapper.narration-wrapper .narration-bubble {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: none;
+    padding-top: 4px;
+    /* 减少内部留白 */
+}
+
+/* 2. 修正 p 标签的显示逻辑 */
+.narration-bubble.markdown-content p {
+    margin: 0;
+    /* 去掉所有默认边距 */
+    padding: 0;
+    line-height: 1.4;
+    /* 保持行高一致 */
+    display: block;
+    /* 改回 block，否则多段落会挤在一起 */
+}
+
+/* 3. 【核心修复】强制去除最后一个元素的底部空隙 */
+/* 无论 markdown 生成了什么标签（p, ul, div），最后一个都不能有 margin */
+.narration-bubble.markdown-content>*:last-child {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* 4. 基础设置 */
+.narration-bubble.markdown-content {
+    white-space: normal;
+    /* 让 HTML 正常换行 */
+}
+
+/* --- 新增：双语气泡样式 --- */
+.bilingual-bubble {
+    position: relative;
+    /* padding-right: 35px; */
+    /* 移除为图标预留的内边距 */
+    cursor: pointer;
+}
+
+.translation-text {
+    font-size: 14px;
+    color: #555;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 4px 10px;
+    margin-top: 5px;
+    margin-left: 44px;
+    /* 根据您的头像宽度(36px) + 气泡外边距(8px)调整 */
+    margin-right: 8px;
+    border-radius: 10px;
+    max-width: calc(100% - 52px);
+    /* 44px + 8px = 52px */
+    display: none;
+    /* 默认隐藏 */
+    animation: fadeInUp 0.3s ease;
+    align-self: flex-start;
+}
+
+.message-wrapper.sent .translation-text {
+    align-self: flex-end;
+    margin-right: 44px;
+    /* 根据您的头像宽度(36px) + 气泡外边距(8px)调整 */
+    margin-left: 8px;
+}
+
+.translation-text.active {
+    display: block;
+    /* 点击后显示 */
+}
+
+.pv-card {
+    width: 200px;
+    aspect-ratio: 1 / 1;
+    background-color: #f0f0f0;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    margin: 0px;
+}
+
+.pv-card-image-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: opacity 0.5s ease-in-out;
+    z-index: 2;
+}
+
+.pv-card-image-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.pv-card-content {
+    padding: 15px;
+    height: 100%;
+    overflow-y: auto;
+    color: var(--text-color);
+    line-height: 1.6;
+    font-size: 15px;
+    background-color: white;
+    position: relative;
+    z-index: 1;
+}
+
+.pv-card-footer {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+    color: white;
+    padding: 20px 10px 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 3;
+    pointer-events: none;
+    transition: opacity 0.5s ease-in-out;
+}
+
+.pv-card-footer.hidden {
+    opacity: 0;
+}
+
+.pv-card-footer svg {
+    width: 14px;
+    height: 14px;
+    fill: white;
+    flex-shrink: 0;
+}
+
+.transfer-card {
+    width: 240px;
+    height: auto;
+    border-radius: var(--border-radius);
+    margin: 0;
+    overflow: hidden;
+    position: relative;    
+    color: white;
+}
+
+.message-wrapper.received .transfer-card {    
+    cursor: pointer;
+}
+
+.transfer-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(4px);
+    transform: scale(1.1);
+    z-index: 1;
+}
+
+.transfer-card.sent-transfer::before {
+    background-image: url('https://i.postimg.cc/sxN893WF/IMG-20250712.png');
+}
+
+.transfer-card.received-transfer::before {
+    background-image: url('https://i.postimg.cc/FzR8LY7g/IMG-20250712-170703.png');
+}
+
+.transfer-card .overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.3);
+    z-index: 2;
+    transition: background-color 0.5s ease;
+}
+
+.transfer-card.received .overlay {
+    background-color: rgba(168, 212, 255, 0.4);
+}
+
+.transfer-card.returned .overlay {
+    background-color: rgba(100, 100, 100, 0.5);
+}
+
+.transfer-content {
+    position: relative;
+    z-index: 3;
+    padding: 20px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.transfer-title {
+    font-size: 14px;
+    margin: 0 0 5px 0;
+    opacity: 0.9;
+}
+
+.transfer-amount {
+    font-size: 28px;
+    font-weight: bold;
+    margin: 0;
+}
+
+.transfer-remark {
+    font-size: 14px;
+    margin-top: 10px;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.transfer-status {
+    font-size: 12px;
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+    opacity: 0.8;
+}
+
+.gift-card {
+    width: 230px;
+    background-color: #fff;
+    border: 2px solid #333;
+    border-radius: var(--border-radius);
+    box-shadow: 4px 4px 0px #ddd;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.gift-card-icon {
+    width: 50px;
+    height: 50px;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.gift-card-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    font-family: 'Comic Sans MS', 'Chalkduster', 'Handwriting', cursive;
+}
+
+.gift-card-description {
+    font-size: 14px;
+    color: #555;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 8px 12px;
+    margin-top: 5px;
+    margin-left: 54px;
+    margin-right: 54px;
+    border-radius: 10px;
+    line-height: 1.6;
+    max-width: calc(100% - 108px);
+    display: none;
+    animation: fadeInUp 0.3s ease;
+}
+
+.gift-card-description.active {
+    display: block;
+}
+
+.message-wrapper.sent .gift-card-description {
+    align-self: flex-end;
+    margin-right: 54px;
+    margin-left: auto;
+}
+
+.message-wrapper.received .gift-card-description {
+    align-self: flex-start;
+    margin-left: 54px;
+    margin-right: auto;
+}
+
+.gift-card-received-stamp {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 2px 6px;
+    transform: rotate(15deg);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    font-family: 'Comic Sans MS', 'Chalkduster', 'Handwriting', cursive;
+}
+
+.gift-card.received .gift-card-received-stamp {
+    opacity: 1;
+}
+
+.load-more-btn {
+    background-color: #e0e0e0;
+    color: #757575;
+    border: none;
+    padding: 8px 16px;
+    margin: 10px auto;
+    border-radius: 15px;
+    cursor: pointer;
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.load-more-btn:hover {
+    background-color: #d1d1d1;
+}
+
+/* 2. 正在输入提示：修复位置和上推效果 */
+/* 2. 正在输入提示：修复位置和间距 */
+.typing-indicator {
+    /* --- 基础外观 --- */
+    color: #aaa;
+    font-style: italic;
+    font-size: 14px;
+    text-align: center;
+    background: transparent;
+
+    /* --- 布局核心 --- */
+    display: none;
+    position: relative;
+    /* 保持相对定位，占据文档流 */
+
+    /* --- 关键修复 1：拉近距离 --- */
+    /* 
+               #message-area 底部有 105px 的 padding。
+               设置 -85px 的上边距，把提示语往上拉 85px。
+               这样视觉间距就只剩下 105 - 85 = 20px，刚好合适。
+            */
+    margin-top: -95px !important;
+
+    /* --- 关键修复 2：撑开底部 --- */
+    /* 
+               底部保留 105px 空间，确保提示语显示在输入框(约100px高)的上方，
+               而不是被输入框挡住。
+               这也让它占据了物理空间，从而产生“挤压/上推”气泡的动画效果。
+            */
+    margin-bottom: 105px !important;
+
+    /* --- 层级提升 --- */
+    z-index: 10 !important;
+    /* 必须高于输入框的 50 */
+
+    /* 其他属性 */
+    height: 30px;
+    padding: 5px 0;
+    flex-shrink: 0;
+    bottom: auto;
+    left: auto;
+    pointer-events: none;
+}
+
+/* 配合 JS 显示 */
+.typing-indicator[style*="display: block"] {
+    display: block !important;
+}
+
+#sticker-bar {
+    flex-shrink: 0;
+    /* 修改 3：将底部安全距离加在这里 */
+    /* 上0 左右10 下(5px + 安全区域) */
+    padding: 0 10px calc(5px + env(safe-area-inset-bottom));
+
+    display: flex;
+    align-items: center;
+    background: transparent;
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+
+/* (可选) 新增：为了在某些浏览器上获得更好的视觉效果，可以隐藏滚动条 */
+#sticker-bar::-webkit-scrollbar {
+    display: none;
+    /* 隐藏滚动条本身 */
+}
+
+.sticker-bar-btn {
+    background: none;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+}
+
+.sticker-bar-btn svg {
+    width: 27px;
+    height: 27px;
+    fill: #888;
+}
+
+/* --- 3. 按钮禁用状态样式 --- */
+/* 当按钮被 JS 禁用时，降低透明度 */
+.sticker-bar-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    filter: grayscale(100%);
+    /* 变灰 */
+}
+
+.chat-input-wrapper {
+    flex-shrink: 0;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 50;
+    background-color: rgba(243, 242, 247, 0.85);
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border-bottom-left-radius: var(--phone-corner-radius);
+    border-bottom-right-radius: var(--phone-corner-radius);
+
+    /* 稍微加一点顶部边框线，增加质感（可选） */
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: env(safe-area-inset-bottom) !important;
+}
+
+
+.message-input-area {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    
+    background: transparent;
+    flex-shrink: 0;
+    gap: 10px;
+
+    overflow: hidden;
+}
+
+.message-input-area input {
+    font-size: 16px;
+    flex-grow: 1;
+    min-width: 0;
+    border: none;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #ffffff;
+}
+
+.message-input-area input:focus {
+    font-size: 16px;
+    outline: none;
+}
+
+.message-input-area .icon-btn {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.message-input-area .icon-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.message-input-area .icon-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.message-input-area .icon-btn.send-btn {
+    width: 60px;
+    font-size: 15px;
+    /* 这种方式不需要固定 height */
+    padding-top: 10px;
+    /* 上边距小一点 */
+    padding-bottom: 9px;
+    /* 下边距大一点，把文字顶上去 */
+    padding-left: 9px;
+    padding-right: 10px;
+    /* 右边距大一点，把文字顶上去 */
+    line-height: 1;
+    /* 紧缩行高，避免行高干扰 */
+}
+
+#multi-select-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(243, 242, 247, 0.8);
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #eee;
+    z-index: 60;
+    border-bottom-left-radius: var(--phone-corner-radius);
+    border-bottom-right-radius: var(--phone-corner-radius);
+    animation: slideUp 0.3s ease-out;
+}
+
+#multi-select-bar.visible {
+    display: flex;
+}
+
+
+
+
+
+
+#chat-room-header-select,
+#chat-room-header-default {
+    /* --- 核心修改 1：高度自动计算 --- */
+    /* 原高度 60px + 系统状态栏高度 */
+    height: calc(60px + env(safe-area-inset-top));
+
+    /* --- 核心修改 2：顶部内边距 --- */
+    /* 原顶部内边距 20px + 系统状态栏高度，确保文字不被刘海遮挡 */
+    padding-top: calc(20px + env(safe-area-inset-top));
+
+    /* 保持原有的左右和底部内边距 */
+    padding-bottom: 20px;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    /* --- 其他样式保持不变 --- */
+    border-bottom: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 50;
+    background-color: rgba(243, 242, 247, 0.85);
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+
+#chat-room-header-default .app-header {
+    justify-content: space-between;
+    position: relative;
+}
+
+
+#chat-room-header-default .title-container {
+    position: static;
+    transform: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    margin-left: 0;
+    flex-grow: 1;
+}
+
+#chat-room-header-default .title {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+}
+
+
+#chat-room-header-default .subtitle {
+    font-size: 11px;
+    margin-top: -1px;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+
+#chat-room-header-default .action-btn-group {
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    gap:6px;
+}
+
+#chat-room-header-default .action-btn-group .action-btn {
+    width: 24px;
+    height: 30px;
+    padding: 0;
+}
+
+#chat-room-header-default .action-btn-group .action-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--primary-color);
+    stroke-width: 0.5px;
+}
+
+#chat-room-header-default .back-btn {
+    margin-left: -8px;
+}
+
+#peek-btn {
+    margin-left: -8px;
+}
+
+#reply-preview-bar {
+    display: none;
+    padding: 8px 12px;
+    border-top: 1px solid #eee;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    animation: fadeInUp 0.2s ease-out;
+}
+
+#reply-preview-bar.visible {
+    display: flex;
+}
+
+.reply-preview-content {
+    flex-grow: 1;
+    overflow: hidden;
+    border-left: 3px solid var(--primary-color);
+    padding-left: 8px;
+}
+
+.reply-preview-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-color);
+    display: block;
+}
+
+.reply-preview-text {
+    font-size: 14px;
+    color: #666;
+    margin: 2px 0 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#cancel-reply-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #999;
+    cursor: pointer;
+    padding: 5px;
+    line-height: 1;
+}
+
+
+
+#cancel-multi-select-btn {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--white-color);
+    background-color: var(--primary-color);
+    border-radius: 10px;
+    padding: 5px 10px;
+    width: auto;
+    height: auto;
+}

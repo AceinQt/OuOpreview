@@ -1,0 +1,790 @@
+.phone-screen {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100vw;
+    height: 100dvh;
+    height: 100vh;
+    border-radius: 0 !important;
+    /* 去除圆角 */
+    box-shadow: none !important;
+    /* 去除阴影 */
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.screen {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    animation: fadeIn 0.5s ease;
+    position: relative;
+    /* 修改：确保内部屏幕也是定位上下文 */
+}
+
+.screen.active {
+    display: flex;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    padding-top: calc(16px + env(safe-area-inset-top));
+    background-color: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px) !important;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+    height: auto;
+    /* 让高度自动撑开 */
+    min-height: calc(50px + env(safe-area-inset-top));
+    /* 保证最小高度 */
+}
+
+.app-header .back-btn,
+.app-header .action-btn {
+    background: none;
+    border: none;
+    font-size: 45px;
+    color: var(--primary-color);
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.app-header .back-btn {
+    margin-bottom: 4px;
+}
+
+.app-header .action-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.app-header .action-btn-group .action-btn {
+    font-size: 32px;
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    background-color: transparent;
+    color: var(--primary-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    /* Ensure no border */
+    cursor: pointer;
+    /* Ensure cursor is pointer */
+}
+
+.app-header .action-btn-group .action-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: var(--primary-color);
+}
+
+.app-header .action-btn img {
+    width: 24px;
+    height: 24px;
+}
+
+.app-header .title-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.app-header .title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.app-header .subtitle {
+    font-size: 12px;
+    color: #888;
+    display: flex;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.online-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--online-status-color);
+    margin-right: 5px;
+}
+
+.app-header .placeholder {
+    width: 40px;
+}
+
+.content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 20px;
+    position: relative;
+}
+
+.placeholder-text {
+    text-align: center;
+    color: #aaa;
+    margin-top: 50px;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    animation: fadeInUp 0.3s ease;
+}
+
+.modal-overlay.visible {
+    display: flex;
+}
+
+.modal-window {
+    background: var(--white-color);
+    padding: 25px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
+    width: 85%;
+    max-width: 340px;
+    animation: slideUp 0.4s ease-out;
+}
+
+.modal-window h3 {
+    margin-top: 0;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+#app-global-dialog {
+    z-index: 9999;
+}
+
+
+.context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+    padding: 5px 0;
+    animation: fadeInUp 0.1s ease;
+}
+
+.context-menu-item {
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+.context-menu-item:hover {
+    background-color: #f5f5f5;
+}
+
+.context-menu-item.danger {
+    color: #e53935;
+}
+
+.action-sheet-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 200;
+    display: none;
+    align-items: flex-end;
+    animation: fadeInUp 0.3s ease;
+}
+
+.action-sheet-overlay.visible {
+    display: flex;
+}
+
+.action-sheet {
+    background: #f7f7f7;
+    width: 100%;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    padding: 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    animation: slideUp 0.3s ease-out;
+}
+
+.action-sheet-button {
+    width: 100%;
+    background: white;
+    border: none;
+    padding: 15px;
+    font-size: 16px;
+    color: var(--primary-color);
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.action-sheet-button.danger {
+    color: #e53935;
+}
+
+.action-sheet-button:last-child {
+    margin-bottom: 0;
+}
+/* 3. 定义 Spinner 本身 (你提供的样式) */
+.custom-spinner {
+    width: 20px; 
+    height: 20px; 
+    border: 3px solid rgba(0, 0, 0, 0.1); 
+    border-left-color: var(--primary-color); /* 引用你的主题色 */
+    border-radius: 50%; 
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* 2. 列表容器与项目 */
+.list-container {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    position: relative;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1); 
+}
+
+.list-item:last-child {
+
+    border-bottom: none; 
+}
+
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #DAF0FC;
+    border-radius: 10px;
+    background-color: #fff;
+    transition: border-color 0.3s;
+    font-family: var(--font-family);
+    font-size: 14px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.form-group.radio-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.form-group.radio-group label {
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn {
+    width: 100%;
+    padding: 15px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: var(--white-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--secondary-color);
+}
+
+label.btn-primary {
+    color: var(--white-color) !important;
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 14px;
+    width: auto;
+}
+
+.btn-secondary {
+    background-color: var(--accent-color);
+    color: var(--white-color);
+    margin-bottom: 15px;
+}
+
+.btn-secondary:hover {
+    background-color: #64b5f6;
+}
+
+.btn-neutral {
+    background-color: #bdbdbd;
+    color: var(--white-color);
+}
+
+.btn-neutral:hover {
+    background-color: #9e9e9e;
+}
+
+.btn-danger {
+    background-color: #ef5350;
+    color: white;
+}
+
+.btn .spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: var(--white-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.btn.loading .spinner {
+    display: block;
+}
+
+.btn.loading .btn-text {
+    display: none;
+}
+
+.btn-group {
+     display: flex; 
+     gap: 15px; 
+     justify-content: center;
+     margin-top:25px;
+     height:50px;
+}
+
+.dialog-content {    
+    align-items: center;
+    justify-content: center;
+    color:#333;
+    text-align: left;
+}
+
+#global-dialog-input {    
+    margin-top:10px;
+}
+
+.toast {
+    position: absolute;
+    top: -120px;
+    /* Start off-screen */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 380px;
+    background-color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #333;
+    padding: 12px;
+    border-radius: 30px;
+    font-size: 14px;
+    opacity: 0;
+    visibility: hidden;
+    transition: top 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(130, 170, 200, 0.05);
+}
+
+.toast.show {
+    top: 20px;
+    /* Slide down to this position */
+    opacity: 1;
+    visibility: visible;
+}
+
+.toast-spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    /* 浅灰色底环 */
+    border-top-color: var(--primary-color); /*  主色调旋转环 */
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* --- 新增：加载中提示专用样式 (继承 .toast 的基础外观) --- */
+/* --- 修复加载中提示的透明度问题 --- */
+.toast.loading {
+    /* 1. 强制覆盖基础样式的高不透明度，改为和 simple 一致的 0.7 */
+    background-color: rgba(255, 255, 255, 0.88) !important;
+
+    /* 2. 关键：移除毛玻璃模糊效果，否则看起来像实心的 */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+
+    /* 3. 保持原本的居中定位 */
+    position: fixed;
+    top: 50% !important;
+    left: 50%;
+    transform: translate(-50%, -50%) !important;
+
+    /* 4. 尺寸调整 */
+    width: auto;
+    min-width: 140px;
+    max-width: 90%;
+    justify-content: center;
+    z-index: 10001;
+    white-space: nowrap;
+    padding: 12px;
+
+    /* 5. 确保阴影不过重，保持轻盈感 */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 确保加载圈在透明白底上可见 */
+.toast.loading .toast-spinner {
+    border-color: rgba(0, 0, 0, 0.1);
+    border-top-color: var(--primary-color);
+}
+
+/* 覆盖 .toast.show 的滑动效果，加载框只需原地显现 */
+.toast.loading.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.temp-loading {
+    display: flex;
+    /* 弹性布局 */
+    align-items: center;
+    /* 垂直居中 */
+    justify-content: center;
+    /* 水平居中 */
+    gap: 10px;
+    /* 图标和文字的间距 */
+    padding: 30px 10px;
+    color: #666;
+    font-size: 14px;
+    width: 100%;
+}
+
+.item-time {
+    font-size: 12px;
+    color: #aaa;
+    white-space: nowrap;
+    /* 防止时间换行 */
+}
+
+/* 用于底部简单提示的样式 */
+.toast.simple {
+    top: auto;
+    /* 取消顶部的定位 */
+    bottom: 90px;
+    /* 直接定位在最终位置 */
+    background-color: rgba(255, 255, 255, 0.7);
+    /* 深色背景，更像系统提示 */
+    color: white;
+    /* 白色文字 */
+    max-width: 250px;
+    /* 可以让它窄一点 */
+    backdrop-filter: none;
+    /* 简单提示不需要毛玻璃效果 */
+    -webkit-backdrop-filter: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    /* 调整阴影 */
+    /* 只对透明度进行过渡，实现淡入淡出 */
+    transition: opacity 0.4s ease-out;
+}
+
+/* 简单提示显示时的位置 */
+.toast.simple.show {
+    top: auto;
+    /* 确保覆盖 .toast.show 的 top 样式 */
+    /* bottom 属性不再需要，因为它已经在 .toast.simple 中设置好了 */
+}
+
+/* 简单提示不需要头像，让文字居中 */
+.toast.simple .toast-avatar {
+    display: none;
+}
+
+.toast.simple .toast-content {
+    text-align: center;
+    width: 100%;
+}
+
+.toast-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background-color: #eee;
+}
+
+.toast-content {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: 2px;
+}
+
+.toast-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: #000;
+}
+
+.toast-message {
+    font-size: 14px;
+    color: #444;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* --- 滑块开关样式 --- */
+
+/* Toggle Switch Styles */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 80px;
+    height: 28px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    background-color: #ccc;
+
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+.setting-row .slider {
+    background-color: #ccc;
+
+}
+
+input:checked+.slider {
+    background-color: var(--primary-color);
+}
+
+.setting-row input:checked+.slider {
+    background-color: var(--primary-color);
+
+}
+
+input:checked+.slider:before {
+    -webkit-transform: translateX(32px);
+    -ms-transform: translateX(32px);
+    transform: translateX(32px);
+}
+
+/* Rounded sliders */
+.slider.round {
+    border-radius: 28px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+.toggle-setting {
+    display: flex;
+    align-items: center;
+}
+
+*:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+/* 专门针对滑块的输入框及其相邻的slider */
+
+.switch input:focus,
+:active {
+    outline: none;
+    box-shadow: none;
+    -webkit-tap-highlight-color: transparent;
+    /* 针对移动端点击高亮 */
+}
+
+/* --- 新增：折叠面板样式 --- */
+.collapsible-section {
+    background-color: #F5FBFF;
+    border: 1px solid #DAF0FC;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    overflow: hidden;
+    /* 防止内容溢出圆角 */
+    transition: all 0.3s ease-in-out;
+}
+
+.collapsible-header {
+    padding: 10px 15px;
+    /* 调整内边距 */
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    /* 防止选中文本 */
+}
+
+.category-toggle-area {
+    flex-grow: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px;
+    /* 增加点击区域 */
+}
+
+.category-select-area {
+    padding-right: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.collapsible-header h4 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--primary-color);
+}
+
+.collapsible-arrow {
+    font-size: 14px;
+    color: var(--secondary-color);
+    transition: transform 0.3s ease-in-out;
+}
+
+.collapsible-content {
+    max-height: 0;
+    /* 默认折叠 */
+    overflow: hidden;
+    transition: max-height 0.4s ease-in-out;
+    padding: 0 20px;
+    /* 左右留出边距 */
+}
+
+/* 当 .collapsible-section 拥有 .open 类时应用的样式 */
+.collapsible-section.open .collapsible-content {
+    max-height: 5000px;
+    /* 一个足够大的值来完全显示内容 */
+    padding: 0 20px 20px;
+    /* 展开时恢复底部内边距 */
+}
+
+.collapsible-section.open .collapsible-arrow {
+    transform: rotate(180deg);
+    /* 箭头旋转 */
+}
+
+.collapsible-header .category-checkbox {
+    margin-right: 15px;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.collapsible-header h4 {
+    flex-grow: 1;
+}
+
+
+
+
+
+
+
+
