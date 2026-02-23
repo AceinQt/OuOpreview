@@ -868,7 +868,7 @@
     flex-shrink: 0;
     /* 修改 3：将底部安全距离加在这里 */
     /* 上0 左右10 下(5px + 安全区域) */
-    padding: 0 10px calc(5px + env(safe-area-inset-bottom));
+    padding: 0 10px 5px;
 
     display: flex;
     align-items: center;
