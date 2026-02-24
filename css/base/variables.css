@@ -1,0 +1,45 @@
+/* --- 全局与主题样式 --- */
+:root {
+    --bg-color: #DAF0FC;
+    --primary-color: #0099FF;
+    --secondary-color: #389CF4;
+    --accent-color: #90caf9;
+    --text-color: #444;
+    --gray-color: #f2f2f7;
+    --white-color: #fff;
+    --top-pinned-bg: #EBF5FF;
+    --online-status-color: #4CAF50;
+    --paper-color: #fdfbf7;
+    /* 泛黄纸张色 */
+    --line-color: #e2e2e2;
+    /* 横线颜色 */
+    --ink-color: #2c3e50;
+    /* 墨水颜色 */
+
+    --font-family: 'KaomojiFixed', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'NotoSans', sans-serif;
+    --font-miao: 'ZCOOL KuaiLe', cursive;
+    --handwriting-font: 'Ma Shan Zheng', var(--system-font);
+    --system-font: 'KaomojiFixed', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'NotoSans', sans-serif;
+    --font-pixel: 'DotGothic16', sans-serif;
+        
+        
+    --border-radius: 8px;
+    --phone-corner-radius: 0px;
+}
+
+body {
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+
+    /* 关键：确保内容能延伸 */
+    box-sizing: border-box;
+}
+
