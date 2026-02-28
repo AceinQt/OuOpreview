@@ -33,18 +33,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    padding-top: calc(16px + env(safe-area-inset-top));
     background-color: rgba(255, 255, 255, 0.5);
     backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px) !important;
+    -webkit-backdrop-filter: blur(5px);
     border-bottom: 1px solid #eee;
     flex-shrink: 0;
     position: relative;
     z-index: 10;
     height: auto;
-    /* 让高度自动撑开 */
-    min-height: calc(50px + env(safe-area-inset-top));
-    /* 保证最小高度 */
 }
 
 .app-header .back-btn,
@@ -235,7 +231,7 @@
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
     padding: 10px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-bottom: 10px;
     animation: slideUp 0.3s ease-out;
 }
 
@@ -250,6 +246,9 @@
     cursor: pointer;
     border-radius: 10px;
     margin-bottom: 8px;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
 .action-sheet-button.danger {
@@ -288,7 +287,6 @@
 }
 
 .list-item:last-child {
-
     border-bottom: none; 
 }
 

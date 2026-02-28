@@ -25,6 +25,10 @@
         
     --border-radius: 8px;
     --phone-corner-radius: 0px;
+    
+    /* 安全区默认变量 */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {
