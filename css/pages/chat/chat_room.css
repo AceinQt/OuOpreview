@@ -17,7 +17,6 @@
 }
 
 #chat-room-screen .content {
-
     flex-direction: column;
     padding: 0;
     padding-bottom: 0px;
@@ -57,7 +56,7 @@
     -webkit-overflow-scrolling: touch;
     overflow-anchor: none;
     /* 顶部避让 Header */
-    padding: 70px 10px 100px;
+    padding: 70px 10px 0;
 
     scroll-behavior: auto;
     box-sizing: border-box;
@@ -300,6 +299,24 @@
     height: auto;
     display: block;
     border-radius: calc(var(--border-radius) - 4px);
+}
+
+/* --- 专属表情包气泡样式 --- */
+.message-wrapper .sticker-bubble {
+    background-color: transparent; /* 强制透明背景 */
+    box-shadow: none;              /* 去除阴影 */
+    padding: 0;                    /* 去除内边距 */
+    max-width: 140px;                         /* 表情包最大宽度，比普通图片小 */
+    overflow: hidden;
+}
+
+.message-wrapper .sticker-bubble img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px; /* 可选：给表情包稍微加一点圆角 */
+    display: block;
+    background: transparent;
 }
 
 .voice-bubble {
@@ -923,19 +940,16 @@
 
     /* 稍微加一点顶部边框线，增加质感（可选） */
     border-top: 1px solid rgba(255, 255, 255, 0.3);
-    padding-bottom: env(safe-area-inset-bottom) !important;
 }
 
 
 .message-input-area {
     display: flex;
     align-items: center;
-    padding: 6px 10px;
-    
+    padding: 6px 10px;    
     background: transparent;
     flex-shrink: 0;
     gap: 10px;
-
     overflow: hidden;
 }
 
@@ -1007,7 +1021,6 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 20px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid #eee;
     z-index: 60;
     border-bottom-left-radius: var(--phone-corner-radius);
@@ -1019,21 +1032,8 @@
     display: flex;
 }
 
-
-
-
-
-
 #chat-room-header-select,
 #chat-room-header-default {
-    /* --- 核心修改 1：高度自动计算 --- */
-    /* 原高度 60px + 系统状态栏高度 */
-    height: calc(60px + env(safe-area-inset-top));
-
-    /* --- 核心修改 2：顶部内边距 --- */
-    /* 原顶部内边距 20px + 系统状态栏高度，确保文字不被刘海遮挡 */
-    padding-top: calc(20px + env(safe-area-inset-top));
-
     /* 保持原有的左右和底部内边距 */
     padding-bottom: 20px;
     padding-left: 10px;
