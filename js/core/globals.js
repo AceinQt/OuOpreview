@@ -8,6 +8,8 @@ window.db = {
     wallpaper: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
     myStickers: [],
     homeScreenMode: 'day',
+    enableTopSafeArea: true,
+    enableBottomSafeArea: true,
     worldBooks: [],
     fontUrl: '',
     customIcons: {},
