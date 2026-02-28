@@ -2,7 +2,7 @@
   "name": "OuO测试",
   "short_name": "OuO测试",
   "start_url": ".",
-  "display": "fullscreen",
+  "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"], 
   "theme_color": "#00000000", 
   "background_color": "#ffffff",
@@ -31,6 +31,7 @@
   ]
 
 }
+
 
 
 
