@@ -82,7 +82,7 @@ function generateGroupSystemPrompt(group) {
         prompt += `     - 人设: ${persona || '无特定人设'}\n`;
                 // ✨如果这个角色有绑定的表情包，就单独告诉 AI
         if (availableStickers) {
-            prompt += `     - 🎁 专属表情库: 【${availableStickers}】\n`;
+            prompt += `     - 该成员拥有的表情包: 【${availableStickers}】\n`;
             }
     });
     
@@ -137,7 +137,7 @@ function generateGroupSystemPrompt(group) {
     const maxMessages = numMembers * 5;
     prompt += `   - **消息数量**: 你的回复需要包含 **${minMessages}到${maxMessages}条** 消息。确保有足够多的互动。\n`;
     prompt += `   - **发言者与顺序随机**: 发言顺序随机，一个成员可以连续发送多条消息。\n`;
-    prompt += `   - **内容多样性**: 你的回复应以普通文本消息为主，但可以 **偶尔、选择性地** 让某个成员发送一条特殊消息（表情包、语音、照片/视频），以增加真实感。不要滥用特殊消息。\n`;
+    prompt += `   - **内容多样性**: 你的回复应以普通文本消息为主，但可以 **偶尔、选择性地** 让某个成员发送一条特殊消息（成员拥有的表情包、语音、照片/视频），以增加真实感。不要滥用特殊消息。\n`;
     prompt += `   - **对话连贯性**: 尽管发言是随机的，但对话内容应整体围绕群聊成员的发言展开，保持一定的逻辑连贯性。\n\n`;
 
     prompt += `6. **行为准则**:\n`;
