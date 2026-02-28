@@ -37,11 +37,9 @@ body {
     padding: 0;
     background: #ffffff;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    height: 100dvh;
+    height: 100%; 
     overflow: hidden;
+    overscroll-behavior: none; 
 
     /* 关键：确保内容能延伸 */
     box-sizing: border-box;

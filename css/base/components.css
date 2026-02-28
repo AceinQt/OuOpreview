@@ -1,6 +1,5 @@
 .phone-screen {
     max-width: 100%;
-    max-height: 100%;
     width: 100vw;
     height: 100vh;
     height: 100dvh;
@@ -18,7 +17,8 @@
     display: none;
     flex-direction: column;
     width: 100%;
-    height: 100%;
+    flex: 1; /* 核心修正：完美填满 phone-screen 剩下的所有空间 */
+    height: auto; /* 配合 flex: 1 使用 */
     animation: fadeIn 0.5s ease;
     position: relative;
     /* 修改：确保内部屏幕也是定位上下文 */
