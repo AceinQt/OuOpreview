@@ -2,7 +2,7 @@
   "name": "OuO测试",
   "short_name": "OuO测试",
   "start_url": ".",
-  "display": "fullscreen", 
+  "display": "standalone", 
   "theme_color": "#00000000", 
   "background_color": "#ffffff",
   "description": "一个有趣的测试网页应用",
@@ -30,6 +30,7 @@
   ]
 
 }
+
 
 
 
