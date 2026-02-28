@@ -3,20 +3,28 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- 1. 完善 Viewport：新增 maximum-scale=1.0 彻底锁死双指缩放和输入框自动放大 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
     <title>OuO</title>
     <meta name="theme-color" content="#FFFFFF" />
+    
+    <!-- 2. iOS Safari 伪装原生 App 三连击 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="./icon/icon_cat.png">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="./icon/icon_cat.png">
+
+    <!-- 新增：破解图床防盗链（极其重要！因为你的代码里用了 postimg.cc） -->
+    <meta name="referrer" content="no-referrer" />
+
+    <!-- 你的外部脚本和样式（保持不变） -->
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script src="https://unpkg.com/dompurify@2.3.8/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/main.css">
-
-
 </head>
 
 <body>
