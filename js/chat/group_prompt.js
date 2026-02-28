@@ -82,7 +82,7 @@ function generateGroupSystemPrompt(group) {
         prompt += `     - 人设: ${persona || '无特定人设'}\n`;
                 // ✨如果这个角色有绑定的表情包，就单独告诉 AI
         if (availableStickers) {
-            prompt += `     - 该成员拥有的表情包: 【${availableStickers}】\n`;
+            prompt += `     - 该成员拥有的表情包：${availableStickers}\n`;
             }
     });
     
