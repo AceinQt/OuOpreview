@@ -10,6 +10,7 @@ window.db = {
     homeScreenMode: 'day',
     enableTopSafeArea: false,
     enableBottomSafeArea: false,
+    homeStatusBarColor: '#ffffff',
     worldBooks: [],
     fontUrl: '',
     customIcons: {},

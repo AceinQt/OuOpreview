@@ -35,6 +35,9 @@ window.db = {
     forumBindings: { worldBookIds: [], charIds: [], userPersonaIds: [], useChatHistory: false, historyLimit: 50 },
     watchingPostIds: [],
     favoritePostIds: [],
+    enableTopSafeArea: false,
+    enableBottomSafeArea: false,
+    homeStatusBarColor: '#ffffff',
 
     // --- 基础设置 ---
     apiSettings: {},
@@ -54,7 +57,7 @@ window.db = {
 };
 
 // 3. Dexie 数据库配置
-const dexieDB = new Dexie('OuODB_ee');
+const dexieDB = new Dexie('QChatDB_ee');
 
 // Version 1 (历史版本)
 dexieDB.version(1).stores({
@@ -367,5 +370,4 @@ window.saveData = async () => {
     }
     
     console.log('✅ 数据保存完成, 时间戳:', now);
-
 };
