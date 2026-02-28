@@ -20,22 +20,22 @@ function switchScreen(targetId) {
                 // 使用 requestAnimationFrame 确保页面已经被赋予 display: flex 并渲染后，再计算颜色
                 // （因为 display: none 的元素获取计算样式可能不准确）
                 requestAnimationFrame(() => {
-                    const header = targetScreen.querySelector('.app-header');
-                    if (header) {
-                        // 动态获取渲染后的真实背景色 (兼容自定义 CSS 覆盖后的结果)
-                        const bgColor = window.getComputedStyle(header).backgroundColor;
-                        
-                        // 如果用户把头部背景改成了完全透明，兜底为白色，防止状态栏变成纯黑
-                        if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
-                             setAndroidThemeColor('#FFFFFF');
-                        } else {
-                             setAndroidThemeColor(bgColor);
-                        }
-                    } else {
-                        // 没有 app-header 的页面，默认白底
-                        setAndroidThemeColor('#FFFFFF');
-                    }
-                });
+    const header = targetScreen.querySelector('.app-header');
+    if (header) {
+        const bgColor = window.getComputedStyle(header).backgroundColor;
+        
+        if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
+             setAndroidThemeColor('#FFFFFF');
+             document.body.style.backgroundColor = '#FFFFFF';
+        } else {
+             setAndroidThemeColor(bgColor);
+             document.body.style.backgroundColor = bgColor;
+        }
+    } else {
+        setAndroidThemeColor('#FFFFFF');
+        document.body.style.backgroundColor = '#FFFFFF';
+    }
+});
             }
         }
         
