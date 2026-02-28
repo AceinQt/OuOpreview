@@ -17,6 +17,11 @@
     padding-top: calc(20px + var(--safe-top));
 }
 
+/* 聊天消息滚动区 */
+#chat-room-screen .message-area {
+    padding-top: calc(70px + var(--safe-top)) ;
+}
+
 #chat-list-screen .app-header {
     min-height: calc(50px + var(--safe-top));
     padding-top: calc(8px + var(--safe-top));
