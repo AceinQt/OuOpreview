@@ -3,8 +3,8 @@
    ========================================== */
 
 .app-header {    
-    padding-top: calc(16px + var(--safe-top));
-    min-height: calc(50px + var(--safe-top));
+    padding-top: max(16px , var(--safe-top));
+    min-height: 50px;
 }
 
 #home-screen {    
@@ -13,8 +13,8 @@
 
 #chat-room-header-select,
 #chat-room-header-default {
-    height: calc(60px + var(--safe-top));
-    padding-top: calc(20px + var(--safe-top));
+    min-height: 60px;
+    padding-top: max(8px , var(--safe-top));
 }
 
 /* 聊天消息滚动区 */
@@ -23,8 +23,8 @@
 }
 
 #chat-list-screen .app-header {
-    min-height: calc(50px + var(--safe-top));
-    padding-top: calc(8px + var(--safe-top));
+    min-height: 50px;
+    padding-top: max(8px , var(--safe-top));
 }
 
 #forum-screen .app-header {
@@ -41,8 +41,8 @@
 }
 
 #journal-detail-screen .app-header {
-    min-height: calc(50px + var(--safe-top));
-    padding-top: calc(18px + var(--safe-top));
+    min-height: 50px;
+    padding-top: max(18px , var(--safe-top));
 }
 
 .rpg-scroll-col {
