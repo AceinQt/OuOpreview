@@ -113,7 +113,9 @@ window.init = async () => {
         if (typeof applySafeAreaSettings === 'function') {
             applySafeAreaSettings();
         }
-
+        if (typeof applyScreenAdaptation === 'function') {
+         applyScreenAdaptation(); 
+     }
         // 设置状态栏颜色
         if (typeof setAndroidThemeColor === 'function') {
             setAndroidThemeColor(db.homeStatusBarColor || '#FFFFFF');
@@ -182,6 +184,12 @@ window.init = async () => {
         if (typeof setupTutorialApp === 'function') setupTutorialApp();
         if (typeof setupSafeAreaToggles === 'function') {
             setupSafeAreaToggles();
+        }
+        if (typeof setupScreenAdaptToggle === 'function') {
+         setupScreenAdaptToggle();
+     }
+     if (typeof setupSwipeBackToggle === 'function') {
+            setupSwipeBackToggle();
         }
         
 
