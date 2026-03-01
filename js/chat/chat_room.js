@@ -4146,12 +4146,12 @@ deleteCategoryBtn.addEventListener('click', async () => {
                 // 3. ✨动态判定全选状态
                 if (stickersToRender.length === 0) {
                     grid.innerHTML = '<p style="color:#aaa; text-align:center; width: 100%;">该分类下没有表情。</p>';
-                    selectAllBtn.style.display = 'none';
+                    selectAllBtn.style.display = 'hidden';
                     return;
                 }
-                selectAllBtn.style.display = 'inline-block';
+                selectAllBtn.style.display = 'visible';
                 const allSelected = stickersToRender.every(s => selectedLinkStickerIds.has(s.id));
-                selectAllBtn.textContent = allSelected ? '取消全选' : '全选';
+                selectAllBtn.textContent = allSelected ? '☑ 全选' : '☐ 全选';
 
                 // 4. 填充图片
                 stickersToRender.forEach(sticker => {
