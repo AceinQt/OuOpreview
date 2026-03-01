@@ -301,11 +301,12 @@
 
 #link-sticker-select-all-btn  {
     flex:1;
-    padding: 4px 10px;
-    border-radius: 15px;
-    font-size: 13px;
+    padding: 4px 0;
+    font-size: 14px;
     white-space: nowrap;
     margin:0;
+    background: transparent;
+    color: var(--primary-color);
 }
 
 #sticker-category-bar {
@@ -322,7 +323,7 @@
     border-radius: 15px;
     background: var(--white-color);
     color: #555;
-    font-size: 13px;
+    font-size: 14px;
     white-space: nowrap;
     cursor: pointer;
     transition: all 0.2s;
