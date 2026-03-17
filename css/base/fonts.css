@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Long+Cang&family=Ma+Shan+Zheng&family=Varela+Round&family=ZCOOL+KuaiLe&display=swap');
+
+/* --- 引入泰文字体，专门用于修复颜文字 --- */
+@font-face {
+    font-family: 'KaomojiFixed';  /* 给这个字体起个名字 */
+    src: url('../../font/NotoSansThai-Regular.ttf') format('truetype');
+    /* 关键点：只限制在泰文Unicode范围内生效 (U+0E00 到 U+0E7F) */
+    /* 这样它绝对不会影响中文和英文的显示 */
+    unicode-range: U+0E03, U+0E05, U+0300-036F; 
+    font-display: swap; /* 保证字体加载前文字可见 */
+}
+
+@font-face {
+    font-family: 'NotoSans';  /* 给这个字体起个名字 */
+    src: url('../../font/NotoSans-Regular.ttf') format('truetype');
+    font-display: swap; /* 保证字体加载前文字可见 */
+}
+
+
+
+

@@ -1,0 +1,260 @@
+/* --- 文件位置: css/storage.css --- */
+
+/* 页面整体容器 */
+#storage-analysis-screen {
+    background-color: #f2f2f7;
+}
+
+#storage-analysis-screen .app-header {
+    background-color: #fff;
+}
+
+#storage-analysis-screen .content {
+    padding: 15px;
+    gap: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* --- 通用卡片样式 --- */
+.storage-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 10px 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- 卡片 1: 概览 --- */
+.overview-card {
+    display: flex;
+    align-items: center;
+}
+
+#storage-chart-container {
+    width: 50%;
+    height: 160px;    
+}
+
+.overview-info {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding-left: 10px;
+}
+
+.total-size-container {
+    text-align: center;
+}
+
+.total-size-label {
+    font-size: 12px;
+    color: #888;
+    display: block;
+}
+
+#storage-total-size {
+    margin: 2px 0;
+    font-size: 20px;
+    color: #333;
+    font-weight: 600;
+}
+
+.backup-actions {
+    width: 80%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#storage-analysis-screen .btn-neutral {
+    background: var(--accent-color);
+}
+
+#storage-analysis-screen .btn-block {
+    width: 100%;
+    font-size: 14px;
+    padding: 7px 8px;
+    margin: 0;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+
+
+/* --- 卡片 2: 详细列表 (样式修改重点) --- */
+
+.storage-details-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 0; /* 移除间隙，依靠 border 分隔 */
+}
+
+.storage-detail-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* 左右两端对齐 */
+    padding: 12px 8px; /* 增加一点上下内边距 */
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.storage-detail-item:last-child {
+    border-bottom: none;
+    padding: 12px 8px 8px; /* 增加一点上下内边距 */
+}
+
+.storage-detail-item:first-child {
+    padding: 8px 8px 12px; /* 增加一点上下内边距 */
+}
+
+/* 左侧：圆点 + 名称 */
+.storage-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.storage-color-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.storage-detail-name {
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+}
+
+/* 右侧：大小 + 按钮 */
+.storage-item-right {
+    display: flex;
+    align-items: center;
+    gap: 20px; /* 大小和按钮之间的距离 */
+}
+
+.storage-detail-size {
+    font-size: 14px;
+    color: #888;
+    text-align: right;
+    font-variant-numeric: tabular-nums; /* 数字等宽对齐 */
+}
+
+.btn-export-sm {
+    border: none;
+    background: var(--primary-color, #007bff);
+    color: #fff;
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap; /* 防止按钮文字换行 */
+}
+
+.btn-export-sm:active {
+    filter: brightness(0.9);
+    transform: scale(0.98);
+}
+
+.btn-export-sm:disabled {
+    background: var(--accent-color);
+}
+
+/* --- 卡片 3: GitHub --- */
+.cloud-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cloud-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cloud-icon-bg {
+    width: 40px;
+    height: 40px;
+    background: #24292e;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cloud-icon-bg svg {
+    fill: white;
+    width: 24px;
+    height: 24px;
+}
+
+.cloud-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: #333;
+}
+
+.cloud-desc {
+    font-size: 12px;
+    color: #888;
+}
+
+.cloud-meta {
+    font-size:10px; 
+    color:#aaa; 
+    display:none;
+}
+
+.cloud-actions {
+    display:flex; 
+    gap:5px;
+}
+
+#storage-analysis-screen .btn-disabled {
+    padding: 6px 12px;
+    font-size: 12px;
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #e0e0e0;
+    color: #666;
+    border: none;
+    border-radius: 4px;
+}
+
+/* GitHub 专用样式 */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 12px;
+    animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+
+
+#btn-gh-save,
+#btn-gh-cancel {
+    padding: 12px 12px;
+    font-size: 14px;
+}

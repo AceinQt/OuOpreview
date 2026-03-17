@@ -1,0 +1,101 @@
+#api-settings-screen .form-group-select{
+ display: flex; 
+ justify-content: space-between; 
+ align-items: center; 
+ padding: 10px; 
+ border: 1px solid #DAF0FC; 
+ border-radius: 10px; 
+ background-color: #F5FBFF;
+ margin-bottom:20px;
+}
+
+#api-settings-screen .form-group-select label {
+    display: block;
+    margin-bottom: 0;
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+
+#api-settings-screen .form-group-select input {
+     height: 20px;
+     width: 20px;
+    padding: 12px;
+    border: 1px solid #DAF0FC;
+    border-radius: 10px;
+    background-color: #fff;
+    transition: border-color 0.3s;
+    font-family: var(--font-family);
+    font-size: 14px;
+}
+
+.api-presets-embedded {
+      padding:12px 12px 0;
+      border-radius:10px;
+      border:1px solid #DAF0FC;
+      background:var(--panel-bg, #fff);
+      box-shadow:var(--panel-shadow, none);
+}
+
+.api-presets-content {
+     display:flex;
+     align-items:center;
+     gap:8px;
+     margin-bottom:12px;
+}
+
+.api-presets-content label {
+      white-space: nowrap;
+      color:#666;
+      font-size: 14px;
+}
+
+.api-presets-content select {
+       flex:3;
+       padding:8px 10px;
+       border-radius:6px;
+       border:1px solid #DAF0FC;
+}
+
+.api-presets-content .btn {
+        flex:1;
+        border-radius:6px;
+        padding:8px 10px;
+        white-space: nowrap;
+        margin-bottom:0;
+        font-size: 14px;
+}
+
+#api-presets-modal .modal-window{
+        width:90%;
+}
+
+#api-presets-modal  .list-container{
+        max-height:300px;
+        overflow:auto;
+        border:none;
+        padding:0;
+        border-radius:6px;
+        margin-bottom:20px;
+}
+
+#api-presets-modal  .list-item{
+        display:flex;
+        padding:10px 0;
+}
+
+#api-presets-modal  .list-item-title{
+        flex:1;
+        min-width:0;
+}
+
+#api-presets-modal  .list-item-btn{
+        display:flex;
+        gap:6px;
+}
+
+#api-presets-modal  .list-item-btn .btn{
+        padding:8px 10px;
+        white-space: nowrap;
+        border-radius:6px;
+        font-size: 14px;
+}

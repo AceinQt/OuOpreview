@@ -1,0 +1,95 @@
+/* --- Tutorial Screen Styles --- */
+.tutorial-item {
+    margin-bottom: 15px;
+    border: 1px solid #DAF0FC;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: #F5FBFF;
+}
+
+.tutorial-header {
+    padding: 12px 18px;
+    font-weight: 600;
+    color: var(--secondary-color);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tutorial-header::after {
+    content: '▼';
+    font-size: 12px;
+    transition: transform 0.3s ease;
+}
+
+.tutorial-item.open .tutorial-header::after {
+    transform: rotate(180deg);
+}
+
+.tutorial-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease-in-out, padding 0.5s ease;
+    padding: 0 10px;
+}
+
+.tutorial-item.open .tutorial-content {
+    padding: 10px 10px;
+    /* A large value to ensure it expands to fit the content */
+    max-height: 5000px;
+}
+
+.tutorial-content img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+}
+
+/* --- Update Log Modal Styles --- */
+#update-log-modal .modal-window {
+    max-width: 380px;
+    text-align: left;
+}
+
+#update-log-modal-content {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 15px 15px;
+    margin: 15px 0;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+    background-color: #fcfcfc;
+    border-radius: 8px;
+}
+
+#update-log-modal-content h4 {
+    font-size: 16px;
+    color: var(--primary-color);
+    margin-top: 10px;
+    margin-bottom: 8px;
+}
+
+#update-log-modal-content ul {
+    list-style-type: none;
+    padding-left: 5px;
+    margin: 0;
+}
+
+#update-log-modal-content li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #555;
+    position: relative;
+    padding-left: 20px;
+}
+
+#update-log-modal-content li::before {
+    content: '✨';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    color: var(--accent-color);
+}
