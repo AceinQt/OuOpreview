@@ -792,6 +792,10 @@
                 <label for="stream-switch">流式输出</label>
                 <input type="checkbox" id="stream-switch">
             </div>
+            <div class="form-group-select">
+    <label for="compatibility-mode-switch" title="开启后，不含图片的消息将以纯文本格式发送，解决部分中转站Claude 400报错问题">兼容模式</label>
+    <input type="checkbox" id="compatibility-mode-switch">
+</div>
         </form>
      <div class="form-group">
         <label>API 预设</label>
@@ -3508,7 +3512,17 @@
     <script src="js/chat/chat_room.js"></script>
 
     <script src="js/chat/summary.js"></script>
-    <script src="js/peek.js"></script>
+
+    <script src="js/peek/peek_core.js"></script>      <!-- 必须第一个 -->
+<script src="js/peek/peek_messages.js"></script>
+<script src="js/peek/peek_album.js"></script>
+<script src="js/peek/peek_memos.js"></script>
+<script src="js/peek/peek_cart.js"></script>
+<script src="js/peek/peek_browser.js"></script>
+<script src="js/peek/peek_steps.js"></script>
+<script src="js/peek/peek_drafts.js"></script>
+<script src="js/peek/peek_transfer.js"></script>
+<script src="js/peek/peek_unlock.js"></script>
     
 <!-- 番茄钟 -->
     <script src="js/pomodoro.js"></script>

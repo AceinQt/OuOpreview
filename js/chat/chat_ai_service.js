@@ -149,7 +149,7 @@ function calculateTypingDelay(text, isFirstMessage) {
 // ==========================================
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType) {
     console.log("🟢 开始处理 AI 回复:", fullResponse.substring(0, 50) + "..."); 
-
+    let newMessagesForDB =[];
     try {
         if (!fullResponse) return;
 
@@ -211,6 +211,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             timestamp: Date.now()
                         };
                         chat.history.push(statusMsg);
+                        newMessagesForDB.push(statusMsg);
                         continue;
                     }
                 }
@@ -259,6 +260,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 };
                 chat.history.push(message);
                 addMessageBubble(message, targetChatId, targetChatType);
+                newMessagesForDB.push(message);
             }
         } else {
             let processedResponse = cleanResponse;
@@ -304,6 +306,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         messageToWithdraw.content = `[system: ${characterName} withdrew a message. Original: ${originalContent}]`;
                         renderMessages(false, true);
                     }
+                    await saveMessageToDB(messageToWithdraw, targetChatId, targetChatType); 
                     continue;
                 }
 
@@ -325,6 +328,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         };
                         chat.history.push(message);
                         addMessageBubble(message, targetChatId, targetChatType);
+                        newMessagesForDB.push(message);
 
                     } else if (aiQuoteMatch) {
                         const quotedText = aiQuoteMatch[1];
@@ -443,6 +447,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             } 
         } 
 
+        await saveMessagesToDB(newMessagesForDB, targetChatId, targetChatType);
         await saveSingleChat(targetChatId, targetChatType);
         renderChatList();
 
@@ -479,6 +484,7 @@ async function getAiReply(chatId, chatType) {
     
     try {
         let systemPrompt, requestBody;
+        const isCompatibilityMode = db.apiSettings.compatibilityModeEnabled || false; 
         if (chatType === 'private') {
             systemPrompt = generatePrivateSystemPrompt(chat);
         } else {
@@ -632,18 +638,37 @@ ${chat.realName}愣了一下，指尖无意识地摩挲着杯沿。
                      content = `[${chat.myName}引用“${msg.quote.content}”并回复：${replyText}]`;
                 } else {
                     if (msg.parts && msg.parts.length > 0) {
-                         content = msg.parts.map(p => {
-                            if (p.type === 'text' || p.type === 'html') {
-                                let text = p.text;
-                                if (chat.offlineModeEnabled && msg.role === 'user') {
-                                    text = text.replace(/的消息：/g, '说：');
+                        // --- 兼容模式判断逻辑开始 ---
+                        const hasImage = msg.parts.some(p => p.type === 'image');
+                        
+                        if (isCompatibilityMode && !hasImage) {
+                            // 开启了兼容模式且没有图片，将 content 拼接成纯字符串
+                            content = msg.parts.map(p => {
+                                if (p.type === 'text' || p.type === 'html') {
+                                    let text = p.text;
+                                    if (chat.offlineModeEnabled && msg.role === 'user') {
+                                        text = text.replace(/的消息：/g, '说：');
+                                    }
+                                    return text;
                                 }
-                                return { type: 'text', text: text };
-                            } else if (p.type === 'image') {
-                                return { type: 'image_url', image_url: { url: p.data } };
-                            }
-                            return null;
-                        }).filter(p => p);
+                                return "";
+                            }).join("").trim();
+                        } else {
+                            // 默认模式（数组格式）：支持图片，或未开启兼容模式
+                            content = msg.parts.map(p => {
+                                if (p.type === 'text' || p.type === 'html') {
+                                    let text = p.text;
+                                    if (chat.offlineModeEnabled && msg.role === 'user') {
+                                        text = text.replace(/的消息：/g, '说：');
+                                    }
+                                    return { type: 'text', text: text };
+                                } else if (p.type === 'image') {
+                                    return { type: 'image_url', image_url: { url: p.data } };
+                                }
+                                return null;
+                            }).filter(p => p);
+                        }
+                        // --- 兼容模式判断逻辑结束 ---
                     } else {
                         content = rawContent;
                     }
@@ -672,6 +697,7 @@ ${chat.realName}愣了一下，指尖无意识地摩挲着杯沿。
             'Content-Type': 'application/json',
             Authorization: `Bearer ${key}`
         };
+        
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: headers,
@@ -818,7 +844,7 @@ async function handleRegenerate() {
         const statusTextEl = document.getElementById('chat-room-status-text');
         if (statusTextEl) statusTextEl.textContent = chat.status;
     }
-
+await deleteMessagesFromDB(removedMessages.map(m=>m.id));
     await saveSingleChat(currentChatId, currentChatType);
     currentPage = 1; 
     renderMessages(false, true); 

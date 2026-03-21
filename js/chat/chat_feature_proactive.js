@@ -173,8 +173,12 @@ async function checkAndDeliverProactiveMessages() {
             msgIndex = chat.proactiveMessageQueue.findIndex(m => m.type === 'time_window_idle');
         }
         if (msgIndex === -1) {
-            msgIndex = chat.proactiveMessageQueue.findIndex(m => m.type === 'time_window_peek');
-            if (msgIndex !== -1) isPeekSource = true;
+            // Peek 话题仅在【线上模式】下投递，线下模式跳过
+            const isOfflineMode = (type === 'private' && chat.offlineModeEnabled);
+            if (!isOfflineMode) {
+                msgIndex = chat.proactiveMessageQueue.findIndex(m => m.type === 'time_window_peek');
+                if (msgIndex !== -1) isPeekSource = true;
+            }
         }
 
         if (msgIndex === -1) continue;
@@ -208,7 +212,7 @@ async function checkAndDeliverProactiveMessages() {
             }
         }
 
-        const minTimeGap = isPeekSource ? 120 * 60 * 1000 : 5 * 60 * 1000;
+        const minTimeGap = isPeekSource ? 60 * 60 * 1000 : 5 * 60 * 1000;
         if (tNow - lastInteractTime < minTimeGap) continue; 
         
         // 3. 【Peek 连发锁】如果发送过任何主动消息，且用户没重新说话前，Peek 被彻底锁死，杜绝“几秒钟后又发一组”
@@ -264,7 +268,7 @@ if (isPeekSource) {
                 }
 
                 // 【约束】：被映射后的真实投递时间，必须在用户最后一次真实发言时间的 30 分钟以后
-                if (groupTargetTime < lastInteractTime + 120 * 60 * 1000) {
+                if (groupTargetTime < lastInteractTime + 60 * 60 * 1000) {
                     continue; // 没满足，留到未来哪天满足了再发
                 }
 
@@ -353,6 +357,7 @@ if (isPeekSource) {
             console.log(`[抽奖详情] 对象: ${chat.realName || chat.name}, 来源: ${isPeekSource ? 'Peek备用池' : '标准池'}, 组: ${candidate.slotId}, 概率: ${candidate.probability}%, 骰子: ${roll.toFixed(1)}`);
             
             if (roll <= candidate.probability) {
+                let msgsToPut =[]; 
                 console.log(`[抽奖成功] 组: ${candidate.slotId} 连发 ${candidate.messages.length} 条。`);
                 
                 for (let i = 0; i < candidate.messages.length; i++) {
@@ -388,6 +393,7 @@ if (isPeekSource) {
                             timestamp: msgFakeTimestamp - 1
                         };
                         chat.history.push(visualMessage);
+                        msgsToPut.push(visualMessage);
                         if (typeof currentChatId !== 'undefined' && currentChatId === chat.id && typeof addMessageBubble === 'function') {
                             addMessageBubble(visualMessage, chat.id, type);
                         }
@@ -440,12 +446,13 @@ if (isPeekSource) {
                     }
 
                     chat.history.push(newMsg);
+                    msgsToPut.push(newMsg);
                     
                     if (typeof currentChatId !== 'undefined' && currentChatId === chat.id && typeof addMessageBubble === 'function') {
                         addMessageBubble(newMsg, chat.id, type);
                     }
                 }
-                
+                await saveMessagesToDB(msgsToPut, chat.id, type);
                 if (typeof currentChatId !== 'undefined' && currentChatId === chat.id) {
                 } else {
                     chat.unreadCount = (chat.unreadCount || 0) + candidate.messages.length;
@@ -460,8 +467,20 @@ if (isPeekSource) {
             delete draft.content[candidate.slotId];
         }
 
-        if (Object.keys(draft.content).length === 0) {
-            chat.proactiveMessageQueue.splice(msgIndex, 1);
+        if (isPeekSource) {
+            // Peek 专属：只要本轮投递成功，立即移除整个 peek 对象。
+            // 确保"只发一次"语义——不留其他 slot 等下次再发，
+            // 直到用户回复后顺风车重新填充，才会有下一次 peek。
+            if (deliveredCount > 0) {
+                chat.proactiveMessageQueue.splice(msgIndex, 1);
+            } else if (Object.keys(draft.content).length === 0) {
+                // 骰子全部失败且 content 也掏空了，同样移除
+                chat.proactiveMessageQueue.splice(msgIndex, 1);
+            }
+        } else {
+            if (Object.keys(draft.content).length === 0) {
+                chat.proactiveMessageQueue.splice(msgIndex, 1);
+            }
         }
 
         if (deliveredCount > 0 || candidates.length > 0) {
@@ -589,12 +608,34 @@ function stopBackgroundAudioTimer() {
     }
 }
 
-// 🌟 核心修复 3：统一唯一且正确的监听器入口
+// 🌟 核心修复 3：统一唯一且正确的监听器入口，防多环境并发导致双倍追加
 (function setupInactivityTracker() {
     // 投递逻辑：独立的setInterval，每分钟检查一次
-    setInterval(() => {
+    setInterval(async () => {
         console.log(`[时计] 定时检查是否到达抽奖时间...`);
-        checkAndDeliverProactiveMessages();
+        
+        // 1. 本地存储第一层防御（防止多个标签页在同一秒内发两遍）
+        const now = Date.now();
+        const lastRun = parseInt(localStorage.getItem('last_proactive_run') || '0', 10);
+        if (now - lastRun < 50000) {
+            console.log(`[时计] 另一个标签页或后台正在处理主动消息，本次跳过。`);
+            return;
+        }
+        localStorage.setItem('last_proactive_run', now.toString());
+
+        // 2. 现代浏览器终极排他锁（如果支持，彻底杜绝数据库脏写两份）
+        if (navigator.locks && navigator.locks.request) {
+            await navigator.locks.request('proactive_delivery', { mode: 'exclusive', ifAvailable: true }, async lock => {
+                if (!lock) {
+                    console.log(`[时计] 另一个环境正在抢占数据库写入，本次跳过。`);
+                    return;
+                }
+                await checkAndDeliverProactiveMessages();
+            });
+        } else {
+            // 旧设备的兜底降级方案
+            await checkAndDeliverProactiveMessages();
+        }
     }, 60000);
 
     // 绑定解锁事件

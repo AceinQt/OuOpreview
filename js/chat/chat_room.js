@@ -632,6 +632,7 @@ if (!invisibleRegex.test(message.content)) {
                             if (giftCardOnScreen) {
                                 giftCardOnScreen.classList.add('received');
                             }
+                            await saveMessageToDB(giftMsg, currentChatId, currentChatType);
                             await saveSingleChat(currentChatId, currentChatType);
                         }
                         return;
@@ -651,6 +652,7 @@ if (!invisibleRegex.test(message.content)) {
                                 const statusElem = transferCardOnScreen.querySelector('.transfer-status');
                                 if (statusElem) statusElem.textContent = statusToSet === 'received' ? '已收款' : '已退回';
                             }
+                            await saveMessageToDB(transferMsg, currentChatId, currentChatType);
                             await saveSingleChat(currentChatId, currentChatType);
                         }
                     } else {
@@ -747,6 +749,7 @@ async function processTimePerception(chat, chatId, chatType) {
 
         chat.history.push(visualMessage, contextMessage);
         addMessageBubble(visualMessage, chatId, chatType);
+        await saveMessagesToDB([visualMessage, contextMessage], chatId, chatType);
     }
 }
 
@@ -817,11 +820,12 @@ async function processTimePerception(chat, chatId, chatType) {
                 }
                 chat.history.push(message);
                 addMessageBubble(message, currentChatId, currentChatType);
+                
 
                 if (chat.history.length > 0 && chat.history.length % 100 === 0) {
                     promptForBackupIfNeeded('history_milestone');
                 }
-
+await saveMessageToDB(message, currentChatId, currentChatType);
                 await saveSingleChat(currentChatId, currentChatType);
                 renderChatList();
 
