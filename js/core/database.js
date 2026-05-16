@@ -70,6 +70,7 @@ window.db = {
 
 // 3. Dexie 数据库配置
 window.dexieDB = new Dexie('QChatDB_ee');
+const dexieDB = window.dexieDB; // ← 加这行，让模块内 const 引用和 window 都指向同一个实例
 
 // 如果其他标签页占用数据库，导致升级卡死，给予提示
 dexieDB.on('blocked', () => {
