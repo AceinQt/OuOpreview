@@ -905,7 +905,7 @@ function _initReaderInteraction() {
     }
   });
 
-  const CENTER_X     = 0.25;
+const CENTER_X     = 0.25;
   const CENTER_Y_TOP = 0.25;
   const CENTER_Y_BOT = 0.25;
 
@@ -913,29 +913,16 @@ function _initReaderInteraction() {
   let touchStartY = 0;
   let touchMoved  = false;
 
-  screen.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchMoved  = false;
-  }, { passive: true });
-
-  screen.addEventListener('touchmove', () => {
-    touchMoved = true;
-  }, { passive: true });
-
-  screen.addEventListener('touchend', (e) => {
-    if (touchMoved) return;
-
-    const tag = e.target.tagName;
+  // ★ 提取公共逻辑，touch 和 click 共用
+  function _handleReaderTap(x, y, target) {
+    const tag = target.tagName;
     if (['BUTTON', 'INPUT', 'A', 'SELECT'].includes(tag)) return;
-    if (e.target.closest(
+    if (target.closest(
       '.app-header, .reader-float-ball, .reader-bubble-wrap, ' +
       '.reader-coread-input-bar, .settings-sidebar, .action-sheet-overlay, ' +
       '.reader-toc-sidebar, .reader-toc-overlay, .reader-bottom-menu'
     )) return;
 
-    const x = touchStartX;
-    const y = touchStartY;
     const W = screen.clientWidth;
     const H = screen.clientHeight;
 
@@ -947,7 +934,6 @@ function _initReaderInteraction() {
       const menu    = document.getElementById('reader-bottom-menu');
       const visible = menu?.classList.contains('visible');
       if (!visible) {
-        // 呼出顶部栏+底部菜单时，先关闭其他面板
         _closeAllReaderPanels('menu');
       }
       header?.classList.toggle('reader-header-visible', !visible);
@@ -962,6 +948,29 @@ function _initReaderInteraction() {
       if (s.page > 0) { s.page--; studyRenderReader(); }
     } else {
       if (s.page < total - 1) { s.page++; studyRenderReader(); }
+    }
+  }
+
+  screen.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchMoved  = false;
+  }, { passive: true });
+
+  screen.addEventListener('touchmove', () => {
+    touchMoved = true;
+  }, { passive: true });
+
+  screen.addEventListener('touchend', (e) => {
+    if (touchMoved) return;
+    _handleReaderTap(touchStartX, touchStartY, e.target);
+  });
+
+  // ★ PC 鼠标点击支持
+  screen.addEventListener('click', (e) => {
+    // touch 设备上 touchend 已处理，click 会重复触发，跳过
+    if (e.sourceCapabilities && !e.sourceCapabilities.firesTouchEvents) {
+      _handleReaderTap(e.clientX, e.clientY, e.target);
     }
   });
 
