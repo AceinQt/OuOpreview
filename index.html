@@ -3702,6 +3702,18 @@
     <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
 
+<!-- 重新分页 -->
+<div class="settings-item" id="reader-repaginate-btn">
+    <div class="setting-icon-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+    </div>
+    <div class="item-details"><span class="item-name">重新分页</span></div>
+    <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+</div>
+
 <!-- 清空共读记录 -->
 <div class="settings-item" id="reader-coread-clear-btn">
     <div class="setting-icon-box">
@@ -3767,20 +3779,22 @@
         <button class="reader-send-btn" id="coread-send-btn">发送</button>
     </div>
 
-    <!-- ⑨ 底部圆角菜单（点击中央 toggle，默认隐藏） -->
-    <div class="reader-bottom-menu" id="reader-bottom-menu">
-        <!-- 共读 -->
-        <button class="reader-menu-btn" id="reader-menu-coread-btn">
-            <span class="reader-menu-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-            </span>
-            <span class="reader-menu-label">共读</span>
+<!-- ⑨ 底部圆角菜单（点击中央 toggle，默认隐藏） -->
+<div class="reader-bottom-menu" id="reader-bottom-menu">
+
+    <!-- 上半：进度条区域 -->
+    <div class="reader-progress-row">
+        <button class="reader-chapter-btn" id="reader-prev-chapter-btn" title="上一段">
+            <span>上一段</span>
         </button>
+        <input type="range" id="reader-progress-range" class="reader-progress-range" min="0" max="100" value="0" step="1">
+        <button class="reader-chapter-btn" id="reader-next-chapter-btn" title="下一段">
+            <span>下一段</span>
+        </button>
+    </div>
+
+    <!-- 下半：四个功能按钮 -->
+    <div class="reader-menu-btns">
         <!-- 目录 -->
         <button class="reader-menu-btn" id="reader-menu-toc-btn">
             <span class="reader-menu-icon">
@@ -3795,7 +3809,7 @@
             </span>
             <span class="reader-menu-label">目录</span>
         </button>
-        <!-- 搜索 -->
+        <!-- 亮度（占位，原"搜索"位置，可按需替换） -->
         <button class="reader-menu-btn" id="reader-menu-search-btn">
             <span class="reader-menu-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -3805,7 +3819,7 @@
             </span>
             <span class="reader-menu-label">搜索</span>
         </button>
-        <!-- 书签 -->
+        <!-- 夜间（原"书签"位置，可按需替换） -->
         <button class="reader-menu-btn" id="reader-menu-bookmark-btn">
             <span class="reader-menu-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -3814,16 +3828,22 @@
             </span>
             <span class="reader-menu-label">书签</span>
         </button>
-        <!-- 对话历史 -->
-        <button class="reader-menu-btn" id="reader-menu-history-btn">
+        <!-- 共读 -->
+        <button class="reader-menu-btn" id="reader-menu-coread-btn">
             <span class="reader-menu-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
             </span>
-            <span class="reader-menu-label">对话历史</span>
+            <span class="reader-menu-label">共读</span>
         </button>
     </div>
+
+</div>
+
 
 </div>
 
