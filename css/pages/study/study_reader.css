@@ -329,21 +329,17 @@
   bottom: 0;
   z-index: 65;
   
-  /* 采用与 #chat-expansion-panel 一致的背景和阴影 */
   background: rgba(255, 255, 255, 0.98);
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
-  border:1px solid rgba(242, 243, 247, 0.5);
+  border: 1px solid rgba(242, 243, 247, 0.5);
   
-  /* 采用与 .sticker-grid 和 #chat-expansion-grid 一致的网格布局 */
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-  gap: 15px;
-  justify-content: center;
-  align-items: center;
+  /* 改为纵向排列：进度条行 + 按钮行 */
+  display: flex;
+  flex-direction: column;
   
-  /* 内边距：模拟聊天室 grid 的 padding，底部结合安全区避让 */
-  padding: 20px 15px calc(15px + var(--safe-bottom, 0px));
+  padding: 16px 16px max(15px,var(--safe-bottom));
+  gap: 16px;
   
   transform: translateY(100%);
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
@@ -357,7 +353,97 @@
   pointer-events: auto;
 }
 
-/* 按钮整体外观：对齐 .expansion-item */
+/* ── 进度条行（上半）──────────────────────────────────── */
+.reader-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+/* 上一段 / 下一段 按钮 */
+.reader-chapter-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 6px 2px;
+  font-size: 13px;
+  color: #555;
+  margin-bottom:1px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.reader-chapter-btn:active { opacity: 0.5; }
+.reader-chapter-btn svg { flex-shrink: 0; }
+
+/* range 滑块 */
+.reader-progress-range {
+  flex: 1;
+  min-width: 0;
+  height: 2px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  /* 使用 CSS 变量驱动已读进度颜色，JS 动态更新 --prog */
+  --prog: 0%;
+  background-image: linear-gradient(
+    to right,
+    var(--blue-color) 0%,
+    var(--blue-color) var(--prog),
+    rgba(0,0,0,0.12) var(--prog),
+    rgba(0,0,0,0.12) 100%
+  );
+  border-radius: 2px;
+}
+
+/* Webkit 滑块圆点 */
+.reader-progress-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.reader-progress-range::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}
+
+/* Firefox */
+.reader-progress-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+.reader-progress-range::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+}
+
+/* ── 四按钮行（下半）──────────────────────────────────── */
+.reader-menu-btns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  justify-items: center;
+}
+
+/* 按钮整体外观 */
 .reader-menu-btn {
   display: flex;
   flex-direction: column;
@@ -371,38 +457,35 @@
   font-family: inherit;
 }
 
-/* 图标容器：对齐 .expansion-item-icon */
+/* 图标容器 */
 .reader-menu-icon {
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: var(--gray-color);
-
-  border:1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   transition: background-color 0.1s;
   color: #555;
 }
 
-
-
-/* 覆盖 HTML 内联的 SVG 尺寸，统一调整为聊天室图标标准 (32x32) */
 .reader-menu-icon svg {
-  width: 32px !important;
-  height: 32px !important;
+  width: 28px;
+  height: 28px;
   stroke: currentColor;
 }
 
-/* 文本标签：对齐 .expansion-item-name */
+/* 文本标签 */
 .reader-menu-label {
   font-size: 13px;
   color: #666;
   font-weight: normal;
   letter-spacing: normal;
 }
+
 
 /* ── 目录侧边栏遮罩 ──────────────────────────────── */
 .reader-toc-overlay {
