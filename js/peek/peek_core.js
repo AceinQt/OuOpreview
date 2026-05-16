@@ -76,6 +76,7 @@ window.PeekDeleteManager = {
         const activeScreen = document.querySelector('.screen.active');
         if (activeScreen) {
             const actionBtn = activeScreen.querySelector('.app-header .action-btn');
+            // 注意这里不强制复原为 visible，如果本身应该有隐藏状态的按钮让 render自己去管
             if (actionBtn) actionBtn.style.visibility = 'visible';
         }
 
@@ -122,11 +123,16 @@ window.PeekDeleteManager = {
             : confirm(`确定要删除这 ${this.selectedIds.size} 项内容吗？`);
         if (!confirmed) return;
 
-        const cache = window.peekContentCache[this.currentAppType];
-        if (cache && cache[this.currentDataArrayPath]) {
-            cache[this.currentDataArrayPath] = cache[this.currentDataArrayPath].filter(item => {
-                return !this.selectedIds.has(item.id);
-            });
+        // 如果传入的 dataArrayPath 是个函数，则代表调用自定义清理回调（解决深层嵌套清理）
+        if (typeof this.currentDataArrayPath === 'function') {
+            await this.currentDataArrayPath(this.selectedIds);
+        } else {
+            const cache = window.peekContentCache[this.currentAppType];
+            if (cache && cache[this.currentDataArrayPath]) {
+                cache[this.currentDataArrayPath] = cache[this.currentDataArrayPath].filter(item => {
+                    return !this.selectedIds.has(item.id);
+                });
+            }
         }
 
         await savePeekData(window.activePeekCharId);
@@ -194,6 +200,116 @@ window.PeekDeleteManager = {
 };
 
 // ==========================================
+// 工具函数：获取Peek功能使用的API配置
+// 优先使用角色的 peekScreenSettings.peekApiPreset 指定预设
+// 无配置时降级到全局默认 db.apiSettings
+// ==========================================
+function getPeekApiConfig(charId) {
+    const char = charId ? db.characters.find(c => c.id === charId) : null;
+    const presetName = char?.peekScreenSettings?.peekApiPreset;
+
+    if (presetName) {
+        const preset = (db.apiPresets || [])
+            .filter(p => !p.type || p.type === 'chat')
+            .find(p => p.name === presetName);
+        if (preset?.data) {
+            const d = preset.data;
+            return {
+                url:           d.url || d.apiUrl || '',
+                key:           d.key || d.apiKey || '',
+                model:         d.model || '',
+                streamEnabled: d.streamEnabled !== false,
+                temperature:   d.temperature !== undefined ? d.temperature : 0.8
+            };
+        }
+    }
+
+    // 降级：全局默认
+    const activeName = db.apiSettings?.activePreset;
+    if (activeName) {
+        const preset = (db.apiPresets || [])
+            .filter(p => !p.type || p.type === 'chat')
+            .find(p => p.name === activeName);
+        if (preset?.data) {
+            const d = preset.data;
+            return {
+                url:           d.url || d.apiUrl || '',
+                key:           d.key || d.apiKey || '',
+                model:         d.model || '',
+                streamEnabled: d.streamEnabled !== false,
+                temperature:   d.temperature !== undefined ? d.temperature : 0.8
+            };
+        }
+    }
+
+    // 最终兜底（旧格式兼容）
+    const s = db.apiSettings || {};
+    return {
+        url:           s.url || s.apiUrl || '',
+        key:           s.key || s.apiKey || '',
+        model:         s.model || '',
+        streamEnabled: s.streamEnabled !== false,
+        temperature:   s.temperature !== undefined ? s.temperature : 0.8
+    };
+}
+
+// ==========================================
+// 工具函数：统一的Peek API调用
+// 支持流式（读完再返回）和非流式，对外统一返回 Promise<string>
+// Peek内容需要结构化解析，流式也必须等全部传输完毕
+// ==========================================
+async function callPeekApi({ url, key, model, messages, temperature = 0.85, streamEnabled = false }) {
+    const requestBody = {
+        model,
+        messages,
+        temperature,
+        stream: !!streamEnabled
+    };
+
+    const response = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+    if (!streamEnabled) {
+        const result = await response.json();
+        return result.choices[0].message.content.trim();
+    }
+
+    // 流式：逐行读取SSE，累积完整文本后返回
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 最后一行可能不完整，留给下次
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) fullText += delta;
+            } catch (_) { /* 忽略格式异常行 */ }
+        }
+    }
+
+    return fullText;
+}
+
+// ==========================================
 // 工具函数：生成公用背景提要（人设、世界书、记忆、上下文）
 // ==========================================
 function getPeekBasePromptContext(char, mainChatContext) {
@@ -243,7 +359,7 @@ function getPeekProactiveFormatPrompt(char) {
             .join('、');
     }
 
-    let prompt = `可选的时间段ID有：NIGHT(22点-6点), MORNING(6点-10点), NOON(10点-14点), AFTERNOON(14点-18点), EVENING(18点-22点)。请选择最符合该话题的时段生成1组消息！\n`;
+    let prompt = `可选的时间段ID有：NIGHT(22点-6点), MORNING(6点-10点), NOON(10点-14点), AFTERNOON(14点-18点), EVENING(18点-22点)。请选择最符合发送该话题的时段生成1组消息！\n`;
     prompt += `\n【主动消息格式规范】\n`;
     prompt += `预测主动消息时，你可以结合情境混合使用以下支持的格式（每条消息必须包含对应的前缀）：\n`;
     prompt += `a) 普通消息: [HH:MM|${senderName}的消息: 文字消息内容]\n`;
@@ -256,7 +372,7 @@ function getPeekProactiveFormatPrompt(char) {
     prompt += `d) 语音消息:[HH:MM|${senderName}的语音: 语音转述的文字内容]\n`;
     prompt += `e) 撤回消息:[HH:MM|${senderName}撤回了上一条消息: 被撤回消息的原文]\n`;
     prompt += `f) 主动转账或送礼物: 转账格式必须为[HH:MM|${senderName}的转账:xxx元；备注：xxx]。送礼物格式必须为[HH:MM|${senderName}送来的礼物:xxx]\n`;
-    prompt += `g) 话题会在未来三天中的某一天发出，因此生成的消息中请不要使用确切日期以及"今天""刚刚"指代某件事的发生时间，应使用"之前""上次"等模糊词语指代某件事的发生时间。\n`;
+    prompt += `g) 话题会在未来一小时到三天中的某一时刻发出，因此消息中的 HH:MM 时间必须晚于当前时间的一小时后。生成的消息中也请不要使用确切日期以及"今天""刚刚"指代某件事的发生时间，应使用"之前""上次"等模糊词语指代某件事的发生时间。\n`;
 
     return prompt;
 }
@@ -417,7 +533,7 @@ function renderPeekScreen() {
             if (id === 'album') generateAndRenderPeekAlbum();
             else if (id === 'browser') generateAndRenderPeekBrowser();
             else if (id === 'steps') generateAndRenderPeekSteps();
-            else if (id === 'drafts') generateAndRenderPeekDrafts();
+            else if (id === 'drafts') openPeekDraftsScreen();
             else if (id === 'memos') generateAndRenderPeekMemos();
             else if (id === 'transfer') generateAndRenderPeekTransfer();
             else if (id === 'messages') generateAndRenderPeekMessages();
@@ -466,9 +582,22 @@ function renderPeekSettings() {
     iconsContainer.querySelectorAll('input[type="file"]').forEach(uploadInput => {
         uploadInput.addEventListener('change', handlePeekIconUpload);
     });
-
-    document.getElementById('peek-unlock-avatar-url').value = peekSettings.unlockAvatar || '';
+    
     document.getElementById('peek-context-limit').value = peekSettings.contextLimit !== undefined ? peekSettings.contextLimit : 50;
+
+    // 渲染 API 预设选择框
+    const peekApiPresetSel = document.getElementById('peek-api-preset-select');
+    if (peekApiPresetSel) {
+        const chatPresets = (db.apiPresets || []).filter(p => !p.type || p.type === 'chat');
+        peekApiPresetSel.innerHTML = '<option value="">全局默认</option>';
+        chatPresets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            peekApiPresetSel.appendChild(opt);
+        });
+        peekApiPresetSel.value = peekSettings.peekApiPreset || '';
+    }
 }
 
 // ==========================================
@@ -490,6 +619,24 @@ async function handlePeekIconUpload(e) {
         }
     }
 }
+
+// --- START OF FILE peek_core.js ---
+
+// ==========================================
+// 全局打开 Peek 接口（供其他页面调用）
+// ==========================================
+window.openPeekScreen = function(charId) {
+    if (!charId) {
+        if (typeof showToast === 'function') showToast('错误：无法获取角色信息');
+        return;
+    }
+    // 存入全局变量供点击确认后使用
+    window.pendingPeekCharId = charId; 
+    const peekConfirmModal = document.getElementById('peek-confirm-modal');
+    if (peekConfirmModal) {
+        peekConfirmModal.classList.add('visible');
+    }
+};
 
 // ==========================================
 // Peek 功能入口初始化（事件绑定）
@@ -514,17 +661,41 @@ function setupPeekFeature() {
     peekConfirmYes?.addEventListener('click', () => {
         peekConfirmModal.classList.remove('visible');
 
-        let safeChatId = currentChatId;
+        // 1. 优先使用全局传入的 pending ID
+        let safeChatId = window.pendingPeekCharId;
+
+        // 2. 其次判断当前是否在角色信息编辑页
         if (!safeChatId) {
-            const chatScreen = document.getElementById('chat-room-screen');
-            const match = chatScreen.className.match(/chat-active-([^ ]+)/);
-            if (match) {
-                safeChatId = match[1];
-                currentChatId = safeChatId;
+            const charEditScreen = document.getElementById('character-edit-screen');
+            if (charEditScreen && charEditScreen.classList.contains('active')) {
+                const editId = document.getElementById('character-edit-id');
+                if (editId && editId.value) {
+                    safeChatId = editId.value;
+                }
             }
         }
 
+        // 3. 回退尝试当前的全局对话变量
+        if (!safeChatId) {
+            safeChatId = currentChatId;
+        }
+
+        // 4. 从聊天室的 DOM 类名中兜底获取
+        if (!safeChatId) {
+            const chatScreen = document.getElementById('chat-room-screen');
+            if (chatScreen) {
+                const match = chatScreen.className.match(/chat-active-([^ ]+)/);
+                if (match) {
+                    safeChatId = match[1];
+                    currentChatId = safeChatId;
+                }
+            }
+        }
+
+        // 用完清除，防止污染后续操作
+        window.pendingPeekCharId = null;
         currentChatType = 'private';
+
         if (!safeChatId) {
             if (typeof showToast === 'function') showToast('错误：丢失聊天对象信息');
             return;
@@ -578,9 +749,7 @@ function setupPeekFeature() {
             } else {
                 if (character.peekScreenSettings.customIcons) delete character.peekScreenSettings.customIcons[appId];
             }
-        });
-
-        character.peekScreenSettings.unlockAvatar = document.getElementById('peek-unlock-avatar-url').value.trim();
+        });        
 
         const contextInput = document.getElementById('peek-context-limit');
         let limit = parseInt(contextInput.value);
@@ -588,6 +757,9 @@ function setupPeekFeature() {
         if (limit > 500) limit = 500;
         if (limit < 0) limit = 0;
         character.peekScreenSettings.contextLimit = limit;
+
+        const peekApiPresetSel = document.getElementById('peek-api-preset-select');
+        character.peekScreenSettings.peekApiPreset = peekApiPresetSel ? peekApiPresetSel.value : '';
 
         await saveSingleChat(window.activePeekCharId, 'private');
         renderPeekScreen();
@@ -610,28 +782,37 @@ function setupPeekFeature() {
             const cachedData = peekContentCache.messages;
             if (cachedData && cachedData.conversations) {
                 const conversation = cachedData.conversations.find(c => c.partnerName === partnerName);
-                if (conversation) {
+if (conversation) {
+                    // 1. 提前记录当前是否是新消息状态
+                    const wasNew = conversation.isNew; 
+                    
                     if (conversation.isNew) {
                         conversation.isNew = false;
                         savePeekData(window.activePeekCharId);
                         const badge = chatItem.querySelector('.new-badge');
                         if (badge) badge.remove();
                     }
-                    renderPeekConversation(conversation.history, conversation.partnerName);
                     switchScreen('peek-conversation-screen');
+                    
+                    // 2. 将 wasNew 作为第三个参数传递进去
+                    renderPeekConversation(conversation.history, conversation.partnerName, wasNew);
                 } else {
                     showToast('找不到对话记录');
                 }
             }
-        } else if (e.target.closest('.action-btn')) {
-            generateAndRenderPeekMessages({ forceRefresh: true });
         }
     });
 
-    const peekConversationScreen = document.getElementById('peek-conversation-screen');
-    peekConversationScreen.addEventListener('click', (e) => {
-        if (e.target.closest('.action-btn')) generateAndRenderPeekMessages({ forceRefresh: true });
-    });
+    // 消息列表：刷新 & 新增联系人按钮
+    document.getElementById('peek-messages-refresh-btn')
+        ?.addEventListener('click', () => generateAndRenderPeekMessages({ forceRefresh: true }));
+    document.getElementById('peek-messages-add-btn')
+        ?.addEventListener('click', () => addPeekContact());
+
+    // 详情页目前无 action-btn 操作（刷新按钮仅在列表页）
+    // TODO 需求3：未来可在此处绑定"旁观模式"入口
+    // const peekConversationScreen = document.getElementById('peek-conversation-screen');
+    // peekConversationScreen.addEventListener('click', (e) => { ... });
 
     const refreshAlbumBtn = document.getElementById('refresh-album-btn');
     if (refreshAlbumBtn) refreshAlbumBtn.addEventListener('click', () => generateAndRenderPeekAlbum({ forceRefresh: true }));
@@ -646,10 +827,46 @@ function setupPeekFeature() {
         });
     }
 
+    // 初始化Unlock小号的静态事件绑定
+    if (typeof initPeekUnlock === 'function') {
+        initPeekUnlock();
+    }
+    
+    // 初始化草稿箱的静态事件绑定
+    if (typeof initPeekDraftsEvents === 'function') {
+        initPeekDraftsEvents();
+    }
+    
+    // 初始化备忘录的静态事件绑定
+    if (typeof initPeekMemosEvents === 'function') {
+        initPeekMemosEvents();
+    }
+
     // 绑定长按多选删除
     PeekDeleteManager.bindEvents();
     PeekDeleteManager.attachLongPress(document.getElementById('peek-messages-screen'), '.chat-item', 'messages', 'conversations', () => renderPeekChatList(peekContentCache.messages?.conversations));
-    PeekDeleteManager.attachLongPress(document.getElementById('peek-memos-screen'), '.memo-item', 'memos', 'memos', () => renderMemosList(peekContentCache.memos?.memos));
+    
+    // **新增：为消息详情页的单条消息绑定长按删除功能**
+    PeekDeleteManager.attachLongPress(
+        document.getElementById('peek-conversation-screen'), 
+        '.message-item-wrapper', 
+        'conversation', 
+        // 传递自定义删除回调函数给 executeDelete
+        async (selectedIds) => {
+            const activeName = document.getElementById('peek-conversation-title').textContent;
+            const convo = peekContentCache.messages.conversations.find(c => c.partnerName === activeName);
+            if (convo) {
+                convo.history = convo.history.filter(m => !selectedIds.has(m.id));
+            }
+        }, 
+        () => {
+            const activeName = document.getElementById('peek-conversation-title').textContent;
+            const convo = peekContentCache.messages.conversations.find(c => c.partnerName === activeName);
+            if (convo) renderPeekConversation(convo.history, convo.partnerName);
+        }
+    );
+
+    PeekDeleteManager.attachLongPress(document.getElementById('peek-memos-screen'), '.memo-card-item', 'memos', 'memos', () => renderMemosList(peekContentCache.memos?.memos));
     PeekDeleteManager.attachLongPress(document.getElementById('peek-cart-screen'), '.cart-item', 'cart', 'items', () => renderPeekCart(peekContentCache.cart?.items));
     PeekDeleteManager.attachLongPress(document.getElementById('peek-transfer-station-screen'), '.transfer-item', 'transfer', 'entries', () => renderPeekTransferStation(peekContentCache.transfer?.entries));
     PeekDeleteManager.attachLongPress(document.getElementById('peek-browser-screen'), '.browser-history-item', 'browser', 'history', () => renderPeekBrowser(peekContentCache.browser?.history));

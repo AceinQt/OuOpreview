@@ -172,6 +172,8 @@ const resetChatListTabs = () => {
 
 // 4. 路由表 (Router)
 const pageActions = {
+    'study-screen': () => window.StudyModule?.renderMain(),
+    'api-settings-screen': openApiSettingsScreen,
     'world-book-screen': typeof renderWorldBookList !== 'undefined' ? renderWorldBookList : null,
     'customize-screen': typeof renderCustomizeForm !== 'undefined' ? renderCustomizeForm : null,
     'tutorial-screen': typeof renderTutorialContent !== 'undefined' ? renderTutorialContent : null,
@@ -319,6 +321,7 @@ window.init = async () => {
 
         // 初始化各个模块
         if (typeof setupHomeScreen === 'function') setupHomeScreen();
+        if (typeof setupCharacterEditScreen === 'function') setupCharacterEditScreen();
         if (typeof setupChatListScreen === 'function') setupChatListScreen();
         if (typeof setupAddCharModal === 'function') setupAddCharModal();
         if (typeof setupChatRoom === 'function') setupChatRoom();
@@ -373,7 +376,8 @@ window.init = async () => {
         if (typeof setupPomodoroGlobalSettings === 'function') setupPomodoroGlobalSettings();
         if (typeof setupInsWidgetAvatarModal === 'function') setupInsWidgetAvatarModal();
         if (typeof setupRpgGame === 'function') setupRpgGame();
-        if (typeof setupUserPersonaModal === 'function') setupUserPersonaModal();
+        if (typeof setupUserPersonaScreen === 'function') setupUserPersonaScreen();
+        if (typeof setupGroupInfoScreen === 'function') setupGroupInfoScreen();
 
         // 绑定特殊按钮
         const delWbBtn = document.getElementById('delete-selected-world-books-btn');
@@ -509,9 +513,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (document.visibilityState === 'hidden' && shouldSaveOnHide) {
             try {
                 // 保存前检查数据新鲜度(可选,额外保险)
-                if (typeof dexieDB !== 'undefined') {
-                    try {
-                        const storedMeta = await dexieDB.globalSettings.get('app_metadata');
+                if (typeof window.dexieDB !== 'undefined') {
+    try {
+        const storedMeta = await window.dexieDB.globalSettings.get('app_metadata');
                         if (storedMeta?.lastUpdateTime > (window.dbLoadTimestamp || 0)) {
                             console.warn('⚠️ 检测到远程数据更新,跳过保存避免覆盖');
                             return;
@@ -543,9 +547,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 checkAndDeliverProactiveMessages();
             }
             
-            if (typeof dexieDB !== 'undefined') {
-                try {
-                    const storedMeta = await dexieDB.globalSettings.get('app_metadata');
+            if (typeof window.dexieDB !== 'undefined') {
+    try {
+        const storedMeta = await window.dexieDB.globalSettings.get('app_metadata');
                     if (storedMeta?.lastUpdateTime > (window.dbLoadTimestamp || 0)) {
                         console.log('🔄 检测到新数据,重新加载...');
                         await loadData();

@@ -263,37 +263,74 @@ function jumpToMessageInChat(messageId) {
     // Index 99 (最新) -> (100-99)/20 = 0.05 -> ceil = 1
     // Index 0 (最旧) -> (100-0)/20 = 5 -> ceil = 5
     const totalMessages = chat.history.length;
-    // 使用全局变量 MESSAGES_PER_PAGE，如果未定义请检查 chat_room.js
-    const targetPage = Math.ceil((totalMessages - msgIndex) / MESSAGES_PER_PAGE);
+// 计算跳转渲染窗口：以目标消息为中心，前后各 1 页
+    //    避免渲染整段历史（可能几万条），也确保消息在 DOM 里
+    const JUMP_WINDOW = MESSAGES_PER_PAGE * 2;
+    const jumpStart = Math.max(0, msgIndex - MESSAGES_PER_PAGE);
+    const jumpEnd   = Math.min(totalMessages, jumpStart + JUMP_WINDOW);
+    window._jumpRenderStart = jumpStart;
+    window._jumpRenderEnd   = jumpEnd;
 
-    // 3. 更新全局页码
-    if (typeof currentPage !== 'undefined') {
-        currentPage = targetPage;
-    } else {
-        // 如果 currentPage 无法访问，可能需要 window.currentPage 或者重构
-        console.warn('currentPage variable not found');
-    }
-
-    // 4. 切换回聊天室
+    // 3. 切换回聊天室
     switchScreen('chat-room-screen');
 
-    // 5. 强制重绘
+    // 4. 强制重绘（renderMessages 内部会消费 _jumpRenderStart/End）
     if (typeof renderMessages === 'function') {
         renderMessages(false, false);
     }
 
-    // 6. 滚动高亮
+    // 6. 滚动高亮（含通话折叠自动展开）
     setTimeout(() => {
-        const bubble = document.querySelector(`.message-wrapper[data-id="${messageId}"]`);
-        if (bubble) {
-            bubble.scrollIntoView({ behavior: 'auto', block: 'center' });
-            bubble.classList.add('message-highlight');
-            setTimeout(() => {
-                bubble.classList.remove('message-highlight');
-            }, 2000);
-        } else {
-            showToast('定位消息失败');
+        // 先尝试直接找到消息气泡
+        let bubble = document.querySelector(`.message-wrapper[data-id="${messageId}"]`);
+
+        // 如果没找到，检查是否被通话折叠隐藏了
+        if (!bubble) {
+            const targetMsg = chat.history.find(m => m.id === messageId);
+            const sessionId = targetMsg?.callSessionId;
+
+            if (sessionId) {
+                // 先找折叠气泡，再找已展开容器（可能已被其他跳转展开过）
+                const collapsedEl = document.querySelector(
+                    `.collapsed-call-bubble[data-call-session-id="${sessionId}"]`
+                );
+                const expandedContainer = document.querySelector(
+                    `[data-call-session-expanded-container="${sessionId}"]`
+                );
+
+                if (collapsedEl) {
+                    // 展开折叠的通话记录
+                    if (typeof expandCallSession === 'function') {
+                        expandCallSession(sessionId, collapsedEl);
+                    }
+                } else if (!expandedContainer) {
+                    // 既没有折叠气泡也没有展开容器，真的定位不到
+                    showToast('定位消息失败');
+                    return;
+                }
+
+                // 展开后重新查找气泡（需要再等一帧渲染）
+                setTimeout(() => {
+                    bubble = document.querySelector(`.message-wrapper[data-id="${messageId}"]`);
+                    if (bubble) {
+                        bubble.scrollIntoView({ behavior: 'auto', block: 'center' });
+                        bubble.classList.add('message-highlight');
+                        setTimeout(() => bubble.classList.remove('message-highlight'), 2000);
+                    } else {
+                        showToast('定位消息失败');
+                    }
+                }, 80);
+                return; // 等待上面的 setTimeout 处理
+            } else {
+                showToast('定位消息失败');
+                return;
+            }
         }
+
+        // 正常路径：气泡直接可见
+        bubble.scrollIntoView({ behavior: 'auto', block: 'center' });
+        bubble.classList.add('message-highlight');
+        setTimeout(() => bubble.classList.remove('message-highlight'), 2000);
     }, 150); // 给渲染留出时间
 }
 

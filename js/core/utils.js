@@ -42,28 +42,11 @@ function switchScreen(targetId) {
     }
 
     // 动态处理状态栏颜色
-    if (typeof setAndroidThemeColor === 'function') {
-        if (targetId === 'home-screen' && typeof window.db !== 'undefined') {
-            setAndroidThemeColor(window.db.homeStatusBarColor || '#FFFFFF');
-            document.body.style.backgroundColor = window.db.homeNavigationBarColor || '#FFFFFF';
-        } else {
-            requestAnimationFrame(() => {
-                const header = targetScreen.querySelector('.app-header');
-                if (header) {
-                    const bgColor = window.getComputedStyle(header).backgroundColor;
-                    if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
-                        setAndroidThemeColor('#FFFFFF');
-                        document.body.style.backgroundColor = '#FFFFFF';
-                    } else {
-                        setAndroidThemeColor(bgColor);
-                        document.body.style.backgroundColor = bgColor;
-                    }
-                } else {
-                    setAndroidThemeColor('#FFFFFF');
-                    document.body.style.backgroundColor = '#FFFFFF';
-                }
-            });
-        }
+    updateThemeColorForScreen(targetId, targetScreen);
+
+    // 页面进入钩子（各模块按需注册，不污染 switchScreen 本体）
+    if (window._screenEnterHooks?.[targetId]) {
+        window._screenEnterHooks[targetId]();
     }
 }             
                                                         function processToastQueue() {
@@ -148,7 +131,7 @@ function switchScreen(targetId) {
             }
 
             
-         // 动态修改安卓状态栏颜色
+// 动态修改安卓状态栏颜色
 function setAndroidThemeColor(color) {
     let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
@@ -158,6 +141,91 @@ function setAndroidThemeColor(color) {
     }
     meta.content = color;
 }
+
+// ================================================================
+// === 新增：统一的顶部状态栏颜色管理引擎
+// ================================================================
+function updateThemeColorForScreen(targetId, targetScreen) {
+    if (typeof setAndroidThemeColor !== 'function') return;
+
+    // 1. 最高优先级：如果通话界面处于打开状态，强制黑色
+    const callOverlay = document.getElementById('call-overlay');
+    if (callOverlay && callOverlay.style.display !== 'none') {
+        setAndroidThemeColor('#080808');
+        document.body.style.backgroundColor = '#080808';
+        return;
+    }
+
+    // 2. 主页特殊处理
+    if (targetId === 'home-screen' && typeof window.db !== 'undefined') {
+        setAndroidThemeColor(window.db.homeStatusBarColor || '#FFFFFF');
+        document.body.style.backgroundColor = window.db.homeNavigationBarColor || '#FFFFFF';
+        return;
+    }
+
+    // 3. 🎯 【关键处理】角色主页、用户主页的特殊处理
+    if (targetId === 'persona-edit-screen' || targetId === 'character-edit-screen' || targetId === 'peek-memo-detail-screen') {
+        setAndroidThemeColor('#f2f2f7'); // 替换为护眼灰
+        document.body.style.backgroundColor = '#f2f2f7';
+        return;
+    }
+
+    // 4. 其他常规页面：动态抓取 header 颜色
+    if (!targetScreen) {
+        targetScreen = document.getElementById(targetId);
+    }
+    if (!targetScreen) return;
+
+    requestAnimationFrame(() => {
+        const header = targetScreen.querySelector('.app-header');
+        if (header) {
+            const bgColor = window.getComputedStyle(header).backgroundColor;
+            if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
+                setAndroidThemeColor('#FFFFFF');
+                document.body.style.backgroundColor = '#FFFFFF';
+            } else {
+                setAndroidThemeColor(bgColor);
+                document.body.style.backgroundColor = bgColor;
+            }
+        } else {
+            setAndroidThemeColor('#FFFFFF');
+            document.body.style.backgroundColor = '#FFFFFF';
+        }
+    });
+}
+
+// ================================================================
+// === 新增：自动监听通话界面 (call-overlay) 的隐现状态
+// ================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const callOverlay = document.getElementById('call-overlay');
+    if (callOverlay) {
+        // 创建一个观察器，随时盯着通话界面的 style.display 变动
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.attributeName === 'style') {
+                    if (callOverlay.style.display !== 'none') {
+                        // 通话界面弹出了 -> 立刻变深色
+                        if (typeof setAndroidThemeColor === 'function') {
+                            setAndroidThemeColor('#080808');
+                            document.body.style.backgroundColor = '#080808';
+                        }
+                    } else {
+                        // 通话界面挂断关闭了 -> 恢复当前屏幕本来的颜色
+                        const activeScreen = document.querySelector('.screen.active');
+                        if (activeScreen) {
+                            updateThemeColorForScreen(activeScreen.id, activeScreen);
+                        }
+                    }
+                }
+            });
+        });
+        // 绑定监听
+        observer.observe(callOverlay, { attributes: true, attributeFilter: ['style'] });
+    }
+});
+
+
 
 // 压缩图片
 
@@ -360,11 +428,81 @@ const AppUI = {
         return this.show({ type: 'alert', content, title, confirmText: btnText });
     },
 
-    async confirm(content, title = "确认操作", confirmText = "确定", cancelText = "取消") {
+async confirm(content, title = "确认操作", confirmText = "确定", cancelText = "取消") {
         return this.show({ type: 'confirm', content, title, confirmText, cancelText });
     },
 
     async prompt(content, placeholder = "", title = "请输入", confirmText = "确定", cancelText = "取消") {
         return this.show({ type: 'prompt', content, placeholder, title, confirmText, cancelText });
+    }, // <--- 注意：这里必须要加一个逗号
+
+    /**
+     * 下拉选择弹窗
+     * @param {Array<{value:string, label:string}>} options  选项列表
+     * @param {object} opts  { title, confirmText, cancelText }
+     * @returns {Promise<string|null>}  返回选中的 value，取消返回 null
+     */
+    async select(options = [], { title = '请选择', confirmText = '确定', cancelText = '取消' } = {}) {
+        return new Promise((resolve) => {
+            const overlay        = document.getElementById('app-global-dialog');
+            const titleEl        = document.getElementById('global-dialog-title');
+            const contentEl      = document.getElementById('global-dialog-content');
+            const actionsEl      = document.getElementById('global-dialog-actions');
+            const inputContainer = document.getElementById('global-dialog-input-container');
+
+            if (!overlay) return resolve(null);
+
+            titleEl.innerText   = title;
+            contentEl.innerText = '';
+            actionsEl.innerHTML = '';
+
+            // 把 input-container 里的 input 临时替换成 select
+            inputContainer.style.display = 'block';
+            inputContainer.innerHTML = `
+                <select id="global-dialog-select" class="appui-select">
+                    ${options.map(o =>
+                        `<option value="${String(o.value).replace(/"/g,'&quot;')}">${o.label}</option>`
+                    ).join('')}
+                </select>`;
+
+            const close = () => {
+                overlay.classList.remove('visible');
+                // 还原 input-container 为原始 input，避免影响后续弹窗
+                inputContainer.innerHTML = '<input type="text" id="global-dialog-input" autocomplete="off">';
+                inputContainer.style.display = 'none';
+            };
+
+            const createBtn = (text, cls, onClick) => {
+                const btn = document.createElement('button');
+                btn.className   = `btn ${cls}`;
+                btn.style.flex  = '1';
+                btn.style.padding = '10px';
+                btn.innerText   = text;
+                btn.onclick = (e) => { e.stopPropagation(); close(); onClick(); };
+                return btn;
+            };
+
+            const cancelBtn  = createBtn(cancelText,  'btn-neutral', () => resolve(null));
+            const confirmBtn = createBtn(confirmText, 'btn-primary',  () => {
+                const sel = document.getElementById('global-dialog-select');
+                resolve(sel ? sel.value : null);
+            });
+            actionsEl.appendChild(confirmBtn);
+            actionsEl.appendChild(cancelBtn);
+
+            overlay.classList.add('visible');
+        });
     }
+    
 };
+
+// ================================================================
+// === historyToPlainText: 聊天记录转纯文本（过滤图片等非文本内容）===
+// ================================================================
+function historyToPlainText(history) {
+    if (!Array.isArray(history)) return '';
+    return history
+        .filter(m => typeof m.content === 'string' && !m.content.startsWith('data:'))
+        .map(m => m.content)
+        .join('\n');
+}
