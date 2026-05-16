@@ -431,6 +431,25 @@
     font-weight: 100;
 }
 
+
+#forum-screen .app-header .action-btn svg,
+#world-screen .app-header .action-btn svg
+ {
+fill: var(--primary-color);
+    color: var(--primary-color);
+}
+
+#forum-post-detail-screen .app-header .back-btn,
+#forum-post-detail-screen .app-header .action-btn,
+#world-screen .app-header .back-btn,
+#world-screen .app-header .action-btn,
+#forum-screen .app-header .back-btn,
+#forum-screen .app-header .action-btn,
+#favorites-screen .app-header .back-btn,
+#favorites-screen .app-header .action-btn {
+    color: var(--primary-color);
+}
+
 /* --- 论坛详情页新样式 --- */
 #forum-post-detail-screen {
     background-color: var(--gray-color);
@@ -439,6 +458,15 @@
 #d-delete-btn svg {
     fill: none;
     transform: translateY(-1px);
+}
+
+#favorites-screen .app-header .action-btn svg {
+    fill: none;    
+}
+
+
+#detail-ai-btn svg {
+    fill: var(--primary-color);
 }
 
 #forum-post-detail-screen .app-header {
@@ -456,6 +484,7 @@
 #forum-post-detail-screen .action-btn-group .action-btn svg {
     width: 24px;
     height: 24px;
+    color: var(--primary-color);
 }
 
 .post-detail-card {
@@ -1184,7 +1213,7 @@
 .history-limit-input {
     width: 80px;
     padding: 5px;
-    border: 1px solid var(--primary-color);
+    border: 1px solid #DAF0FC;
     border-radius: 6px;
     margin-left: 10px;
     text-align: center;
@@ -1864,5 +1893,12 @@ background-color: var(--top-pinned-bg);
     font-size: 13px;
     /* 关键：确保它不被压缩 */
     flex-shrink: 0; 
+}
+
+.setting-select {    
+    padding: 6px;
+    border: 1px solid #DAF0FC;
+    border-radius: 8px;
+    background-color: #fff;
 }
 

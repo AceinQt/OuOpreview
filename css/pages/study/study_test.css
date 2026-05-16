@@ -1,0 +1,151 @@
+/* study_test.css — 测试页
+   ================================================== */
+
+/* ── 上下分栏布局 ────────────────────────────────── */
+.st-test-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 上：题库区（固定高度）*/
+.st-bank-panel {
+  flex: 0 0 auto;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line-color, #eee);
+  background: #fff;
+}
+
+.st-bank-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #aaa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* 横向滚动行 */
+.st-bank-row {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.st-bank-row::-webkit-scrollbar { display: none; }
+
+/* 题库方块 */
+.st-bank-tile {
+  flex: 0 0 auto;
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.st-bank-tile:active { transform: scale(0.92); }
+
+.st-bank-add {
+  border: 2px dashed var(--line-color, #d0d0d0);
+  background: #fafafa;
+  color: #bbb;
+}
+.st-bank-add:active { background: var(--bg-color, #DAF0FC); border-color: var(--primary-color, #0099FF); color: var(--primary-color, #0099FF); }
+
+.st-bank-book {
+  background: var(--bg-color, #DAF0FC);
+  color: var(--primary-color, #0099FF);
+  box-shadow: 0 2px 8px rgba(0,153,255,0.1);
+  padding: 8px 6px 6px;
+}
+
+.st-bank-tile-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.st-bank-tile-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.st-bank-tile-count {
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+/* 下：测试任务区（撑满剩余空间）*/
+.st-test-task-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 题目卡片 ────────────────────────────────────── */
+.st-q-card { display: flex; flex-direction: column; gap: 16px; }
+.st-q-badge {
+  display: inline-flex; padding: 4px 12px; background: var(--bg-color, #DAF0FC);
+  color: var(--primary-color, #0099FF); font-size: 12px; font-weight: 700; border-radius: 99px; align-self: flex-start;
+}
+.st-q-text { font-size: 17px; font-weight: 700; line-height: 1.6; margin: 0; }
+
+/* ── 选项 ────────────────────────────────────────── */
+.st-options { display: flex; flex-direction: column; gap: 10px; }
+.st-option {
+  width: 100%; text-align: left; padding: 13px 16px; border: 1.5px solid var(--line-color, #e2e2e2);
+  border-radius: 12px; background: #f8fafc; cursor: pointer; font-size: 14px;
+  font-weight: 500; transition: all 0.15s; color: var(--text-color, #333); font-family: inherit;
+}
+.st-option:not(:disabled):hover { border-color: var(--primary-color, #0099FF); background: var(--bg-color, #DAF0FC); }
+.st-option.correct { background: #f0fdf4; border-color: #86efac; color: #166534; font-weight: 700; }
+.st-option.wrong   { background: #fff5f5; border-color: #fca5a5; color: #991b1b; }
+.st-option.dimmed  { background: #f8fafc; border-color: #e5e7eb; color: #9ca3af; }
+
+.st-qa-area { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── 答题反馈 ─────────────────────────────────────── */
+.st-feedback { border-radius: var(--border-radius, 16px); padding: 20px; border: 1.5px solid; }
+.st-feedback.correct { background: #f0fdf4; border-color: #bbf7d0; }
+.st-feedback.wrong   { background: #fff5f5; border-color: #fecaca; }
+.st-feedback h3 { margin: 0 0 8px; font-size: 15px; }
+.st-feedback.correct h3 { color: #166534; }
+.st-feedback.wrong h3   { color: #991b1b; }
+.st-feedback p { margin: 0; font-size: 14px; color: #374151; line-height: 1.6; }
+
+.st-answer-box {
+  background: #fff; border-radius: var(--border-radius, 16px);
+  border: 1.5px solid var(--line-color, #e2e2e2); padding: 16px 20px;
+}
+.st-answer-box h3 { font-weight: 700; color: #374151; margin: 0 0 8px; font-size: 14px; }
+.st-answer-box p  { margin: 0; font-size: 13px; color: #4b5563; line-height: 1.7; white-space: pre-wrap; }
+
+/* ── 完成态 ──────────────────────────────────────── */
+.st-complete { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+.st-complete-emoji { font-size: 64px; margin-bottom: 24px; }

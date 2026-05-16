@@ -9,7 +9,7 @@
     --btn-color: #2F3034;
     --gray-color: #f2f2f7;
     --lgray-color: #F8FAFC;
-    --dgray-color: #AAB4BE;
+    --dgray-color: #F8FAFC;
     --white-color: #fff;
     --top-pinned-bg: #EBF5FF;
     --online-status-color: #4CAF50;

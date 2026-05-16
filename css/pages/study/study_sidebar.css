@@ -1,0 +1,110 @@
+/* study_sidebar.css — 学习模块侧边栏
+   ================================================== */
+
+#study-profile-btn svg {
+  fill: none;
+}
+
+#study-profile-sidebar.redesigned-sidebar {
+  left: auto;
+  right: -100%;
+  width: 85%;
+  max-width: 360px;
+  transition: right 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+#study-profile-sidebar.redesigned-sidebar.active {
+  right: 0;
+}
+
+.st-sidebar-block {
+  padding: 16px 16px 0;
+}
+.st-sidebar-block:last-child {
+  padding-bottom: 24px;
+}
+
+.st-sidebar-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #999;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.st-sidebar-empty-hint {
+  font-size: 13px;
+  color: #aaa;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Persona 列表 ─────────────────────────────────── */
+.st-persona-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.st-persona-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f5f5f7;
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  position: relative;
+}
+.st-persona-item:active { opacity: 0.75; }
+.st-persona-item.active {
+  background: #e8f4ff;
+  box-shadow: 0 0 0 1.5px var(--accent-color, #0099FF);
+}
+
+.st-persona-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #dde;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.st-persona-avatar img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.st-persona-initials {
+  font-size: 18px; font-weight: 700; color: #fff;
+}
+
+.st-persona-active-badge {
+  position: absolute; bottom: 0; right: 0;
+  width: 16px; height: 16px;
+  background: var(--accent-color, #0099FF);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: #fff; font-weight: 700;
+}
+
+.st-persona-info { flex: 1; min-width: 0; }
+.st-persona-name {
+  font-size: 14px; font-weight: 600; color: #222;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.st-persona-role {
+  font-size: 12px; color: #888; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.st-sidebar-avatar-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; color: rgba(255,255,255,0.7);
+}
+
+.st-sidebar-api-card {
+  margin: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
