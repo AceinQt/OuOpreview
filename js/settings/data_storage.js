@@ -115,10 +115,21 @@ const dataStorage = {
             categorizedSizes.settings += stringify(db.fontUrl);
             categorizedSizes.settings += stringify(db.homeStatusBarColor);
 
-            // ★ 8. 学习模块（独立表）
-            categorizedSizes.study += stringify(db.studyBooks);
-            categorizedSizes.study += stringify(db.studyQuestions);
-            categorizedSizes.study += stringify(db.studyRecords);
+// ★ 8. 学习模块
+categorizedSizes.study += stringify(db.studyBooks);
+categorizedSizes.study += stringify(db.studyQuestions);
+categorizedSizes.study += stringify(db.studyRecords);
+// ★ V8：正文和共读消息在独立表，需从 Dexie 读取
+if (typeof dexieDB !== 'undefined') {
+    try {
+        const [allContents, allCoreadMsgs] = await Promise.all([
+            dexieDB.studyBookContents.toArray(),
+            dexieDB.studyCoreadMessages.toArray(),
+        ]);
+        allContents.forEach(r => categorizedSizes.study += stringify(r));
+        allCoreadMsgs.forEach(r => categorizedSizes.study += stringify(r));
+    } catch(e) {}
+}
 
             const totalSize = Object.values(categorizedSizes).reduce((sum, size) => sum + size, 0);
             return { totalSize, categorizedSizes };

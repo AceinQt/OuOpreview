@@ -198,6 +198,21 @@ async function createFullBackupData() {
     const backupData = JSON.parse(JSON.stringify(db));
     backupData._exportVersion = '4.0';
     backupData._exportTimestamp = Date.now();
+
+    // ★ V8：书籍正文和共读消息不在 db 内存中，需单独从 Dexie 读取
+    try {
+        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+            dexieDB.studyBookContents.toArray(),
+            dexieDB.studyCoreadMessages.toArray(),
+        ]);
+        backupData.studyBookContents   = studyBookContents   || [];
+        backupData.studyCoreadMessages = studyCoreadMessages || [];
+    } catch (e) {
+        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
+        backupData.studyBookContents   = [];
+        backupData.studyCoreadMessages = [];
+    }
+
     return backupData;
 }
 
