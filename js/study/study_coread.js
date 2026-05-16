@@ -652,6 +652,31 @@ form?.addEventListener('submit', async (e) => {
     if (listEl) listEl.innerHTML = '<div class="coread-history-empty">暂无对话记录</div>';
     if (typeof showToast === 'function') showToast('共读记录已清空');
   });
+// ── 重新分页 ──────────────────────────────────────────
+  document.getElementById('reader-repaginate-btn')?.addEventListener('click', async () => {
+    const ok = typeof AppUI !== 'undefined'
+      ? await AppUI.confirm('将根据当前屏幕重新计算分页，书签将被清除。是否继续？', '重新分页', '继续', '取消')
+      : confirm('将根据当前屏幕重新计算分页，书签将被清除。是否继续？');
+    if (!ok) return;
+
+    sidebar?.classList.remove('open');
+
+    const bookId = window._study.state.reader.bookId;
+    const book   = getAllStudyBooks().find(b => b.id === bookId);
+    if (!book) return;
+
+    // 清除书签
+    book.bookmarks = [];
+    if (typeof saveStudyBookToDB === 'function') await saveStudyBookToDB(book);
+
+    // 清除分页缓存，强制重算
+    if (typeof dexieDB !== 'undefined') await dexieDB.studyPageCache.delete(bookId);
+
+    if (typeof showToast === 'function') showToast('正在重新分页…');
+
+    // 重新打开阅读器（会触发完整的分页流程）
+    if (typeof studyOpenReader === 'function') await studyOpenReader(book);
+  });  
 }
 
 function _populateCoreadSidebar() {

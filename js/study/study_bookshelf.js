@@ -63,6 +63,16 @@ function _autoSizeBiTitle() {
 
 // ── 章节识别正则 ─────────────────────────────────────────
 const _HEADING_RE = /^第[〇零一二三四五六七八九十百千万\d]{1,8}[章节回部卷篇幕序]/;
+// 纯数字/汉字数字/英文单行标题补充正则
+const _HEADING_RE2 = /^(?:\d{1,4}|[一二三四五六七八九十百千]{1,6}|Chapter\s*\d{1,4}|CHAPTER\s*\d{1,4}|第\s*\d{1,4}\s*[话篇])$/i;
+
+function _isHeadingLine(lines, i) {
+  const t = lines[i].trim();
+  if (!t) return false;
+  if (_HEADING_RE.test(t)) return true;
+  if (/^\d{1,4}$/.test(t)) return true;  // 纯数字独占一行
+  return false;
+}
 
 // ── 封面主题色（全局共享）──────────────────────────────
 const _COVER_COLORS = [
@@ -467,9 +477,9 @@ function _splitPages(text, size) {
 function _scanRawToc(content) {
   const lines = (content || '').split('\n');
   const toc   = [];
-  for (const line of lines) {
-    const t = line.trim();
-    if (t && _HEADING_RE.test(t)) {
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t && _isHeadingLine(lines, i)) {
       toc.push(t.length > 60 ? t.slice(0, 60) + '…' : t);
     }
   }
@@ -660,6 +670,8 @@ async function studyOpenReader(book) {
 // ── 简单内容 hash（用于校验分页缓存是否仍有效）─────────────
 function _simpleHash(str) {
   // 把尾号从 c5 改为 c6，强制清空上一次错版的缓存
+  const _V = 2; // 分页规则版本，改规则时+1
+  str = _V + '|' + str;
   let h = 0x811c9dc6; 
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i);
@@ -705,11 +717,10 @@ async function _domSplitPages(text, refEl) {
   const lines = text.split('\n');
   const paras = [];
 
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t) continue; // 过滤空行
-    
-    if (_HEADING_RE.test(t)) {
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (_isHeadingLine(lines, i)) {
       paras.push({ type: 'heading', text: t });
     } else {
       paras.push({ type: 'text', text: t });
@@ -828,9 +839,9 @@ function _buildToc(pages) {
   const toc = [];
   pages.forEach((page, idx) => {
     const lines = page.split('\n').slice(0, 12);
-    for (const line of lines) {
-      const t = line.trim();
-      if (t && _HEADING_RE.test(t)) {
+    for (let li = 0; li < lines.length; li++) {
+      const t = lines[li].trim();
+      if (t && _isHeadingLine(lines, li)) {
         toc.push({ title: t.length > 50 ? t.substring(0, 50) + '…' : t, page: idx });
         break;
       }
@@ -860,11 +871,10 @@ function studyRenderReader() {
   const parts    = [];
 
 // 渲染正文：检测隐藏的续接标记 __CONT__
-  for (const line of lines) {
-    let t = line.trim();
-    if (!t) continue; 
-
-    if (_HEADING_RE.test(t)) {
+for (let idx = 0; idx < lines.length; idx++) {
+    let t = lines[idx].trim();
+    if (!t) continue;
+    if (_isHeadingLine(lines, idx)) {
       parts.push(`<p class="st-reader-heading">${h(t)}</p>`);
     } else {
       // 如果发现续接标记，说明是跨页段落的后半截，去掉标记并应用无缩进样式
@@ -876,7 +886,93 @@ function studyRenderReader() {
 
   contentEl.innerHTML = parts.join('');
   if (pageInfoEl) pageInfoEl.textContent = `${current + 1} / ${total}`;
+  _syncProgressRange(current, total);
 }
+
+// ================================================================
+// 新增：_syncProgressRange — 让 range 滑块与当前页保持同步
+// ================================================================
+function _syncProgressRange(current, total) {
+  const range = document.getElementById('reader-progress-range');
+  if (!range) return;
+  const max = Math.max(1, total - 1);
+  range.max   = max;
+  range.value = current;
+  // 更新已读进度渐变色
+  const pct = (current / max * 100).toFixed(1) + '%';
+  range.style.setProperty('--prog', pct);
+}
+
+
+// ================================================================
+// 新增：进度条 & 章节跳转事件绑定
+// 将这段插入 _initReaderInteraction() 函数内（现有事件绑定的末尾，return 之前）
+// ================================================================
+
+  // ── 进度条滑动跳页 ──
+  const progressRange = document.getElementById('reader-progress-range');
+  if (progressRange) {
+    // input：拖动时实时跳页
+    progressRange.addEventListener('input', () => {
+      const s = window._study.state.reader;
+      s.page = parseInt(progressRange.value, 10);
+      studyRenderReader();
+    });
+    // change：松手后确保同步（兼容部分浏览器）
+    progressRange.addEventListener('change', () => {
+      const s = window._study.state.reader;
+      s.page = parseInt(progressRange.value, 10);
+      studyRenderReader();
+    });
+  }
+
+  // ── 上一段（章节）──
+  document.getElementById('reader-prev-chapter-btn')?.addEventListener('click', () => {
+    const s   = window._study.state.reader;
+    const toc = s.toc || [];
+    if (!toc.length) {
+      // 无目录：回到第一页
+      if (s.page > 0) { s.page = 0; studyRenderReader(); }
+      return;
+    }
+    // 找当前页所属章节，然后跳到上一章节首页
+    // 找最后一个 page < s.page 的 toc 条目
+    let target = -1;
+    for (let i = toc.length - 1; i >= 0; i--) {
+      if (toc[i].page < s.page) {
+        // 如果当前页已经在某章开头，则再往上一章
+        if (toc[i].page === s.page - 1 || s.page === toc[i].page) continue;
+        target = toc[i].page;
+        break;
+      }
+    }
+    // 如果已在第一章或目录中找不到更早的，跳第一章首页
+    if (target < 0) {
+      target = toc[0].page;
+    }
+    if (target !== s.page) {
+      s.page = target;
+      studyRenderReader();
+    }
+  });
+
+  // ── 下一段（章节）──
+  document.getElementById('reader-next-chapter-btn')?.addEventListener('click', () => {
+    const s   = window._study.state.reader;
+    const toc = s.toc || [];
+    const total = (s.pages || []).length;
+    if (!toc.length) {
+      // 无目录：跳到最后一页
+      if (s.page < total - 1) { s.page = total - 1; studyRenderReader(); }
+      return;
+    }
+    // 找第一个 page > s.page 的 toc 条目
+    const next = toc.find(item => item.page > s.page);
+    if (next) {
+      s.page = next.page;
+      studyRenderReader();
+    }
+  });
 
 // ── 沉浸式翻页交互 ──────────────────────────────────────
 
