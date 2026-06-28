@@ -64,6 +64,9 @@ window.db = {
     studyBooks: [],
     studyQuestions: [],
     studyRecords: [],
+    studyBanks: [],
+    studyExams: [],
+    studyExamRecords: [], 
     // ★ 学习模块配置（存量小，放 globalSettings）
     studySettings: { boundPersonaId: null, textApiPresetId: null, embeddingApiPresetId: null },
 };
@@ -77,61 +80,7 @@ dexieDB.on('blocked', () => {
     alert("系统需要升级数据库。请关闭当前浏览器的其他应用标签页，然后再刷新此页面！");
 });
 
-// Version 1 (历史版本)
-dexieDB.version(1).stores({ storage: 'key, value' });
-
-// Version 2 (历史版本)
-dexieDB.version(2).stores({ characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key' });
-
-// ★★★ Version 3 (全部分离 + Peek表) ★★★
-dexieDB.version(3).stores({
-    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key',
-
-    // 独立表：
-    userPersonas: '&id',
-    forumPosts: '&id',
-    rpgProfiles: '&id',
-    forumMetadata: 'key',
-    // ★★★ 新增：peekData 表 (主键是 charId) ★★★
-    peekData: '&charId'
-}).upgrade(async tx => {
-    console.log("Upgrading database to version 3 (Independent tables + PeekData)...");
-});
-
-// ★★★ Version 4 (消息独立表，大幅提升性能) ★★★
-dexieDB.version(4).stores({
-    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key',
-    userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id', forumMetadata: 'key', peekData: '&charId',
-    messages: '&id, chatId, timestamp' // 核心：每条消息独立存储，提升速度
-}).upgrade(async tx => {
-    console.log("Upgrading database to version 4 (Message table added)...");
-});
-
-// ★★★ Version 5 (学习模块独立表) ★★★
-dexieDB.version(5).stores({
-    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key',
-    userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id', forumMetadata: 'key', peekData: '&charId',
-    messages: '&id, chatId, timestamp',
-    // ★ 学习模块（书籍/题目/答题记录量可能很大，独立存储）
-    studyBooks:     '&id, category',
-    studyQuestions: '&id, bookId',
-    studyRecords:   '&id, bookId, questionId',
-}).upgrade(async tx => {
-    console.log("Upgrading database to version 5 (Study module tables added)...");
-});
-
-// ★★★ Version 6 (记忆/日记独立表，提升发消息速度) ★★★
-dexieDB.version(6).stores({
-    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key',
-    userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id', forumMetadata: 'key', peekData: '&charId',
-    messages: '&id, chatId, timestamp',
-    studyBooks: '&id, category', studyQuestions: '&id, bookId', studyRecords: '&id, bookId, questionId',
-    memories: '&id, chatId, memType'
-}).upgrade(async tx => {
-    console.log("Upgrading database to version 6 (Memory tables added)...");
-});
-
-// ★★★ Version 7 (向量切块独立表) ★★★
+// ★★★ Version 7 (用户基线版本：向量切块独立表) ★★★
 dexieDB.version(7).stores({
     characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id', globalSettings: 'key',
     userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id', forumMetadata: 'key', peekData: '&charId',
@@ -139,8 +88,6 @@ dexieDB.version(7).stores({
     studyBooks: '&id, category', studyQuestions: '&id, bookId', studyRecords: '&id, bookId, questionId',
     memories: '&id, chatId, memType',
     memoryChunks: '&id, chatId'
-}).upgrade(async tx => {
-    console.log("Upgrading database to version 7 (MemoryChunks table added)...");
 });
 
 // ★★★ Version 8 (学习模块拆分：正文/共读消息/分页缓存独立表) ★★★
@@ -160,40 +107,81 @@ dexieDB.version(8).stores({
     studyPageCache:       '&bookId',
 }).upgrade(async tx => {
     console.log("Upgrading database to version 8 (Study book content/coread/pageCache split)...");
+});
 
-    // —— 迁移：把旧 studyBooks 记录中的 content 和 coreadMessages 剥离出来 ——
-    const allBooks = await tx.table('studyBooks').toArray();
-    const contents = [];
-    const coreadMsgs = [];
+dexieDB.version(9).stores({
+    // 新增 studyBanks 表
+    studyBanks: '&id',
+    // studyQuestions 索引改为同时支持 bankId（旧数据 bookId 兼容保留）
+    studyQuestions: '&id, bookId, bankId',
+    // 其余表不变，照抄 v8
+    studyBooks: '&id, category',
+    studyRecords: '&id, bookId, questionId',
+    studyBookContents:   '&bookId',
+    studyCoreadMessages: '&id, bookId',
+    studyPageCache:      '&bookId',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 9 (studyBanks table + bankId index added)...");
+});
 
-    for (const book of allBooks) {
-        // 1. 剥离正文
-        if (book.content) {
-            contents.push({ bookId: book.id, content: book.content });
-            delete book.content;
-        }
-        // 2. 剥离共读消息
-        if (book.coreadMessages && book.coreadMessages.length > 0) {
-            book.coreadMessages.forEach((msg, idx) => {
-                coreadMsgs.push({
-                    id: `crm_${book.id}_${idx}_${Math.random().toString(36).substr(2, 6)}`,
-                    bookId: book.id,
-                    role: msg.role,
-                    content: msg.content,
-                    timestamp: msg.timestamp || (Date.now() + idx),
-                });
-            });
-            delete book.coreadMessages;
-        }
-    }
+// ★★★ Version 10（测试考卷独立表）★★★
+dexieDB.version(10).stores({
+    studyExams: '&id',
+    // 其余照抄 v9，保持不变
+    studyBanks: '&id',
+    studyQuestions: '&id, bookId, bankId',
+    studyBooks: '&id, category',
+    studyRecords: '&id, bookId, questionId',
+    studyBookContents:   '&bookId',
+    studyCoreadMessages: '&id, bookId',
+    studyPageCache:      '&bookId',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 10 (studyExams table added)...");
+});
 
-    // 批量写入新表
-    if (contents.length)   await tx.table('studyBookContents').bulkPut(contents);
-    if (coreadMsgs.length) await tx.table('studyCoreadMessages').bulkPut(coreadMsgs);
-    // 回写瘦身后的书籍记录（不含 content / coreadMessages）
-    if (allBooks.length)   await tx.table('studyBooks').bulkPut(allBooks);
+dexieDB.version(11).stores({
+    studyExamRecords: '&id, examId',   // ★ 新增：考试记录（examId 索引供按卷查询）
+    // 以下照抄 v10，保持不变
+    studyExams:          '&id',
+    studyBanks:          '&id',
+    studyQuestions:      '&id, bookId, bankId',
+    studyBooks:          '&id, category',
+    studyRecords:        '&id, bookId, questionId',
+    studyBookContents:   '&bookId',
+    studyCoreadMessages: '&id, bookId',
+    studyPageCache:      '&bookId',
+    memories:            '&id, chatId, memType',
+    memoryChunks:        '&id, chatId',
+    messages:            '&id, chatId, timestamp',
+    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id',
+    globalSettings: 'key',
+    userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id',
+    forumMetadata: 'key', peekData: '&charId',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 11 (studyExamRecords table added)...");
+});
 
-    console.log(`✅ V8迁移完成：${contents.length} 本书正文已剥离，${coreadMsgs.length} 条共读消息已独立`);
+dexieDB.version(12).stores({
+    studyBookSummaries: '&id, bookId, memType', // ★ 新增：书本章节总结
+    // 以下照抄 v11，保持不变
+    studyExamRecords:    '&id, examId',
+    studyExams:          '&id',
+    studyBanks:          '&id',
+    studyQuestions:      '&id, bookId, bankId',
+    studyBooks:          '&id, category',
+    studyRecords:        '&id, bookId, questionId',
+    studyBookContents:   '&bookId',
+    studyCoreadMessages: '&id, bookId',
+    studyPageCache:      '&bookId',
+    memories:            '&id, chatId, memType',
+    memoryChunks:        '&id, chatId',
+    messages:            '&id, chatId, timestamp',
+    characters: '&id', groups: '&id', worldBooks: '&id', myStickers: '&id',
+    globalSettings: 'key',
+    userPersonas: '&id', forumPosts: '&id', rpgProfiles: '&id',
+    forumMetadata: 'key', peekData: '&charId',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 12 (studyBookSummaries table added)...");
 });
 
 window.loadData = async () => {
@@ -205,33 +193,30 @@ window.loadData = async () => {
             characters, groups, worldBooks, myStickers, settingsArray,
             newUserPersonas, newForumPosts, newRpgProfiles, newForumMeta,
             newPeekData,
-            newMessages,
-            newStudyBooks, newStudyQuestions, newStudyRecords,
+            // ★★★ 不再全量读取 messages 表（12w+ 条会 OOM 崩溃）
+            // 消息改为"按需加载"：openChatRoom 时只读最近 N 条进 chat.history
+            // 列表预览/排序/消息数改读冗余字段 chat.lastMsgPreview / chat.msgCount
+            // 搜索/总结/撤回追溯等场景直接打 Dexie 查询（见 history_window.js）
+            newStudyBooks, newStudyQuestions, newStudyRecords, newStudyBanks, newStudyExams,newStudyExamRecords,
             newMemories,
-            newChunks
+            newChunks,
+    newStudyBookSummaries,
         ] = await Promise.all([
             dexieDB.characters.toArray(), dexieDB.groups.toArray(), dexieDB.worldBooks.toArray(),
             dexieDB.myStickers.toArray(), dexieDB.globalSettings.toArray(), dexieDB.userPersonas.toArray(),
             dexieDB.forumPosts.toArray(), dexieDB.rpgProfiles.toArray(), dexieDB.forumMetadata.toArray(),
-            dexieDB.peekData.toArray(), dexieDB.messages.toArray(),
-            dexieDB.studyBooks.toArray(), dexieDB.studyQuestions.toArray(), dexieDB.studyRecords.toArray(),
+            dexieDB.peekData.toArray(),
+            // ★ 删除 dexieDB.messages.toArray() —— 这是崩溃元凶
+            dexieDB.studyBooks.toArray(), dexieDB.studyQuestions.toArray(), dexieDB.studyRecords.toArray(), dexieDB.studyBanks.toArray(), dexieDB.studyExams.toArray(), dexieDB.studyExamRecords.toArray(), 
             dexieDB.memories.toArray(),
-            dexieDB.memoryChunks.toArray()
+            dexieDB.memoryChunks.toArray(),
+    dexieDB.studyBookSummaries.toArray(),
         ]);
 
-        // ★ 核心安全锁：优先读取持久化迁移标记，防止多标签页状态不同步
-        // 只要 IndexedDB 里记录了 migrationV4Done，就信任它，不再扫描 history
-        const migrationFlag = settingsArray.find(s => s.key === 'migrationV4Done');
-        let needsMigration;
-        if (migrationFlag && migrationFlag.value === true) {
-            window.isMessageMigrated = true;
-            needsMigration = false;
-        } else {
-            needsMigration = characters.some(c => c.history && c.history.length > 0) || groups.some(g => g.history && g.history.length > 0);
-            window.isMessageMigrated = !needsMigration;
-        }
+        // ★ 消息已完全迁移到独立表（用户基线 v7 起）
+        window.isMessageMigrated = true;
 
-        // ★ 同理：V7 chunk 迁移安全锁
+        // ★ V7 chunk 迁移安全锁
         const chunkMigFlagEarly = settingsArray.find(s => s.key === 'migrationV7Done');
         if (chunkMigFlagEarly && chunkMigFlagEarly.value === true) {
             window.isChunkMigrated = true;
@@ -241,214 +226,40 @@ window.loadData = async () => {
                                   && !groups.some(g => g.memoryChunks && g.memoryChunks.length > 0);
         }
 
-        const messagesByChatId = {};
-        newMessages.forEach(m => {
-            if (!messagesByChatId[m.chatId]) messagesByChatId[m.chatId] = [];
-            messagesByChatId[m.chatId].push(m);
-        });
+        // ★★★ 消息不再全量挂回内存：每个 chat 初始化为空 history，按需加载 ★★★
+        // 真正的消息只在 openChatRoom 时通过 loadRecentMessages 读最近 N 条进 chat.history
+        // 列表预览/排序/消息数改读冗余字段 chat.lastMsgPreview / chat.msgCount
+        // 搜索/总结/撤回追溯等场景直接打 Dexie 查询（见 history_window.js）
+        characters.forEach(c => { if (!Array.isArray(c.history)) c.history = []; });
+        groups.forEach(g     => { if (!Array.isArray(g.history)) g.history = []; });
 
-        // =========================================================
-        // 【全新流水线】：一键备份 -> 自动迁移 -> 回归主页
-        // =========================================================
-        if (needsMigration) {
-            // 1. 暂时隐藏开屏转圈，让弹窗可见
-            const splash = document.getElementById('app-splash-screen');
-            if (splash) {
-                splash.classList.add('fade-out');
-                splash.style.pointerEvents = 'none';
-            }
-
-            // 弹出双选按钮（左边确认直接迁移，右边一键备份）
-            const choice = await AppUI.confirm(
-                "检测到需要升级底层数据结构（以大幅提升后续加载与运行性能）。\n\n强烈建议您先进行【一键备份】，防止设备空间不足或意外断电导致数据丢失。\n\n请选择操作：", 
-                "数据库核心升级", "直接迁移", "一键备份(推荐)"
-            );
-
-            // 2. 无论选什么，接下来都要花时间，重新恢复开屏转圈，并注入动态提示文本
-            if (splash) {
-                splash.classList.remove('fade-out');
-                splash.style.pointerEvents = 'auto'; // 重新阻挡用户点击底层
-                
-                let statusText = document.getElementById('splash-status-text');
-                if (!statusText) {
-                    statusText = document.createElement('div');
-                    statusText.id = 'splash-status-text';
-                    statusText.style.marginTop = '20px';
-                    statusText.style.fontSize = '14px';
-                    statusText.style.color = '#666';
-                    statusText.style.textAlign = 'center';
-                    // 挂载到原有的内容区里
-                    const splashContent = splash.querySelector('.splash-content') || splash;
-                    splashContent.appendChild(statusText);
-                }
-            }
-            const statusEl = document.getElementById('splash-status-text');
-
-// 3. 如果用户点击了右侧的 "一键备份(推荐)" (choice === false)
-            if (choice === false) {
-                if (statusEl) statusEl.textContent = "正在生成全量备份文件，请稍候...";
+        // ★ 一次性迁移：给缺失 msgCount/lastMsgPreview 的 chat 回填冗余字段
+        // 老用户首次升级到本次重构版本时触发，之后零成本（字段会随 char 表读写）
+        const _needMeta = [...characters, ...groups].filter(c =>
+            typeof c.msgCount !== 'number' || !c.lastMsgPreview
+        );
+        if (_needMeta.length > 0) {
+            console.log(`📦 首次消息冗余字段迁移：${_needMeta.length} 个会话需要回填...`);
+            const _migrateOne = async (chat) => {
                 try {
-                    // 🌟 核心修复1：此时 window.db 还没被赋值，必须手动拼装刚才从数据库中取出的全量数据
-                    const settingsObj = settingsArray.reduce((acc, item) => { acc[item.key] = item.value; return acc; }, {});
-                    const forumMetaObj = newForumMeta.reduce((acc, item) => { acc[item.key] = item.value; return acc; }, {});
-                    
-                    let peekDataObj = {};
-                    if (newPeekData) { newPeekData.forEach(item => { peekDataObj[item.charId] = item.data; }); }
-
-                    const fullBackupData = {
-                        ...window.db, // 保留基础结构
-                        characters: characters || [],
-                        groups: groups || [],
-                        worldBooks: worldBooks ||[],
-                        myStickers: myStickers ||[],
-                        userPersonas: newUserPersonas.length > 0 ? newUserPersonas : (settingsObj['userPersonas'] || settingsObj['myPersonaPresets'] ||[]),
-                        rpgProfiles: newRpgProfiles.length > 0 ? newRpgProfiles : (settingsObj['rpgProfiles'] ||[]),
-                        forumPosts: newForumPosts.length > 0 ? newForumPosts : (settingsObj['forumPosts'] ||[]),
-                        peekData: peekDataObj,
-                        ...settingsObj,
-                        ...forumMetaObj,
-                        _exportVersion: '4.0',
-                        _exportTimestamp: Date.now()
-                    };
-
-                    const jsonString = JSON.stringify(fullBackupData);
-                    const dataBlob = new Blob([jsonString]);
-                    
-                    let downloadUrl;
-                    let fileName;
-                    const dateStr = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/[\/\s:]/g, '');
-
-                    // 🌟 核心修复2：不依赖外部函数，直接使用 Gzip 压缩流，输出标准的 .ee 文件
-                    try {
-                        const compressionStream = new CompressionStream('gzip');
-                        const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
-                        const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
-                        
-                        downloadUrl = URL.createObjectURL(compressedBlob);
-                        fileName = `QChat_Safe_Backup_${dateStr}.ee`; // 后缀修复为 .ee
-                    } catch (zipErr) {
-                        // 兜底：如果老旧设备浏览器不支持压缩流，才降级为 json
-                        console.warn("浏览器不支持压缩流，降级导出", zipErr);
-                        downloadUrl = URL.createObjectURL(dataBlob);
-                        fileName = `QChat_Safe_Backup_${dateStr}.json`;
-                    }
-                    
-                    // 触发系统下载
-                    const a = document.createElement('a');
-                    a.href = downloadUrl;
-                    a.download = fileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(downloadUrl);
-                    
-                    if (statusEl) statusEl.textContent = "备份文件已生成！准备开始迁移...";
-                    // 停顿 1.5 秒，让下载顺利弹出，让用户看清状态
-                    await new Promise(r => setTimeout(r, 1500)); 
-                    
-                } catch(e) {
-                    console.error("备份失败:", e);
-                    alert("备份过程遇到错误，将在没有备份的情况下强制继续迁移。");
-                }
-            }
-
-            // 4. 无论是否备份，顺畅进入迁移阶段
-            if (statusEl) statusEl.textContent = "正在执行核心数据结构剥离，请勿关闭页面...";
-            
-            let migrationMsgs =[];
-            characters.forEach(c => {
-                if (c.history && c.history.length > 0) {
-                    c.history.forEach((m, idx) => { 
-                        if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${idx}`;
-                        m.chatId = c.id; 
-                        m.chatType = 'private'; 
-                        migrationMsgs.push(m); 
-                    });
-                    delete c.history; // 剥离旧体积
-                }
-            });
-            groups.forEach(g => {
-                if (g.history && g.history.length > 0) {
-                    g.history.forEach((m, idx) => { 
-                        if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${idx}`;
-                        m.chatId = g.id; 
-                        m.chatType = 'group'; 
-                        migrationMsgs.push(m); 
-                    });
-                    delete g.history;
-                }
-            });
-            
-            // 分块写入
-            const chunkSize = 5000;
-            for (let i = 0; i < migrationMsgs.length; i += chunkSize) {
-                await dexieDB.messages.bulkPut(migrationMsgs.slice(i, i + chunkSize));
-                if (statusEl) statusEl.textContent = `正在落库消息 (${Math.min(i + chunkSize, migrationMsgs.length)} / ${migrationMsgs.length})...`;
-            }
-            
-            if (statusEl) statusEl.textContent = "正在覆盖保存优化后的角色档案...";
-            await dexieDB.characters.bulkPut(characters);
-            await dexieDB.groups.bulkPut(groups);
-            
-            // 数据写回内存，保证当次加载正常运行
-            migrationMsgs.forEach(m => {
-                if (!messagesByChatId[m.chatId]) messagesByChatId[m.chatId] = [];
-                messagesByChatId[m.chatId].push(m);
-            });
-            
-            window.isMessageMigrated = true; 
-            // ★ 写入持久化标记：保证多标签页/下次加载都能正确识别迁移状态
-            // 这一步是最后写的，如果中途断电它不存在，下次加载会重新走迁移流程（安全）
-            try { await dexieDB.globalSettings.put({ key: 'migrationV4Done', value: true }); } catch(e) { console.warn('⚠️ 迁移标记写入失败:', e); }
-            if (statusEl) statusEl.textContent = "系统升级完成！即将进入主页...";
-            await new Promise(r => setTimeout(r, 600)); // 让用户看清最后一句提示
-        }
-
-        // =========================================================
-        // 将消息挂载回内存对象，对老代码的逻辑保持完全隐形
-        // =========================================================
-        Object.values(messagesByChatId).forEach(arr => {
-            arr.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        });
-
-        characters.forEach(c => { c.history = messagesByChatId[c.id] ||[]; });
-        groups.forEach(g => { g.history = messagesByChatId[g.id] ||[]; });
-
-        // =========================================================
-        // ★ V6 记忆迁移：memorySummaries / memoryJournals / longTermSummaries → memories 表
-        // =========================================================
-        const memMigrationFlag = settingsArray.find(s => s.key === 'migrationV6Done');
-        if (!memMigrationFlag) {
-            const migrationMemItems = [];
-            const processMemMigration = (objs) => {
-                objs.forEach(obj => {
-                    const extract = (arr, memType) => (arr || []).forEach(item => {
-                        if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-                        migrationMemItems.push({ ...item, chatId: obj.id, memType });
-                    });
-                    extract(obj.memorySummaries, 'short');
-                    extract(obj.memoryJournals, 'journal');
-                    extract(obj.longTermSummaries, 'long');
-                    delete obj.memorySummaries;
-                    delete obj.memoryJournals;
-                    delete obj.longTermSummaries;
-                });
+                    const cnt = await dexieDB.messages.where('chatId').equals(chat.id).count();
+                    chat.msgCount = cnt;
+                    if (cnt > 0) {
+                        const last = await dexieDB.messages.where('chatId').equals(chat.id).reverse().limit(1).first();
+                        if (last) {
+                            chat.lastMsgPreview = {
+                                content: last.content, timestamp: last.timestamp || 0,
+                                role: last.role, isUserStatusNotif: !!last.isUserStatusNotif, id: last.id
+                            };
+                        } else { chat.lastMsgPreview = null; }
+                    } else { chat.lastMsgPreview = null; }
+                } catch (e) { console.warn('⚠️ 冗余字段回填失败:', chat.id, e); }
             };
-            processMemMigration(characters);
-            processMemMigration(groups);
-
-            if (migrationMemItems.length > 0) {
-                console.log(`📦 V6记忆迁移：共 ${migrationMemItems.length} 条，写入 memories 表...`);
-                const chunkSize = 1000;
-                for (let i = 0; i < migrationMemItems.length; i += chunkSize) {
-                    await dexieDB.memories.bulkPut(migrationMemItems.slice(i, i + chunkSize));
-                }
-                newMemories.push(...migrationMemItems);
-                await dexieDB.characters.bulkPut(characters);
-                await dexieDB.groups.bulkPut(groups);
-                console.log("✅ V6记忆迁移完成");
-            }
-            try { await dexieDB.globalSettings.put({ key: 'migrationV6Done', value: true }); } catch(e) { console.warn('⚠️ V6迁移标记写入失败:', e); }
+            // 串行避免 IndexedDB 过载；老会话不多时很快
+            for (const c of _needMeta) { await _migrateOne(c); }
+            console.log('✅ 消息冗余字段迁移完成');
+            // 立即写回表，下次启动免迁移
+            try { await saveData(); } catch(e) { console.warn('⚠️ 迁移后写回失败:', e); }
         }
 
         // =========================================================
@@ -601,6 +412,20 @@ window.loadData = async () => {
         db.studyBooks     = newStudyBooks     || [];
         db.studyQuestions = newStudyQuestions || [];
         db.studyRecords   = newStudyRecords   || [];
+        db.studyBanks = newStudyBanks || [];
+        db.studyExams = newStudyExams || [];
+        db.studyExamRecords  = newStudyExamRecords  || [];
+        const bookSumsByBookId = {};
+(newStudyBookSummaries || []).forEach(s => {
+    if (!bookSumsByBookId[s.bookId]) bookSumsByBookId[s.bookId] = { short: [], long: [] };
+    const bucket = bookSumsByBookId[s.bookId][s.memType];
+    if (bucket) bucket.push(s);
+});
+db.studyBooks.forEach(b => {
+    const sums = bookSumsByBookId[b.id];
+    b.memorySummaries   = sums ? (sums.short || []) : [];
+    b.longTermSummaries = sums ? (sums.long  || []) : [];
+});
 
         // 兜底检查
         db.characters.forEach(c => {
@@ -621,7 +446,7 @@ window.loadData = async () => {
             console.warn('⚠️ 元数据保存失败:', e);
         }
 
-        console.log("✅ 数据加载完成 (V8 学习模块拆分模式), 时间戳:", window.dbLoadTimestamp);
+        console.log("✅ 数据加载完成 (V11), 时间戳:", window.dbLoadTimestamp);
 
     } catch (err) {
         console.error("❌ loadData 致命错误:", err);
@@ -637,8 +462,7 @@ window.saveData = async () => {
             if(db.characters) {
                 const safeChars = db.characters.map(c => { 
                     const o = {...c}; 
-                    // ★ 修复致命隐患：如果用户没做迁移，千万别把记录给强制剔除丢了
-                    if(window.isMessageMigrated) delete o.history; 
+                    delete o.history;
                     // ★ V6：记忆字段已独立存储，不写回 characters 表
                     delete o.memorySummaries;
                     delete o.memoryJournals;
@@ -651,8 +475,7 @@ window.saveData = async () => {
             if(db.groups) {
                 const safeGroups = db.groups.map(g => { 
                     const o = {...g}; 
-                    if(window.isMessageMigrated) delete o.history; 
-                    // ★ V6：同上
+                    delete o.history;
                     delete o.memorySummaries;
                     delete o.longTermSummaries;
                     if(window.isChunkMigrated) delete o.memoryChunks; // ★ V7：迁移完成后才剥离
@@ -719,6 +542,7 @@ window.saveData = async () => {
         if (db.studyBooks     && db.studyBooks.length     > 0) await dexieDB.studyBooks.bulkPut(db.studyBooks);
         if (db.studyQuestions && db.studyQuestions.length > 0) await dexieDB.studyQuestions.bulkPut(db.studyQuestions);
         if (db.studyRecords   && db.studyRecords.length   > 0) await dexieDB.studyRecords.bulkPut(db.studyRecords);
+        if (db.studyBanks && db.studyBanks.length > 0) await dexieDB.studyBanks.bulkPut(db.studyBanks);
     } catch (e) { console.error("❌ 学习模块保存失败:", e); }
 
     // ⭐⭐⭐ 新增：更新保存时间戳(用于多标签页同步) ⭐⭐⭐
@@ -742,7 +566,7 @@ window.saveSingleChat = async (chatId, chatType) => {
             const chat = db.characters.find(c => c.id === chatId);
             if (chat) {
                 const safeChat = {...chat}; 
-                if(window.isMessageMigrated) delete safeChat.history; // ★同理防御
+                delete safeChat.history;
                 // ★ V6：记忆字段独立存储，不写入 characters 表
                 delete safeChat.memorySummaries;
                 delete safeChat.memoryJournals;
@@ -754,7 +578,7 @@ window.saveSingleChat = async (chatId, chatType) => {
             const group = db.groups.find(g => g.id === chatId);
             if (group) {
                 const safeGroup = {...group}; 
-                if(window.isMessageMigrated) delete safeGroup.history;
+                delete safeGroup.history;
                 // ★ V6：同上
                 delete safeGroup.memorySummaries;
                 delete safeGroup.longTermSummaries;
@@ -767,23 +591,65 @@ window.saveSingleChat = async (chatId, chatType) => {
 
 // ★ 如果未完成迁移，跳过对消息独立表的操作，完全依靠上面的 saveSingleChat 执行大一统保存机制
 window.saveMessageToDB = async (msg, chatId, chatType) => {
-    if(!window.isMessageMigrated) return; 
-    try { await dexieDB.messages.put({ ...msg, chatId, chatType }); } catch (e) { console.error("❌ 消息保存失败:", e); }
+    // ★ 修复：失败时不再静默吞错，必须 throw 让调用方感知
+    // 否则会出现“内存有 db 没有”的幽灵消息，重启后丢失
+    try {
+        await dexieDB.messages.put({ ...msg, chatId, chatType });
+        // ★ 同步冗余字段（msgCount + lastMsgPreview），供列表预览/排序/消息数读取
+        if (typeof _refreshChatMeta === 'function') {
+            _refreshChatMeta(chatId, chatType, msg).catch(e => console.warn('⚠️ meta refresh 失败:', e));
+        }
+    } catch (e) {
+        console.error("❌ 消息保存失败:", e);
+        if (typeof AppUI !== 'undefined') {
+            AppUI.alert("数据库写入失败，请检查设备存储空间是否充足！\n错误详情：" + e.message, "存储失败");
+        }
+        throw e;  // ★ 关键：让上层感知，触发回滚/重试
+    }
 };
 window.saveMessagesToDB = async (msgs, chatId, chatType) => {
-    if(!window.isMessageMigrated) return;
-    try { await dexieDB.messages.bulkPut(msgs.map(m => ({ ...m, chatId, chatType }))); } catch (e) { console.error("❌ 批量消息保存失败:", e); }
+    try {
+        await dexieDB.messages.bulkPut(msgs.map(m => ({ ...m, chatId, chatType })));
+        // ★ 同步冗余字段：批量写后以最后一条作为 lastMsgPreview
+        if (typeof _refreshChatMeta === 'function' && msgs.length > 0) {
+            const last = msgs[msgs.length - 1];
+            _refreshChatMeta(chatId, chatType, last).catch(e => console.warn('⚠️ meta refresh 失败:', e));
+        }
+    } catch (e) {
+        console.error("❌ 批量消息保存失败:", e);
+        if (typeof AppUI !== 'undefined') {
+            AppUI.alert("数据库批量写入失败！这通常是因为设备空间不足或频繁操作导致的。\n错误详情：" + e.message, "存储失败");
+        }
+    }
 };
 // msgIds 必须是数组，如 ['id1', 'id2']，单条也要包裹成 [id]
 window.deleteMessagesFromDB = async (msgIds) => {
-    if(!window.isMessageMigrated) return;
-    try { await dexieDB.messages.bulkDelete(msgIds); } catch (e) { console.error("❌ 消息删除失败:", e); }
+    try {
+        await dexieDB.messages.bulkDelete(msgIds);
+        // ★ 删除后冗余字段无法精准定位影响哪个 chat，统一刷新所有受影响的
+        // （删除是低频操作，刷新成本可接受）
+        if (typeof _refreshChatMeta === 'function') {
+            // 通过 msgId 反查 chatId 不现实（已删），改为全量刷新所有 chat 的 lastMsgPreview
+            const allChats = [...(db.characters || []), ...(db.groups || [])];
+            for (const c of allChats) {
+                _refreshChatMeta(c.id, c.type || (db.characters.includes(c) ? 'private' : 'group'), null)
+                    .catch(e => console.warn('⚠️ meta refresh 失败:', e));
+            }
+        }
+    } catch (e) { console.error("❌ 消息删除失败:", e); }
 };
 window.clearChatHistoryInDB = async (chatId) => {
-    if(!window.isMessageMigrated) return;
     try {
         const keys = await dexieDB.messages.where({chatId}).primaryKeys();
         await dexieDB.messages.bulkDelete(keys);
+        // ★ 清空后冗余字段归零
+        const chat = (db.characters || []).find(c => c.id === chatId) || (db.groups || []).find(g => g.id === chatId);
+        if (chat) {
+            chat.msgCount = 0;
+            chat.lastMsgPreview = null;
+            chat.history = [];
+            chat._fullyLoaded = true;
+        }
     } catch (e) { console.error("❌ 清空消息失败:", e); }
 };
 
@@ -990,6 +856,10 @@ window.deleteStudyBookFromDB = async (bookId) => {
 
         const cmKeys = await dexieDB.studyCoreadMessages.where('bookId').equals(bookId).primaryKeys();
         if (cmKeys.length) await dexieDB.studyCoreadMessages.bulkDelete(cmKeys);
+        
+        const bsKeys = await dexieDB.studyBookSummaries.where('bookId').equals(bookId).primaryKeys();
+if (bsKeys.length) await dexieDB.studyBookSummaries.bulkDelete(bsKeys);
+
 
         console.log(`✅ [Study] 书籍 ${bookId} 及全部关联数据已删除`);
     } catch (e) { console.error("❌ [Study] 书籍删除失败:", e); }
@@ -1099,4 +969,63 @@ window.saveStudySettingsToDB = async () => {
         await dexieDB.globalSettings.put({ key: 'studySettings', value: db.studySettings });
         console.log("✅ [Study] 学习设置已保存");
     } catch (e) { console.error("❌ [Study] 学习设置保存失败:", e); }
+};
+
+window.saveStudyBankToDB = async (bank) => {
+    try { await dexieDB.studyBanks.put(bank); }
+    catch (e) { console.error('❌ [Study] 题库保存失败:', e); }
+};
+
+window.deleteStudyBankFromDB = async (bankId) => {
+    try {
+        await dexieDB.studyBanks.delete(bankId);
+        // 级联删题目
+        const qKeys = await dexieDB.studyQuestions.where('bankId').equals(bankId).primaryKeys();
+        if (qKeys.length) await dexieDB.studyQuestions.bulkDelete(qKeys);
+    } catch (e) { console.error('❌ [Study] 题库删除失败:', e); }
+};
+
+window.updateStudyQuestionToDB = async (question) => {
+    try { await dexieDB.studyQuestions.put(question); }
+    catch (e) { console.error('❌ [Study] 题目更新失败:', e); }
+};
+
+// 删除某本书最后 1 条共读消息（重新生成时用）
+window.deleteLastCoreadMessageFromDB = async (bookId) => {
+    try {
+        const rows = await dexieDB.studyCoreadMessages
+            .where('bookId').equals(bookId).reverse().limit(1).toArray();
+        if (rows.length) await dexieDB.studyCoreadMessages.delete(rows[0].id);
+    } catch (e) { console.error("❌ [Study] 共读消息删除(last 1)失败:", e); }
+};
+
+// 删除某本书最后 N 条共读消息（发送失败回滚时用）
+window.deleteLastNCoreadMessagesFromDB = async (bookId, n) => {
+    try {
+        const rows = await dexieDB.studyCoreadMessages
+            .where('bookId').equals(bookId).reverse().limit(n).toArray();
+        if (rows.length) await dexieDB.studyCoreadMessages.bulkDelete(rows.map(r => r.id));
+    } catch (e) { console.error("❌ [Study] 共读消息批量删除(last n)失败:", e); }
+};
+
+// ── 书本章节总结：精准保存 ──
+window.saveBookSummaryItem = async (item, bookId, memType) => {
+    try {
+        await dexieDB.studyBookSummaries.put({ ...item, bookId, memType });
+    } catch (e) { console.error('❌ [Study] 书本总结保存失败:', e); }
+};
+
+// ── 书本章节总结：删除单条 ──
+window.deleteBookSummaryItem = async (itemId) => {
+    try {
+        await dexieDB.studyBookSummaries.delete(itemId);
+    } catch (e) { console.error('❌ [Study] 书本总结删除失败:', e); }
+};
+
+// ── 书本章节总结：清空某本书的所有总结 ──
+window.clearBookSummariesInDB = async (bookId) => {
+    try {
+        const keys = await dexieDB.studyBookSummaries.where('bookId').equals(bookId).primaryKeys();
+        if (keys.length) await dexieDB.studyBookSummaries.bulkDelete(keys);
+    } catch (e) { console.error('❌ [Study] 书本总结清空失败:', e); }
 };
