@@ -262,7 +262,6 @@ color: #FCDFD9;
   overflow: hidden;
   transition: transform 0.15s, box-shadow 0.15s;
   min-height: 68px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
 .st-task-card:active { transform: scale(0.97); }
 

@@ -118,7 +118,7 @@
 .call-round-red    { background: #ff3b30; color: #fff; width: 72px; height: 72px; box-shadow: 0 4px 24px rgba(255,59,48,0.4);}
 .call-round-green  { background: #34C759; color: #fff; width: 72px; height: 72px; box-shadow: 0 4px 24px rgba(52,199,89,0.4); }
 
-#call-mic-btn svg { width: 28px; height: 28px; }
+#call-mic-btn svg { width: 32px; height: 32px; }
 
 #call-end-btn {
     background: #ff3b30;
