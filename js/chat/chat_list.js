@@ -16,72 +16,120 @@ function setupChatListScreen() {
     
     if(typeof setupBubblePresets === 'function') setupBubblePresets();
 
+// --- 替换 chat_list.js 中 setupChatListScreen() 的 Tab 切换及按钮处理片段 ---
+
     const tabs = document.querySelectorAll('.nav-tab-item');
     const views = document.querySelectorAll('.tab-content-view');
     const title = document.getElementById('chat-list-title');
+    
+    // 获取底部弹窗相关元素
+    const addActionSheet = document.getElementById('add-action-sheet');
+    const actionSheetAddChatBtn = document.getElementById('action-sheet-add-chat-btn');
     const createGroupBtn = document.getElementById('create-group-btn');
     const importBtn = document.getElementById('import-character-card-btn');
+    const cancelAddBtn = document.getElementById('cancel-add-action-btn');
+
+    // 通用的关闭 Action Sheet 事件
+    const closeAddActionSheet = () => {
+        if(addActionSheet) addActionSheet.classList.remove('visible');
+    };
+
+    // 点击菜单内按钮时，自动收起底部弹窗
+    if(createGroupBtn) createGroupBtn.addEventListener('click', closeAddActionSheet);
+    if(importBtn) importBtn.addEventListener('click', closeAddActionSheet);
+    if(cancelAddBtn) cancelAddBtn.addEventListener('click', closeAddActionSheet);
     
+    // 点击半透明遮罩背景也能收起弹窗
+    if(addActionSheet) {
+        addActionSheet.addEventListener('click', (e) => {
+            if (e.target === addActionSheet) closeAddActionSheet();
+        });
+    }
+
     const tabMeSpan = document.querySelector('.nav-tab-item[data-tab="me"] span');
     if (tabMeSpan) tabMeSpan.textContent = '通讯录';
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
+            // Tab 状态切换
             tabs.forEach(t => { t.classList.remove('active'); t.style.color = '#999'; });
             tab.classList.add('active');
             tab.style.color = 'var(--primary-color)';
 
+            // 视图切换
             views.forEach(v => v.style.display = 'none');
             const targetView = document.getElementById(`tab-view-${tab.dataset.tab}`);
             if (targetView) {
-                if (tab.dataset.tab === 'bubbles') {
-                    targetView.style.display = 'flex';
-                } else {
-                    targetView.style.display = 'block';
-                }
+                targetView.style.display = 'block';
             }
 
+            // ======= 不同 Tab 下的标题与加号控制 =======
             if (tab.dataset.tab === 'messages') {
                 title.textContent = '聊天';
-                if(createGroupBtn) createGroupBtn.style.display = 'inline-flex';
-                if(importBtn) importBtn.style.display = 'inline-flex';
                 addChatBtn.style.display = 'inline-flex';
                 
+                // 1. 点击头部加号 -> 呼出底部菜单
                 addChatBtn.onclick = () => {
-                    addCharModal.classList.add('visible');
-                    addCharForm.reset();
-                    document.getElementById('selected-persona-id').value = ''; 
-                    document.getElementById('my-name-for-char').disabled = false;
-                    document.getElementById('my-nickname-for-char').disabled = false;
-                    const btn = document.getElementById('add-chat-select-persona-btn');
-                    if(btn) {
-                        btn.innerHTML = '绑定人设';
-                        btn.classList.add('btn-secondary');
-                        btn.classList.remove('btn-primary');
-                    }
+                    if(addActionSheet) addActionSheet.classList.add('visible');
                 };
+
+                // 2. 底部菜单内的"新建聊天"按钮 -> 触发原有的新建模态框
+                if(actionSheetAddChatBtn) {
+                    actionSheetAddChatBtn.onclick = () => {
+                        closeAddActionSheet();
+                        addCharModal.classList.add('visible');
+                        addCharForm.reset();
+                        document.getElementById('selected-persona-id').value = ''; 
+                        document.getElementById('my-name-for-char').disabled = false;
+                        document.getElementById('my-nickname-for-char').disabled = false;
+                        const btn = document.getElementById('add-chat-select-persona-btn');
+                        if(btn) {
+                            btn.innerHTML = '绑定人设';
+                            btn.classList.add('btn-secondary');
+                            btn.classList.remove('btn-primary');
+                        }
+                    };
+                }
+                
             } else if (tab.dataset.tab === 'me') {
                 title.textContent = '通讯录';
-                if(createGroupBtn) createGroupBtn.style.display = 'none';
-                if(importBtn) importBtn.style.display = 'none';
-                
-                // 【修改】隐藏通讯录页面右上角的添加按钮
-                addChatBtn.style.display = 'none';
-                
-            } else if (tab.dataset.tab === 'bubbles') {
-                title.textContent = '外观';
-                if(createGroupBtn) createGroupBtn.style.display = 'none';
-                if(importBtn) importBtn.style.display = 'none';
-                addChatBtn.style.display = 'none';
-                
-                if(typeof window.renderGlobalBubblePresets === 'function') {
-                    window.renderGlobalBubblePresets();
-                }
+                addChatBtn.style.display = 'none'; // 隐藏加号
             }
         });
     });
 
     if(tabs.length > 0) tabs[0].click();
+
+    // ── 侧边栏逻辑 ──
+    const sidebarBtn = document.getElementById('chat-list-settings-btn');
+    const sidebar = document.getElementById('chat-list-sidebar');
+    const sidebarOverlay = document.getElementById('chat-list-overlay');
+
+    if (sidebarBtn && sidebar) {
+        // 打开侧边栏
+        sidebarBtn.addEventListener('click', () => {
+            sidebar.classList.add('active');
+            sidebarOverlay?.classList.add('visible');
+        });
+
+        // 遮罩收起
+        sidebarOverlay?.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('visible');
+        });
+
+        // 外观按钮：跳转到外观页面
+        const appearanceBtn = document.getElementById('chat-sidebar-appearance-btn');
+        if (appearanceBtn) {
+            appearanceBtn.addEventListener('click', () => {
+                sidebar.classList.remove('active');
+                sidebarOverlay?.classList.remove('visible');
+                if (typeof navigateTo === 'function') {
+                    navigateTo('chat-appearance-screen');
+                }
+            });
+        }
+    }
 
     chatListContainer.addEventListener('click', (e) => {
         const chatItem = e.target.closest('.chat-item');

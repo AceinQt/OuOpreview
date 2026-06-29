@@ -724,7 +724,7 @@ async function triggerTimerAiReply(chat, type) {
         }
 
         const instructionMsg = {
-            id: `msg_ins_continue_timer_${Date.now()}`,
+            id: `msg_ins_continue_timer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
             role: 'user',
             content: continueInstruction,
             parts:[{ type: 'text', text: continueInstruction }],
@@ -1089,7 +1089,7 @@ const memoryLength = chat.maxMemory || 15;
                 
                 if (!existingPeek) {
                     existingPeek = {
-                        id: `promsg_peek_${Date.now()}`,
+                        id: `promsg_peek_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
                         type: 'time_window_peek',
                         generatedAt: Date.now(),
                         expireAt: Date.now() + 72 * 60 * 60 * 1000, 
@@ -1121,7 +1121,7 @@ const memoryLength = chat.maxMemory || 15;
                 console.log(`[Peek顺风车] 成功收集${Object.keys(proactiveOptions).length}组，当前备用池容量: ${Object.keys(existingPeek.content).length}/10`);
             } else {
                 const newProactiveData = {
-                    id: `promsg_idle_${Date.now()}`,
+                    id: `promsg_idle_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
                     type: queueType,
                     generatedAt: Date.now(),
                     expireAt: Date.now() + 12 * 60 * 60 * 1000, 

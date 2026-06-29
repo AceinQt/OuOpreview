@@ -178,7 +178,12 @@ const pageActions = {
     'customize-screen': typeof renderCustomizeForm !== 'undefined' ? renderCustomizeForm : null,
     'tutorial-screen': typeof renderTutorialContent !== 'undefined' ? renderTutorialContent : null,
     'storage-analysis-screen': window.refreshStorageScreen,
-    'chat-list-screen': resetChatListTabs 
+    'chat-list-screen': resetChatListTabs ,
+    'chat-appearance-screen': () => {
+        if (typeof window.renderGlobalBubblePresets === 'function') {
+            window.renderGlobalBubblePresets();
+        }
+    }
 };
 
 // 5. 统一跳转函数

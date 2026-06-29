@@ -149,7 +149,11 @@ function calculateTypingDelay(text, isFirstMessage) {
 // 处理 AI 回复内容解析与渲染
 // ==========================================
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType) {
-    if (!fullResponse) return;
+    if (!fullResponse) {
+    showToast('AI返回了空内容，可能被截断或拦截了');
+    console.error("AI返回了空内容，可能被截断或拦截了"); 
+    return;
+}   
     console.log("🟢 开始处理 AI 回复:", fullResponse.substring(0, 50) + "..."); 
     // ★ 记录本次通话会话ID，用于挂断后中止生成
     const capturedCallSessionId = (targetChatType === 'private' && chat?.currentCallSessionId)
@@ -355,7 +359,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 
                 if (targetChatType === 'private') {
                     const character = chat;
-                    // --- 来电邀请检测 ---
+// --- 来电邀请检测 ---
                     const incomingCallRegex = /\[.*?发起了(语音|视频)通话邀请\]/;
                     const incomingCallMatch = item.content.match(incomingCallRegex);
                     if (incomingCallMatch && !chat.callMode) {
@@ -381,7 +385,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         if (typeof showIncomingCall === 'function') {
                             showIncomingCall(callType, chat);
                         }
-                        continue;
+                        break;
                     }
                     // --- 来电检测结束 ---
 
@@ -552,7 +556,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             }
         }
 
-        if (targetChatType === 'private' && chat.callMode && chat.callConnected === false && typeof onCallConnected === 'function') {
+        if (targetChatType === 'private' && chat.callMode && chat.callConnected === false && !chat.isIncomingCall && typeof onCallConnected === 'function') {
             onCallConnected();
         }
 
@@ -758,7 +762,7 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
                     parts = [{ text: processingContent }];
                 }
                 return { role, parts };
-            });
+}).filter(c => c.parts && c.parts.length > 0 && c.parts.some(p => p.text?.trim() || p.inline_data));
             
             if (activeReinforcement){
                 let targetIndex = -1;

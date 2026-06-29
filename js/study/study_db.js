@@ -110,7 +110,13 @@ function getRecordsByQuestion(qId) {
 // ── Study Settings (绑定人设 / API预设) ──────────────
 
 function getStudySettings() {
-  return db.studySettings || { boundPersonaId: null, textApiPresetName: null, embeddingApiPresetName: null };
+  return db.studySettings || {
+    boundPersonaId: null,
+    textApiPresetName: null,
+    embeddingApiPresetName: null,
+    homeName: null,
+    homeGreeting: null,
+  };
 }
 
 async function updateStudySettings(patch) {
@@ -123,4 +129,157 @@ function getStudyBoundPersona() {
   const { boundPersonaId } = getStudySettings();
   if (!boundPersonaId) return null;
   return (db.userPersonas || []).find(p => p.id === boundPersonaId) || null;
+}
+
+// ── Banks ───────────────────────────────────────────────────
+
+async function saveStudyBank(name) {
+  const bank = { id: `bank_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`, name, createdAt: Date.now() };
+  db.studyBanks = db.studyBanks || [];
+  db.studyBanks.push(bank);
+  await saveStudyBankToDB(bank);
+  return bank;
+}
+
+async function updateStudyBankMeta(bankId, patch) {
+  db.studyBanks = db.studyBanks || [];
+  const bank = db.studyBanks.find(b => b.id === bankId);
+  if (!bank) return null;
+  Object.assign(bank, patch);
+  await saveStudyBankToDB(bank);
+  return bank;
+}
+
+async function deleteStudyBank(bankId) {
+  db.studyBanks     = (db.studyBanks     || []).filter(b => b.id !== bankId);
+  db.studyQuestions = (db.studyQuestions || []).filter(q => q.bankId !== bankId);
+  await deleteStudyBankFromDB(bankId);
+}
+
+function getAllStudyBanks() {
+  return db.studyBanks || [];
+}
+
+function getQuestionsByBank(bankId) {
+  return (db.studyQuestions || []).filter(q => q.bankId === bankId);
+}
+
+// ── Questions 扩展 ───────────────────────────────────────────
+
+// 批量保存（带 bankId）
+async function bulkSaveBankQuestions(questions) {
+  db.studyQuestions = db.studyQuestions || [];
+  db.studyQuestions.push(...questions);
+  await bulkSaveStudyQuestionsToDB(questions);
+}
+
+// 更新单题（含 analysis 字段）
+async function updateStudyQuestion(qId, patch) {
+  const q = (db.studyQuestions || []).find(q => q.id === qId);
+  if (!q) return null;
+  Object.assign(q, patch);
+  await updateStudyQuestionToDB(q);
+  return q;
+}
+
+// 删除单题（bankId 版）
+async function deleteBankQuestion(qId) {
+  db.studyQuestions = (db.studyQuestions || []).filter(q => q.id !== qId);
+  await deleteStudyQuestionFromDB(qId);
+}
+
+// ── Exams ────────────────────────────────────────────────────
+
+async function saveStudyExam(exam) {
+  const newExam = {
+    ...exam,
+    id:        `exam_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    createdAt: Date.now(),
+  };
+  db.studyExams = db.studyExams || [];
+  db.studyExams.push(newExam);
+  await dexieDB.studyExams.put(newExam);
+  return newExam;
+}
+
+async function updateStudyExam(examId, patch) {
+  db.studyExams = db.studyExams || [];
+  const exam = db.studyExams.find(e => e.id === examId);
+  if (!exam) return null;
+  Object.assign(exam, patch);
+  await dexieDB.studyExams.put(exam);
+  return exam;
+}
+
+async function deleteStudyExam(examId) {
+  db.studyExams = (db.studyExams || []).filter(e => e.id !== examId);
+  await dexieDB.studyExams.delete(examId);
+  await deleteExamRecordsByExam(examId); 
+}
+
+function getAllStudyExams() {
+  return db.studyExams || [];
+}
+
+// ════════════════════════════════════════════════════════════════
+
+// ── ExamRecords ──────────────────────────────────────────────────
+
+/**
+ * 创建一条考试记录（开始考试时调用）
+ * record 参数：{ examId, questions }
+ */
+async function saveExamRecord(record) {
+  const newRec = {
+    ...record,
+    id:        `erec_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    startedAt: Date.now(),
+    finishedAt: null,
+    status:    'in_progress',
+    answers:   {},
+    results:   {},
+    score:     null,
+  };
+  db.studyExamRecords = db.studyExamRecords || [];
+  db.studyExamRecords.push(newRec);
+  await dexieDB.studyExamRecords.put(newRec);
+  return newRec;
+}
+
+/**
+ * 更新考试记录（存答案、写批改结果、改状态）
+ */
+async function updateExamRecord(recordId, patch) {
+  db.studyExamRecords = db.studyExamRecords || [];
+  const rec = db.studyExamRecords.find(r => r.id === recordId);
+  if (!rec) return null;
+  Object.assign(rec, patch);
+  await dexieDB.studyExamRecords.put(rec);
+  return rec;
+}
+
+/**
+ * 删除单条考试记录
+ */
+async function deleteExamRecord(recordId) {
+  db.studyExamRecords = (db.studyExamRecords || []).filter(r => r.id !== recordId);
+  await dexieDB.studyExamRecords.delete(recordId);
+}
+
+/**
+ * 删除某考卷的全部记录（deleteStudyExam 时级联调用）
+ */
+async function deleteExamRecordsByExam(examId) {
+  const toDelete = (db.studyExamRecords || []).filter(r => r.examId === examId).map(r => r.id);
+  db.studyExamRecords = (db.studyExamRecords || []).filter(r => r.examId !== examId);
+  if (toDelete.length) await dexieDB.studyExamRecords.bulkDelete(toDelete);
+}
+
+/**
+ * 获取某考卷的全部记录（按开始时间倒序）
+ */
+function getExamRecordsByExam(examId) {
+  return (db.studyExamRecords || [])
+    .filter(r => r.examId === examId)
+    .sort((a, b) => b.startedAt - a.startedAt);
 }

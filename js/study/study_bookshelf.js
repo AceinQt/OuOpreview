@@ -582,10 +582,13 @@ function _initBookInfoListeners() {
 async function studyOpenReader(book) {
   // ★ 切书时立即重置共读状态，防止旧消息残留到新书
   if (typeof _resetCoread === 'function') _resetCoread();
-  // 同步隐藏悬浮球（_resetCoread 只清内存，DOM 要单独处理）
-  document.getElementById('reader-float-ball')?.style.setProperty('display', 'none');
+  // 切书：收起气泡/输入栏，悬浮球本身保持可见（切换到占位状态）
   document.getElementById('reader-bubble-wrap')?.style.setProperty('display', 'none');
   document.getElementById('reader-coread-input-bar')?.style.setProperty('display', 'none');
+  document.getElementById('reader-float-ball')?.classList.remove('expanded');
+  // 立即切换为无角色占位（切书动画期间不闪烁）
+  document.getElementById('reader-float-ball')?.style.setProperty('display', 'flex');
+  if (typeof _updateFloatBallAvatar === 'function') _updateFloatBallAvatar();
 
   const s = window._study.state.reader;
   s.bookId    = book.id;
@@ -665,6 +668,8 @@ async function studyOpenReader(book) {
   _initReaderInteraction();
   _initFloatBallDrag();
   _initTocSidebar();
+  // ★ 进入阅读器后自动启动共读（有角色则加载历史，无角色则占位显示）
+  if (typeof studyEnterCoread === 'function') studyEnterCoread();
 }
 
 // ── 简单内容 hash（用于校验分页缓存是否仍有效）─────────────
@@ -1070,15 +1075,15 @@ const CENTER_X     = 0.25;
     }
   });
 
-  document.getElementById('reader-menu-coread-btn')?.addEventListener('click', () => {
-    _closeReaderMenu();
-    studyEnterCoread();
-  });
-
   document.getElementById('reader-menu-toc-btn')?.addEventListener('click', () => {
     _closeReaderMenu();
     _openTocSidebar('toc');
   });
+  
+  document.getElementById('reader-summary-btn')?.addEventListener('click', () => {
+         const book = getAllStudyBooks().find(b => b.id === window._study.state.reader.bookId);
+         if (book) studyOpenBookSummary(book);
+     });
 
   document.getElementById('reader-menu-search-btn')?.addEventListener('click', () => {
     _closeReaderMenu();
@@ -1401,9 +1406,11 @@ function studyInitImportModal() {
 
     try {
       let content = '';
-      if (_studyImportFile.name.endsWith('.txt')) {
-        content = await _studyImportFile.text();
-      } else if (_studyImportFile.name.endsWith('.docx') && typeof mammoth !== 'undefined') {
+if (_studyImportFile.name.endsWith('.txt')) {
+  const encoding = document.getElementById('imp-encoding')?.value || 'utf-8';
+  const ab = await _studyImportFile.arrayBuffer();
+  content = new TextDecoder(encoding).decode(ab);
+} else if (_studyImportFile.name.endsWith('.docx') && typeof mammoth !== 'undefined') {
         const ab  = await _studyImportFile.arrayBuffer();
         const res = await mammoth.extractRawText({ arrayBuffer: ab });
         content   = res.value;
@@ -1428,10 +1435,11 @@ function studyInitImportModal() {
 
 function studyOpenImportModal() {
   _studyImportFile = null;
-  document.getElementById('imp-title').value   = '';
-  document.getElementById('imp-cat').value     = '';
-  document.getElementById('fname').textContent = '未选择文件';
-  document.getElementById('imp-file').value    = '';
+  document.getElementById('imp-title').value    = '';
+  document.getElementById('imp-cat').value      = '';
+  document.getElementById('imp-encoding').value = 'utf-8'; // ← 加这行
+  document.getElementById('fname').textContent  = '未选择文件';
+  document.getElementById('imp-file').value     = '';
   document.getElementById('study-import-modal')?.classList.add('visible');
 }
 
