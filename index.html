@@ -139,15 +139,24 @@
         <div class="title-container">
             <h1 class="title" id="chat-list-title">聊天</h1>
         </div>
-        <div class="action-btn-group">
-            <button class="action-btn" id="create-group-btn" title="群聊">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            </button>
-            <button class="action-btn" id="import-character-card-btn" title="导入">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            </button>
+<div class="action-btn-group">
+            <!-- 隐藏的导入 input 必须保留，供导入角色功能调用 -->
             <input type="file" id="character-card-input" accept="image/png,application/json" style="display: none;">
-            <button class="action-btn" id="chat-list-add-btn">+</button>
+            
+            <!-- 统一的加号按钮 -->
+            <button class="action-btn" id="chat-list-add-btn" title="添加">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+            </button>
+            <!-- 设置按钮：呼出侧边栏 -->
+            <button class="action-btn" id="chat-list-settings-btn" title="设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
         </div>
     </header>    
     <!-- 内容区域 -->
@@ -189,169 +198,19 @@
         </div>        
     </div>
 </div>
-<!-- Tab 3: 外观及气泡预设管理 -->
-<div id="tab-view-bubbles" class="tab-content-view" style="display:none;">
-    
-    <!-- 上半部分：固定卡片 (预设名称、操作按钮、预览区) -->
-    <div class="appearance-card top-fixed-card" id="bubble-preset-header-card">
-<div class="appearance-header">
-    <!-- 标签 1：选中状态（预设名称） -->
-    <div class="appearance-tab-active">
-        <input type="text" id="global-bubble-preset-name" class="preset-name-input" placeholder="输入预设名称">
-        <button type="button" class="icon-btn add-btn" id="global-bubble-add-btn" title="新建预设">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-    </div>
-    
-    <!-- 标签 2：未选中状态（按钮组，和背景融合） -->
-    <div class="appearance-tab-inactive">
-        <div class="appearance-actions">
-            
-            <button type="button" class="icon-btn" id="global-bubble-save-btn" title="保存外观">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M15 20V15H9V20M18 20H6C4.89543 20 4 19.1046 4 18V6C4 4.89543 4.89543 4 6 4H14.1716C14.702 4 15.2107 4.21071 15.5858 4.58579L19.4142 8.41421C19.7893 8.78929 20 9.29799 20 9.82843V18C20 19.1046 19.1046 20 18 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-</button>
-            <button type="button" class="icon-btn" id="global-bubble-export-btn" title="导出">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            </button>
-            <button type="button" class="icon-btn" id="global-bubble-import-btn" title="导入">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </button>          
-            <button type="button" class="icon-btn" id="global-bubble-manage-btn" title="管理">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-            </button>
-            <input type="file" id="global-bubble-import-input" accept=".json" style="display: none;">
-        </div>
-    </div>
-</div>
-</div>
-    <div class="appearance-card top-fixed-card" id="bubble-css-preview-card">
-        <div id="global-bubble-css-preview" class="bubble-css-preview">
-            <button type="button" id="preview-prev-btn" class="preview-nav-btn left">◀</button>
-            <button type="button" id="preview-next-btn" class="preview-nav-btn right">▶</button>
-            
-            <div id="preview-inner-container" class="preview-inner"></div>
-        </div>
-        <div id="preview-mode-title" class="preview-title">预览：消息气泡</div>
-
-    </div>
-
-<!-- 下半部分：分栏卡片 (侧边Tab + 内容区) -->
-    <div class="appearance-card"  id="bottom-content-card">
-        <div class="bottom-btn-card" id="bottom-btn-card">
-      <div class="bottom-btn">
-         <button class="side-tab-btn active" data-pane="pane-basic">基础</button>
-         <button class="side-tab-btn" data-pane="pane-css">高级</button>
-       </div>
-       <button type="button" class="action-btn" id="reset-basic-css-btn"><svg viewBox="0 0 24 24">
-                            <path
-                                d="M17.65,6.35C16.2,4.9,14.21,4,12,4A8,8,0,0,0,4,12A8,8,0,0,0,12,20C15.73,20,18.84,17.45,19.73,14H17.65C16.83,16.33,14.61,18,12,18A6,6,0,0,1,6,12A6,6,0,0,1,12,6C13.66,6,15.14,6.69,16.22,7.78L13,11H20V4L17.65,6.35Z" />
-                        </svg>
-</button>      
-    </div>
-          <div id="pane-basic" class="content-pane active">
-              <div class="bubble-settings-item row">
-                <label>隐藏头像</label>
-                <label class="switch"><input type="checkbox" id="setting-hide-avatar"><span class="slider round"></span></label>
-              </div>
-              <div class="bubble-settings-item row">
-                 <label>字体：</label>
-                 <input type="text" id="setting-custom-font" placeholder="例如: https://.../font.ttf">
-              </div>
-              <div class="bubble-settings-item row">
-                 <label>气泡类型：</label>
-                        <select id="setting-bubble-type">
-                        <option value="normal">普通气泡</option>                                   <option value="narration">旁白气泡</option>
-                        <option value="transfer">转账气泡</option>
-                        <option value="quote">引用气泡</option>
-                        </select>
-                        <select id="setting-bubble-side">
-                        <option value="sent">我方</option>
-                        <option value="received">对方</option>
-                        </select>
-              </div>
-
-                    <!-- 分类气泡属性控制框 -->
-              <div id="bubble-type-settings-box">
-                  <div class="bubble-settings-item"><label>当前正在修改：<span style="color:var(--primary-color);" id="current-type-label">普通气泡 - 我方</span></label>
-                  </div>
-                  <hr>      
-                  <div class="bubble-settings-item row">
-                     <label>气泡颜色：</label>
-                     <input type="color" id="setting-bg">
-                     <input type="text" id="setting-bg-text" placeholder="#HEX">
-                  </div>
-                                    <div class="bubble-settings-item col">
-                      <label>不透明度：<span class="val-display" id="val-opacity">1</span></label>
-                      <input type="range" class="bubble-slider" id="setting-opacity" step="0.05" min="0" max="1">                      
-                  </div>
-
-                  <div class="bubble-settings-item col">
-                     <label>模糊度：<span class="val-display" id="val-blur">0</span>px</label>
-                     <input type="range" class="bubble-slider" id="setting-blur" min="0" max="20" step="1">
-                     
-                  </div>
-                  <hr>
-                  <div class="bubble-settings-item row">     
-                    <label>字体颜色：</label>
-                    <input type="color" id="setting-fontcolor">
-                    <input type="text" id="setting-fontcolor-text" placeholder="#HEX">
-                  </div>
-             <div class="bubble-settings-item col">     
-                    <label>字体大小：<span class="val-display" id="val-fontsize">16</span>px</label>
-                    <input type="range" class="bubble-slider" id="setting-fontsize" min="12" max="24" step="1">                   
-                  </div>
-                  <hr>     
-                  <div class="bubble-settings-item row">
-                      <label>描边颜色：</label>
-                      <input type="color" id="setting-stroke-c">
-                      <input type="text" id="setting-stroke-c-text" placeholder="#HEX">
-                  </div>
-                  <div class="bubble-settings-item col">
-                      <label>描边宽度：
-                      <span class="val-display" id="val-stroke-w">0</span>px</label>
-                      <input type="range" class="bubble-slider" id="setting-stroke-w" min="0" max="5" step="1">
-                  </div>
-<div class="bubble-settings-item row">
-   <label>描边方向：</label>
-   <label class="custom-check-label">
-       <input type="checkbox" class="stroke-side-cb" value="top">
-       <span class="custom-check-mark"></span> 上
-   </label>
-   <label class="custom-check-label">
-       <input type="checkbox" class="stroke-side-cb" value="right">
-       <span class="custom-check-mark"></span> 右
-   </label>
-   <label class="custom-check-label">
-       <input type="checkbox" class="stroke-side-cb" value="bottom">
-       <span class="custom-check-mark"></span> 下
-   </label>
-   <label class="custom-check-label">
-       <input type="checkbox" class="stroke-side-cb" value="left">
-       <span class="custom-check-mark"></span> 左
-   </label>
-</div>
-
-                  <div class="bubble-settings-item col">
-                      <label>边角弧度：
-                      <span class="val-display" id="val-radius">8</span>px</label>
-                      <input type="range" class="bubble-slider" id="setting-radius" min="0" max="30" step="1">
-                  </div>
-              </div>
-            </div>
-
-            <!-- 栏目二：自定义 CSS -->
-            <div id="pane-css" class="content-pane">
-                <textarea id="global-bubble-custom-css" placeholder="在此输入高级 CSS 代码..."></textarea>
-            </div>
-    </div>
-</div>
 </main>
+<!-- ===== 添加操作选择底部菜单 ===== -->
+    <div id="add-action-sheet" class="action-sheet-overlay">
+        <div class="action-sheet">
+            <button class="action-sheet-button" id="action-sheet-add-chat-btn">新建聊天</button>
+            <!-- 保留原有 ID，确保原本的群聊和导入功能免修改直接生效 -->
+            <button class="action-sheet-button" id="create-group-btn">新建群聊</button>
+            <button class="action-sheet-button" id="import-character-card-btn">导入角色</button>
+            <div style="height: 5px; background-color: transparent;"></div>
+            <button class="action-sheet-button action-sheet-cancel" id="cancel-add-action-btn" style="color: #999;">取消</button>
+        </div>
+    </div>
 
-    <!-- 底部 Tab 切换 (新样式 + SVG) -->
     <!-- 底部 Tab 切换 -->
     <nav class="bottom-nav-tabs">
         <div class="nav-tab-item active" data-tab="messages">
@@ -368,16 +227,199 @@
             </svg>
             <span>我</span>
         </div>
-        <div class="nav-tab-item" data-tab="bubbles">
- <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M2 6C2 3.79086 3.79086 2 6 2C8.20914 2 10 3.79086 10 6V18C10 20.2091 8.20914 22 6 22C3.79086 22 2 20.2091 2 18V6Z"/>
-<path d="M9.99977 8.24268L13.3134 4.92902C14.8755 3.36692 17.4082 3.36692 18.9703 4.92902C20.5324 6.49112 20.5324 9.02378 18.9703 10.5859L9.30615 20.25"/>
-<path d="M6 22L18 22C20.2091 22 22 20.2091 22 18C22 15.7909 20.2091 14 18 14L15.5 14"/>
-<path d="M7 18C7 18.5523 6.55228 19 6 19C5.44772 19 5 18.5523 5 18C5 17.4477 5.44772 17 6 17C6.55228 17 7 17.4477 7 18Z"/>
-</svg>
-            <span>外观</span>
-        </div>
     </nav>
+</div>
+
+<!-- 聊天列表侧边栏 -->
+<div id="chat-list-sidebar" class="settings-sidebar sidebar">
+  <div class="header">设置</div>
+  <div class="bottom-content-scroll" id="chat-sidebar-content">
+    <div class="settings-card menu-list-style">
+        <!-- 外观 -->
+        <div class="settings-item" id="chat-sidebar-appearance-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 6C2 3.79086 3.79086 2 6 2C8.20914 2 10 3.79086 10 6V18C10 20.2091 8.20914 22 6 22C3.79086 22 2 20.2091 2 18V6Z"/>
+              <path d="M9.99977 8.24268L13.3134 4.92902C14.8755 3.36692 17.4082 3.36692 18.9703 4.92902C20.5324 6.49112 20.5324 9.02378 18.9703 10.5859L9.30615 20.25"/>
+              <path d="M6 22L18 22C20.2091 22 22 20.2091 22 18C22 15.7909 20.2091 14 18 14L15.5 14"/>
+              <path d="M7 18C7 18.5523 6.55228 19 6 19C5.44772 19 5 18.5523 5 18C5 17.4477 5.44772 17 6 17C6.55228 17 7 17.4477 7 18Z"/>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">外观</span></div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+    </div>
+  </div>
+</div>
+<!-- 遮罩：点击空白处收起侧边栏 -->
+<div id="chat-list-overlay" class="reader-toc-overlay"></div>
+
+<!-- 外观页面（独立 screen） -->
+<div id="chat-appearance-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="chat-list-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">外观</h1>
+        </div>
+        <div class="action-btn-group"></div>
+    </header>
+    <main class="content">
+        <div id="tab-view-bubbles" class="tab-content-view active" style="display:flex;">
+
+            <!-- 上半部分：固定卡片 (预设名称、操作按钮、预览区) -->
+            <div class="appearance-card top-fixed-card" id="bubble-preset-header-card">
+                <div class="appearance-header">
+                    <!-- 标签 1：选中状态（预设名称） -->
+                    <div class="appearance-tab-active">
+                        <input type="text" id="global-bubble-preset-name" class="preset-name-input" placeholder="输入预设名称">
+                        <button type="button" class="icon-btn add-btn" id="global-bubble-add-btn" title="新建预设">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
+
+                    <!-- 标签 2：未选中状态（按钮组，和背景融合） -->
+                    <div class="appearance-tab-inactive">
+                        <div class="appearance-actions">
+                            <button type="button" class="icon-btn" id="global-bubble-save-btn" title="保存外观">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M15 20V15H9V20M18 20H6C4.89543 20 4 19.1046 4 18V6C4 4.89543 4.89543 4 6 4H14.1716C14.702 4 15.2107 4.21071 15.5858 4.58579L19.4142 8.41421C19.7893 8.78929 20 9.29799 20 9.82843V18C20 19.1046 19.1046 20 18 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <button type="button" class="icon-btn" id="global-bubble-export-btn" title="导出">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            </button>
+                            <button type="button" class="icon-btn" id="global-bubble-import-btn" title="导入">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            </button>
+                            <button type="button" class="icon-btn" id="global-bubble-manage-btn" title="管理">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <input type="file" id="global-bubble-import-input" accept=".json" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="appearance-card top-fixed-card" id="bubble-css-preview-card">
+                <div id="global-bubble-css-preview" class="bubble-css-preview">
+                    <button type="button" id="preview-prev-btn" class="preview-nav-btn left">◀</button>
+                    <button type="button" id="preview-next-btn" class="preview-nav-btn right">▶</button>
+                    <div id="preview-inner-container" class="preview-inner"></div>
+                </div>
+                <div id="preview-mode-title" class="preview-title">预览：消息气泡</div>
+            </div>
+
+            <!-- 下半部分：分栏卡片 (侧边Tab + 内容区) -->
+            <div class="appearance-card" id="bottom-content-card">
+                <div class="bottom-btn-card" id="bottom-btn-card">
+                    <div class="bottom-btn">
+                        <button class="side-tab-btn active" data-pane="pane-basic">基础</button>
+                        <button class="side-tab-btn" data-pane="pane-css">高级</button>
+                    </div>
+                    <button type="button" class="action-btn" id="reset-basic-css-btn">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M17.65,6.35C16.2,4.9,14.21,4,12,4A8,8,0,0,0,4,12A8,8,0,0,0,12,20C15.73,20,18.84,17.45,19.73,14H17.65C16.83,16.33,14.61,18,12,18A6,6,0,0,1,6,12A6,6,0,0,1,12,6C13.66,6,15.14,6.69,16.22,7.78L13,11H20V4L17.65,6.35Z" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="pane-basic" class="content-pane active">
+                    <div class="bubble-settings-item row">
+                        <label>隐藏头像</label>
+                        <label class="switch"><input type="checkbox" id="setting-hide-avatar"><span class="slider round"></span></label>
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>字体：</label>
+                        <input type="text" id="setting-custom-font" placeholder="例如: https://.../font.ttf">
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>气泡类型：</label>
+                        <select id="setting-bubble-type">
+                            <option value="normal">普通气泡</option>
+                            <option value="narration">旁白气泡</option>
+                            <option value="transfer">转账气泡</option>
+                            <option value="quote">引用气泡</option>
+                        </select>
+                        <select id="setting-bubble-side">
+                            <option value="sent">我方</option>
+                            <option value="received">对方</option>
+                        </select>
+                    </div>
+
+                    <!-- 分类气泡属性控制框 -->
+                    <div id="bubble-type-settings-box">
+                        <div class="bubble-settings-item"><label>当前正在修改：<span style="color:var(--primary-color);" id="current-type-label">普通气泡 - 我方</span></label></div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>气泡颜色：</label>
+                            <input type="color" id="setting-bg">
+                            <input type="text" id="setting-bg-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>不透明度：<span class="val-display" id="val-opacity">1</span></label>
+                            <input type="range" class="bubble-slider" id="setting-opacity" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>模糊度：<span class="val-display" id="val-blur">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-blur" min="0" max="20" step="1">
+                        </div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>字体颜色：</label>
+                            <input type="color" id="setting-fontcolor">
+                            <input type="text" id="setting-fontcolor-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>字体大小：<span class="val-display" id="val-fontsize">16</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-fontsize" min="12" max="24" step="1">
+                        </div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>描边颜色：</label>
+                            <input type="color" id="setting-stroke-c">
+                            <input type="text" id="setting-stroke-c-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>描边宽度：<span class="val-display" id="val-stroke-w">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-stroke-w" min="0" max="5" step="1">
+                        </div>
+                        <div class="bubble-settings-item row">
+                            <label>描边方向：</label>
+                            <label class="custom-check-label">
+                                <input type="checkbox" class="stroke-side-cb" value="top">
+                                <span class="custom-check-mark"></span> 上
+                            </label>
+                            <label class="custom-check-label">
+                                <input type="checkbox" class="stroke-side-cb" value="right">
+                                <span class="custom-check-mark"></span> 右
+                            </label>
+                            <label class="custom-check-label">
+                                <input type="checkbox" class="stroke-side-cb" value="bottom">
+                                <span class="custom-check-mark"></span> 下
+                            </label>
+                            <label class="custom-check-label">
+                                <input type="checkbox" class="stroke-side-cb" value="left">
+                                <span class="custom-check-mark"></span> 左
+                            </label>
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>边角弧度：<span class="val-display" id="val-radius">8</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-radius" min="0" max="30" step="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 栏目二：自定义 CSS -->
+                <div id="pane-css" class="content-pane">
+                    <textarea id="global-bubble-custom-css" placeholder="在此输入高级 CSS 代码..."></textarea>
+                </div>
+            </div>
+        </div>
+    </main>
 </div>
 
 
@@ -1506,6 +1548,27 @@
                 <button id="btn-gh-config" class="btn-export-sm">配置</button>               
             </div>
         </div>
+               <!--  Card 4: 数据瘦身与修复  -->
+        <div class="storage-card cloud-card" id="cleanup-card">
+            <div class="cloud-left">
+                <!-- 蓝绿色的清理图标 -->
+                <div class="cloud-icon-bg">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                </div>
+                <div>
+                    <div class="cloud-title">重复消息清理</div>
+                    <div class="cloud-desc">扫描并清理重复产生的消息</div>
+                </div>
+            </div>
+            <div class="cloud-actions">
+                <button id="btn-cleanup-duplicates" class="btn-export-sm">清理</button>               
+            </div>
+        </div>
 </main>
         </div>
 
@@ -2265,7 +2328,7 @@
                 </ul>
                 <div id="peek-memos-placeholder" class="memos-placeholder">
                     还没有备忘录哦~<br>
-                    <span class="memos-placeholder-sub">点击右上角 + 生成备忘录</span>
+                    <span class="memos-placeholder-sub">点击右上角按钮生成备忘录</span>
                 </div>
             </main>
         </div>
@@ -2328,7 +2391,7 @@
         </ul>
         <div id="peek-drafts-placeholder" class="drafts-placeholder">
             还没有草稿哦~<br>
-            <span class="drafts-placeholder-sub">点击右上角 + 生成第一份草稿</span>
+            <span class="drafts-placeholder-sub">点击右上角刷新生成第一份草稿</span>
         </div>
     </main>
 </div>
@@ -3710,7 +3773,7 @@
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
         </svg>
     </div>
-    <div class="item-details"><span class="item-name">重新分页</span></div>
+    <div class="item-details"><span class="item-name">手工重新分页</span></div>
     <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
 
@@ -3760,16 +3823,17 @@
 
     <!-- ⑥ 悬浮球（共读激活后显示，默认隐藏）
          ★ 改为左上角默认位置、fixed + left/top 定位、按住拖动 -->
-    <div class="reader-float-ball" id="reader-float-ball" style="display:none; left:16px; top:80px;">
-        <img id="reader-float-avatar" src="" alt="">
-    </div>
+    <div class="reader-float-ball" id="reader-float-ball" style="left:16px; top:80px;">
+     <img id="reader-float-avatar" src="" alt="" style="display:none">
+     <span id="reader-float-placeholder">无</span>
+  </div>
 
     <!-- ⑦ 气泡区（点悬浮球展开，默认隐藏）
          ★ 气泡在头像右边，position:fixed，JS 动态计算位置 -->
     <div class="reader-bubble-wrap" id="reader-bubble-wrap" style="display:none;">
         <div class="reader-bubble-char">
             <!-- 省略号动画或文字 -->
-            <p class="reader-bubble-text" id="reader-bubble-text">你好，发送消息和我交流吧～</p>
+            <p class="reader-bubble-text" id="reader-bubble-text">发送消息交流吧</p>
         </div>
     </div>
 
@@ -3785,11 +3849,11 @@
     <!-- 上半：进度条区域 -->
     <div class="reader-progress-row">
         <button class="reader-chapter-btn" id="reader-prev-chapter-btn" title="上一段">
-            <span>上一段</span>
+            <span>上一章</span>
         </button>
         <input type="range" id="reader-progress-range" class="reader-progress-range" min="0" max="100" value="0" step="1">
         <button class="reader-chapter-btn" id="reader-next-chapter-btn" title="下一段">
-            <span>下一段</span>
+            <span>下一章</span>
         </button>
     </div>
 
@@ -3828,112 +3892,902 @@
             </span>
             <span class="reader-menu-label">书签</span>
         </button>
-        <!-- 共读 -->
-        <button class="reader-menu-btn" id="reader-menu-coread-btn">
-            <span class="reader-menu-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-            </span>
-            <span class="reader-menu-label">共读</span>
-        </button>
+        
+        <button class="reader-menu-btn" id="reader-summary-btn" title="阅读笔记">
+        <span class="reader-menu-icon">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+             <path stroke-linecap="round" stroke-linejoin="round"
+                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+         </svg>
+         </span>
+         <span class="reader-menu-label">笔记</span>
+     </button>
     </div>
-
+  </div>
 </div>
 
 
-</div>
 
-
-
-<!-- 测试模式页面 (上：题库 / 下：测试任务) -->
-<div id="study-test-screen" class="screen">
+<div id="study-book-summary-screen" class="screen">
     <header class="app-header">
-        <button class="back-btn" data-target="study-screen">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
-    </svg>
-</button>
+        <button class="back-btn" data-target="study-book-reader-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </button>
         <div class="title-container">
-            <h1 class="title">测试</h1>
-            <span class="subtitle" id="study-test-subtitle"></span>
+            <!-- ① 固定标题"笔记"，不再动态写书名 -->
+            <h1 class="title">笔记</h1>
         </div>
-        <div class="placeholder"></div>
+        <div class="action-btn-group">
+            <button class="action-btn" id="bs-generate-btn" title="生成章节笔记">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+            </button>
+        </div>
     </header>
-    <main class="content st-test-layout">
-        <!-- ─ 上：题库区 (约 25%) ─ -->
-        <div class="st-bank-panel">
-            <div class="st-bank-panel-title">题库</div>
-            <div class="st-bank-row" id="st-bank-row">
-                <!-- JS 渲染：第一个为虚线加号，后续为题库方块 -->
-            </div>
-        </div>
-        <!-- ─ 下：测试任务区 (约 75%) ─ -->
-        <div class="st-test-task-panel" id="study-test-body">
-            <!-- JS 将题目内容（st-q-card 等）注入此处 -->
+
+    <!-- ① 去掉 mem-tab-header 和 bs-sidebar，直接用 main -->
+    <main class="content">
+        <ul class="list-container" id="bs-list-container"></ul>
+        <div class="placeholder-text" id="bs-placeholder" style="display:none;">
+            <p>还没有笔记哦~</p>
         </div>
     </main>
 </div>
 
 
-
-<!-- ToDouo模块设置侧边栏（替换原 study-profile-sidebar） -->
-<!-- 上半：叠头像 + 心跳线 + 人设名 / 下半：设置列表 -->
-<div id="study-profile-sidebar" class="settings-sidebar redesigned-sidebar">
-
-  <!-- ── 上半：人设展示区 ── -->
-  <div class="sidebar-top-section">
-
-    <!-- 当前绑定人设头像（单人设，居中显示） -->
-    <div class="overlapping-avatars-center">
-      <div class="avatar-wrapper char-avatar-wrapper" id="st-sidebar-persona-avatar-wrap">
-        <!-- JS 动态填充：有人设时显示头像，否则显示占位图标 -->
-        <div class="st-sidebar-avatar-placeholder">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
+<!-- ══════════════════════════════════════════════════════════
+     阅读笔记详情页
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-book-summary-detail-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="study-book-summary-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">笔记详情</h1>
         </div>
+        <div class="action-btn-group">
+                       <!-- 删除 -->
+            <button class="action-btn" id="bs-detail-delete-btn" title="删除">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7
+                             m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </button>
+            <button class="action-btn" id="bs-detail-edit-btn" title="编辑">
+<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="content">
+        <h2 id="bs-detail-title" style="margin:16px 16px 8px;"></h2>
+
+        <div class="date-edit-container" style="padding:0 16px 8px;">
+    <span>生成日期：</span>
+    <input type="text" id="bs-detail-date" class="date-edit-input" readonly>
+</div>
+
+        <!-- 查看模式 -->
+        <div id="bs-detail-content" style="padding:0 16px 24px;"></div>
+
+        <!-- ② 编辑模式（默认隐藏） -->
+        <textarea id="bs-detail-content-textarea"
+                  style="display:none;width:100%;min-height:220px;
+                         padding:8px 16px 24px;box-sizing:border-box;
+                         border:none;outline:none;resize:vertical;
+                         font-size:14px;line-height:1.7;background:transparent;"></textarea>
+    </main>
+</div>
+
+
+
+
+<!-- ══════════════════════════════════════════════════════════
+     生成章节总结弹窗
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-book-generate-modal" class="modal-overlay">
+    <div class="modal-window">
+        <h3>生成章节笔记</h3>
+
+        <!-- ① 模式选择 -->
+        <div class="form-group">
+            <label for="bs-gen-mode">笔记方式</label>
+            <select id="bs-gen-mode">
+                <option value="ai">生成总结</option>
+                <option value="custom">手动记录</option>
+            </select>
+        </div>
+
+        <!-- ② AI 总结模式字段 -->
+        <div id="bs-gen-ai-fields">
+            <div class="form-group">
+                <label for="bs-gen-chapter-start">起始章节</label>
+                <select id="bs-gen-chapter-start"></select>
+            </div>
+            <div class="form-group">
+                <label for="bs-gen-chapter-end">结束章节</label>
+                <select id="bs-gen-chapter-end"></select>
+            </div>
+            <p style="font-size:12px;color:#999;margin:10px 0 0;">
+                跨章节合并生成一条总结；章节原文超过 6000 字时自动截断。
+            </p>
+        </div>
+
+        <!-- ③ 手动编写模式字段 -->
+        <div id="bs-gen-custom-fields" style="display:none;">
+            <div class="form-group">
+                <label for="bs-gen-custom-chapter">章节</label>
+                <select id="bs-gen-custom-chapter"></select>
+            </div>
+            <div class="form-group">
+                <label for="bs-gen-custom-content">笔记内容</label>
+                <textarea id="bs-gen-custom-content" rows="6"
+                    style="width:100%;resize:vertical;"
+                    placeholder="在这里写下你的笔记…"></textarea>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button id="bs-gen-submit-btn" class="btn btn-primary">生成</button>
+            <button id="bs-gen-cancel-btn" class="btn btn-neutral">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 导入书籍弹窗组件 -->
+<div id="study-import-modal" class="modal-overlay">
+    <div class="modal-window">
+        <h3>导入书籍</h3>
+        <div class="form-group">
+            <label>书籍名称</label>
+            <input type="text" id="imp-title" placeholder="输入书籍名称…">
+        </div>
+        <div class="form-group">
+            <label>分类</label>
+            <input type="text" id="imp-cat" placeholder="例如：历史、英语…">
+        </div>
+        <div class="form-group">
+            <label>选择文件：<span class="st-file-name" id="fname">未选择文件</span></label>
+                <button class="btn btn-secondary" id="btn-pick">选择文件</button>                
+            <input type="file" id="imp-file" accept=".txt,.docx" style="display:none">
+        </div>
+        <div class="form-group">
+  <label for="imp-encoding">文件编码</label>
+  <select id="imp-encoding">
+    <option value="utf-8">UTF-8（默认）</option>
+    <option value="gbk">GBK / GB2312</option>
+    <option value="big5">Big5（繁体）</option>
+  </select>
+</div>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btn-ok-import">确定导入</button>        
+            <button class="btn btn-neutral" id="btn-cancel-import">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 测试模式页面 (上：题库 / 下：测试任务) -->
+<div id="study-test-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="study-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">测试</h1>
+            <!-- subtitle 在测试首页不显示，只在答题页用；这里可以留着兼容 -->
+        </div>
+<div class="action-btn-group">
+        <!-- 新建按钮 -->
+        <button class="action-btn" id="study-test-add-btn" title="新建测试任务">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 width="24" height="24" stroke-width="2" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5"  y1="12" x2="19" y2="12"/>
+            </svg>
+        </button>
+        </div>
+    </header>
+
+    <main class="content st-test-layout">
+<!-- ─ 上：题库区 ─ -->
+<div class="st-bank-panel">
+    <div class="st-bank-panel-title">题库</div>
+    <div class="st-bank-row" id="st-bank-row">
+        <!-- JS 渲染 -->
+    </div>
+</div>
+
+<!-- ─ 中：测试任务标题条（属于白色区域）─ -->
+<div class="st-task-header-bar" id="study-test-panel-title">测试任务</div>
+
+<!-- ─ 下：测试任务区 ─ -->
+<div class="st-test-task-panel" id="study-test-body">
+    <!-- JS 渲染 -->
+</div>
+    </main>
+</div>
+
+
+
+<div id="study-exam-info-screen" class="screen">
+
+  <header class="app-header">
+    <button class="back-btn" data-target="study-test-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title"></h1>
+    </div>
+    <div class="action-btn-group">
+  <button class="action-btn" id="st-ei-delete-btn" title="删除测试任务">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6M14 11v6"/>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>
+  </button>
+  <button class="action-btn" id="st-ei-save-btn" title="保存设置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  </button>
+</div>
+  </header>
+
+  <!-- Hero 色块（JS 动态注入主题色类） -->
+  <div class="st-bi-hero">
+    <div id="st-ei-hero-bg" class="st-ei-hero-bg st-ei-theme-pending"></div>
+  </div>
+
+  <!-- 白色卡片主体（复用 st-bi-body 布局） -->
+  <div class="st-bi-body">
+
+    <!-- 顶部行：封面方块(左) + 标题+按钮(右) -->
+    <div class="st-bi-profile-row">
+
+      <!-- 右：标题 + 开始/继续按钮 -->
+      <div class="st-bi-title-block">
+        <div class="st-ei-title st-ei-title--editable" id="st-ei-title">未命名测试任务</div>
+        <button class="st-bi-read-btn" id="st-ei-start-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  stroke-width="2.2" d="M5 3l14 9-14 9V3z"/>
+          </svg>
+          <span id="st-ei-start-label">开始新考试</span>
+        </button>
       </div>
     </div>
 
-
-
-    <!-- 名字行 -->
-    <div class="names-row" style="justify-content:center;">
-      <div class="name-block">
-        <span id="st-sidebar-persona-name" class="name-text-span">未绑定人设</span>
-      </div>
+    <!-- Tab 栏 -->
+    <div class="char-info-tab-bar" id="st-ei-tabs">
+      <button class="char-info-tab-btn active" data-tab="info">基本信息</button>
+      <button class="char-info-tab-btn"        data-tab="records">测试记录</button>
     </div>
 
-    <!-- 关闭按钮 -->
-    <button class="st-sidebar-close-top" id="study-profile-close" style="
-      position:absolute; top:12px; right:14px;
-      background:none; border:none; cursor:pointer; padding:4px; color:inherit;
-    ">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    <!-- Tab 内容 -->
+    <div class="char-info-tab-content">
+      <!-- 基本信息 panel（JS 渲染） -->
+      <div class="char-info-tab-panel active" data-panel="info" id="st-ei-panel-info">
+
+  <div class="info-group">
+    <label>• 关联题库</label>
+    <button class="st-ei-wb-btn" id="st-ei-bank-btn" type="button">
+      <span id="st-ei-bank-label">未关联</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+        <polyline points="9 18 15 12 9 6" stroke-width="2" stroke-linecap="round"/>
       </svg>
     </button>
   </div>
 
-  <!-- ── 下半：设置列表 ── -->
-  <div class="sidebar-bottom-section">
-    <div class="bottom-header"></div>
-    <div class="bottom-content-scroll">
-
-      <!-- 人设绑定区（JS 注入 .st-persona-list） -->
-      <div id="st-sidebar-persona-section" class="st-sidebar-block"></div>
-
-      <!-- API 预设区（JS 注入两个 select） -->
-      <div id="st-sidebar-api-section" class="st-sidebar-block"></div>
+  <div class="info-group">
+    <label>• 抽题数量（ <span class="st-ei-draw-hint" id="st-ei-draw-hint">请先选择题库</span> ）</label>
+    <div class="st-ei-draw-row">
+      <input type="number" id="st-ei-draw-count"
+             class="st-bi-input st-ei-draw-input" min="1" max="1" value="10">
 
     </div>
   </div>
+
+  <div class="info-group">
+    <label>• 答题人</label>
+    <button class="st-ei-wb-btn" id="st-ei-persona-btn" type="button">
+      <span id="st-ei-persona-label">未指定</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+        <polyline points="9 18 15 12 9 6" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="info-group">
+    <label>• 批改角色</label>
+    <button class="st-ei-wb-btn" id="st-ei-grader-btn" type="button">
+      <span id="st-ei-grader-label">未指定</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+        <polyline points="9 18 15 12 9 6" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="info-group">
+    <label>• 关联世界书</label>
+    <button class="st-ei-wb-btn" id="st-ei-wb-btn" type="button">
+      <span id="st-ei-wb-label">未关联</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+        <polyline points="9 18 15 12 9 6" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
 </div>
+      <!-- 考试记录 panel（JS 渲染） -->
+      <div class="char-info-tab-panel"        data-panel="records" id="st-ei-panel-records"></div>
+    </div>
+
+  </div><!-- /st-bi-body -->
+</div><!-- /study-exam-info-screen -->
+
+<!-- ══════════════════════════════════════════════════════════
+     study-exam-screen  答题页（全新）
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-exam-screen" class="screen">
+  <header class="app-header">
+    <button class="back-btn" data-target="study-exam-info-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="1.5" d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title"></h1>
+      <span class="subtitle" id="st-exam-subtitle"></span>
+    </div>
+
+    <!-- 原来是 placeholder，改为交卷按钮 -->
+    <div class="action-btn-group">
+      <button class="st-handin-text-btn" id="st-exam-handin-btn" style="display:none">
+        提前交卷
+      </button>
+    </div>
+  </header>
+  <main class="content" id="study-exam-body">
+  
+  <!-- 答题进行中的卡片包裹层 -->
+  <div id="st-exam-answering-wrapper" style="display: none; flex-direction: column; height: 100%;">
+    <!-- 顶部卡片区 -->
+    <div class="st-exam-card-container">
+      <div class="st-exam-card-inner">
+        
+        <!-- 卡片 Header：左侧题型，右侧进度 -->
+        <div class="st-exam-card-header">
+          <div class="st-q-badge-wrap">
+            <div class="st-q-badge-line"></div>
+            <span id="st-q-badge">单选题</span>
+          </div>
+          <div class="st-exam-progress-text">
+            <span id="st-exam-current-num">1</span><span id="st-exam-total-num">/5</span>
+          </div>
+        </div>
+
+        <!-- 卡片 Content：题目、选项、反馈、操作区 -->
+        <div class="st-exam-question-content">
+          <h2 id="st-q-text" class="st-q-text"></h2>
+          <div id="st-input-area"></div>
+          <div id="st-feedback-area"></div>
+          <div id="st-action-area"></div>
+        </div>
+
+      </div>
+    </div>
+    
+    <!-- 底部固定导航按钮 -->
+    <div class="st-exam-nav-bottom">
+      <button class="st-btn-pill st-btn-pill-secondary" id="exam-prev">上一题</button>
+      <button class="st-btn-pill st-btn-pill-primary" id="exam-next-submit">下一题</button>
+    </div>
+  </div>
+
+  <!-- 考卷完成后的结果区 -->
+  <div id="st-exam-result-wrapper" style="display: none;"></div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     study-exam-result-screen  考试结果详情页
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-exam-result-screen" class="screen">
+  <header class="app-header">
+    <button class="back-btn" id="st-result-back-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title"></h1>
+      <span class="subtitle" id="st-result-subtitle"></span>
+    </div>
+    <div class="placeholder"></div>
+  </header>
+  <main class="content" style="padding:0 16px 40px">
+    <div id="study-exam-result-body"></div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     study-bank-screen  题库详情页
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-bank-screen" class="screen">
+  <header class="app-header" id="st-bk-header-default">
+    <button class="back-btn" data-target="study-test-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title" id="st-bk-title" style="cursor:pointer" onclick="_studyRenameBankPrompt()">题库</h1>
+    </div>
+        <div class="action-btn-group">
+<!-- 右上角：删除题库 & 添加题目 -->
+<button class="action-btn" id="st-bk-delete-btn" title="删除题库"
+  onclick="_studyDeleteBankPrompt()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6M14 11v6"/>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>
+</button>
+    <button class="action-btn" id="st-bk-add-btn" title="添加题目"
+      onclick="studyOpenBankAdd(window._study.state.bank.currentBankId)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24" height="24">
+        <line x1="12" y1="5" x2="12" y2="19" stroke-width="2" stroke-linecap="round"/>
+        <line x1="5" y1="12" x2="19" y2="12" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+    </div>
+  </header>
+  
+  <header class="app-header" id="st-bk-header-select" style="display:none">
+  <button class="action-btn" id="st-bk-cancel-select-btn"
+    style="font-size:14px;font-weight:500;color:var(--white-color);background:var(--primary-color);border-radius:10px;padding:5px 10px;width:auto;height:auto;">
+    取消
+  </button>
+  <div class="title-container">
+    <h1 class="title" id="st-bk-select-title">选择题目</h1>
+  </div>
+  <div class="placeholder"></div>
+</header>
+
+  <main class="content" style="padding-top:0">
+    <div id="st-bk-list"></div>
+  </main>
+  <div id="st-bk-select-bar">
+  <span id="st-bk-select-count" style="font-size:14px;color:var(--text-secondary,#888)">已选 0 题</span>
+  <button id="st-bk-delete-selected-btn" class="st-btn-danger" disabled>删除所选</button>
+</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     study-bank-edit-screen  单题编辑页
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-bank-edit-screen" class="screen">
+  <header class="app-header">
+    <button class="back-btn" data-target="study-bank-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title">编辑题目</h1>
+    </div>
+    <button class="text-btn" id="st-edit-save-btn" onclick="studySaveBankEdit()">保存</button>
+  </header>
+  <main class="content">
+    <div id="st-edit-body" class="form-group">
+
+      <label class="st-edit-label">题目类型</label>
+      <select id="edit-type-select" class="st-input st-select">
+        <option value="qa">主观题</option>
+        <option value="choice">客观题</option>
+      </select>
+
+      <label class="st-edit-label">题目</label>
+      <textarea id="edit-question" class="st-input st-textarea st-edit-textarea" rows="5"
+        placeholder="请输入题目内容…"></textarea>
+
+      <!-- 客观题专区，type=choice时显示 -->
+      <div id="edit-choice-section" style="display:none">
+        <label class="st-edit-label">选项</label>
+        <div class="st-edit-opt-row">
+          <span class="st-edit-opt-letter">A</span>
+          <input id="edit-opt-A" class="st-input st-edit-opt-input" type="text" placeholder="选项 A…">
+        </div>
+        <div class="st-edit-opt-row">
+          <span class="st-edit-opt-letter">B</span>
+          <input id="edit-opt-B" class="st-input st-edit-opt-input" type="text" placeholder="选项 B…">
+        </div>
+        <div class="st-edit-opt-row">
+          <span class="st-edit-opt-letter">C</span>
+          <input id="edit-opt-C" class="st-input st-edit-opt-input" type="text" placeholder="选项 C…">
+        </div>
+        <div class="st-edit-opt-row">
+          <span class="st-edit-opt-letter">D</span>
+          <input id="edit-opt-D" class="st-input st-edit-opt-input" type="text" placeholder="选项 D…">
+        </div>
+        <label class="st-edit-label">正确答案</label>
+        <div class="st-edit-ans-row">
+          <button class="st-edit-ans-btn" data-letter="A">A</button>
+          <button class="st-edit-ans-btn" data-letter="B">B</button>
+          <button class="st-edit-ans-btn" data-letter="C">C</button>
+          <button class="st-edit-ans-btn" data-letter="D">D</button>
+        </div>
+      </div>
+
+      <!-- 主观题专区，type=qa时显示 -->
+      <div id="edit-qa-section">
+        <label class="st-edit-label">答案</label>
+        <textarea id="edit-answer" class="st-input st-textarea st-edit-textarea" rows="5"
+          placeholder="请输入参考答案…"></textarea>
+      </div>
+
+      <label class="st-edit-label">参考解析 <span class="st-edit-opt-tag">选填</span></label>
+      <textarea id="edit-analysis" class="st-input st-textarea st-edit-textarea" rows="4"
+        placeholder="可为空，AI批改时作为参考…"></textarea>
+
+    </div>
+  </main>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     study-bank-add-screen  新增题目（AI生成 / 导入 / 手动）
+     ══════════════════════════════════════════════════════════ -->
+<div id="study-bank-add-screen" class="screen">
+  <header class="app-header">
+    <button class="back-btn" data-target="study-bank-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="title-container">
+      <h1 class="title">添加题目</h1>
+      <span class="subtitle" id="st-add-subtitle"></span>
+    </div>
+    <div class="placeholder"></div>
+  </header>
+  <main class="content">
+    <div id="st-add-body">
+
+      <!-- 添加方式 -->
+      <div class="form-group">
+        <label class="st-edit-label">添加方式</label>
+        <select id="add-mode-select" class="st-input st-select">
+          <option value="ai">AI 生成</option>
+          <option value="import">导入文件</option>
+          <option value="manual">手动新增</option>
+        </select>
+      </div>
+
+      <!-- ── AI生成面板 ── -->
+      <div id="st-panel-ai">
+        <div class="form-group">
+          <label class="st-edit-label">选择书籍</label>
+          <!-- options由JS动态填充 -->
+          <select id="ai-book-select" class="st-input st-select">
+            <option value="">— 请选择 —</option>
+          </select>
+        </div>
+        <!-- 章节/字数范围，依赖异步TOC，必须动态 -->
+        <div id="st-ai-range-wrap"></div>
+        <div class="form-group">
+          <label class="st-edit-label">生成题目数量<span class="st-count-hint">（上限 20 道）</span></label>
+          <div class="st-count-row">
+            <input id="ai-count" class="st-input" type="number" min="1" max="20" value="5">            
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="st-edit-label">题目类型</label>
+          <div class="st-type-tabs" style="margin-top:8px">
+            <button class="st-type-tab st-type-pref active" data-pref="mixed">混合</button>
+            <button class="st-type-tab st-type-pref" data-pref="choice">仅客观</button>
+            <button class="st-type-tab st-type-pref" data-pref="qa">仅主观</button>
+          </div>
+        </div>
+        <!-- pending预览 + 生成按钮，loading状态下切换 -->
+        <div id="st-ai-action-wrap">
+          <button class="btn btn-primary" id="btn-ai-generate" style="margin-top:32px">开始生成</button>
+        </div>
+      </div>
+
+      <!-- ── 导入面板 ── -->
+      <div id="st-panel-import" style="display:none">
+        <div class="st-add-section">
+          <div class="st-import-format-card">
+            <div class="st-import-format-title">支持 CSV 格式</div>
+            <div class="st-import-format-desc">
+              列顺序（第一行为表头，可省略）：<br>
+              <code>类型, 题目, 选项A, 选项B, 选项C, 选项D, 答案, 解析</code>
+            </div>
+            <div class="st-import-format-example">
+              <div><strong>类型：</strong>choice（客观）或 qa（主观）</div>
+              <div><strong>主观题：</strong>选项列留空，答案填完整文本</div>
+              <div><strong>解析：</strong>可留空</div>
+            </div>
+            <button class="st-import-template-btn" id="btn-download-template">下载模板</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="st-edit-label">选择文件</label>
+          <div class="form-group" id="st-import-file-area">
+            <input type="file" id="import-file-input" accept=".csv" style="display:none">
+            <!-- 文件名用span动态更新，按钮结构静态 -->
+            <button class="btn btn-primary" id="btn-pick-file">
+              <span id="st-import-filename">选择 CSV 文件</span>
+            </button>
+          </div>
+        </div>
+        <!-- pending预览 -->
+        <div id="st-import-action-wrap"></div>
+      </div>
+
+      <!-- ── 手动新增面板（与edit-screen同结构，mn-前缀区分ID） ── -->
+      <div id="st-panel-manual" style="display:none">
+        <div class="form-group" id="st-manual-form-wrap">
+
+          <label class="st-edit-label">题目类型</label>
+          <select id="mn-type-select" class="st-input st-select">
+            <option value="qa">主观题</option>
+            <option value="choice">客观题</option>
+          </select>
+
+          <label class="st-edit-label">题目</label>
+          <textarea id="mn-question" class="st-input st-textarea st-edit-textarea" rows="5"
+            placeholder="请输入题目内容…"></textarea>
+
+          <div id="mn-choice-section" style="display:none">
+            <label class="st-edit-label">选项</label>
+            <div class="st-edit-opt-row">
+              <span class="st-edit-opt-letter">A</span>
+              <input id="mn-opt-A" class="st-input st-edit-opt-input" type="text" placeholder="选项 A…">
+            </div>
+            <div class="st-edit-opt-row">
+              <span class="st-edit-opt-letter">B</span>
+              <input id="mn-opt-B" class="st-input st-edit-opt-input" type="text" placeholder="选项 B…">
+            </div>
+            <div class="st-edit-opt-row">
+              <span class="st-edit-opt-letter">C</span>
+              <input id="mn-opt-C" class="st-input st-edit-opt-input" type="text" placeholder="选项 C…">
+            </div>
+            <div class="st-edit-opt-row">
+              <span class="st-edit-opt-letter">D</span>
+              <input id="mn-opt-D" class="st-input st-edit-opt-input" type="text" placeholder="选项 D…">
+            </div>
+            <label class="st-edit-label">正确答案</label>
+            <div class="st-edit-ans-row">
+              <button class="st-edit-ans-btn" data-letter="A">A</button>
+              <button class="st-edit-ans-btn" data-letter="B">B</button>
+              <button class="st-edit-ans-btn" data-letter="C">C</button>
+              <button class="st-edit-ans-btn" data-letter="D">D</button>
+            </div>
+          </div>
+
+          <div id="mn-qa-section">
+            <label class="st-edit-label">答案</label>
+            <textarea id="mn-answer" class="st-input st-textarea st-edit-textarea" rows="5"
+              placeholder="请输入参考答案…"></textarea>
+          </div>
+
+          <label class="st-edit-label">参考解析 <span class="st-edit-opt-tag">选填</span></label>
+          <textarea id="mn-analysis" class="st-input st-textarea st-edit-textarea" rows="4"
+            placeholder="可为空，AI批改时作为参考…"></textarea>
+
+        </div>
+        <button class="btn btn-primary" id="btn-manual-save" style="margin-top:16px">保存题目</button>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     学习模块 — 静态弹窗片段
+     放置位置：现有 HTML 文件中，study-exam-screen 附近即可
+     ══════════════════════════════════════════════════════════ -->
+
+
+<!-- ① 新建 (action-sheet) -->
+<div id="st-create-exam-modal" class="action-sheet-overlay">
+  <div class="action-sheet st-create-exam-sheet">
+
+    <div class="st-create-exam-header">
+      <span class="st-create-exam-title">新建测试任务</span>
+      <button id="st-create-exam-close" class="icon-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6"  y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="st-exam-name-row">
+  <input type="text" id="st-exam-name-input"
+         class="st-bi-input" placeholder="测试任务名称（不填则自动生成）">
+</div>
+
+    <p class="st-create-exam-hint">选择题库（可多选）</p>
+    <!-- JS 动态填充 .st-exam-bank-check-row 行 -->
+    <div class="st-create-exam-body" id="st-exam-bank-checklist"></div>
+
+    <div class="st-exam-draw-row">
+      <span class="st-exam-draw-label">
+        抽题数量
+        <span class="st-exam-draw-max" id="st-exam-draw-max">（请先选择题库）</span>
+      </span>
+      <input type="number" id="st-exam-draw-count"
+             class="st-exam-draw-input" min="1" max="1" value="10" placeholder="题数">
+    </div>
+
+    <div class="bottom-actions" style="padding:12px 16px 24px">
+      <button class="btn btn-primary action-btn-full" id="st-create-exam-confirm">生成测试任务</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ② AI 分析面板 (action-sheet) -->
+<div id="st-analysis-sheet" class="action-sheet-overlay">
+  <div class="action-sheet st-analysis-panel">
+
+    <div class="st-analysis-header">
+  <div class="st-analysis-title-area">
+    <img id="st-analysis-char-avatar" class="st-analysis-char-avatar" src="" alt="" style="display:none">
+    <span class="st-analysis-title" id="st-analysis-title">✨ AI 分析</span>
+  </div>
+  <button id="st-analysis-close" class="icon-btn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6"  y1="6" x2="18" y2="18"/>
+    </svg>
+  </button>
+</div>
+    <!-- JS 动态填充流式文字 / 错误 -->
+    <div id="st-analysis-body" class="st-analysis-body"></div>
+
+  </div>
+</div>
+
+
+<!-- ③ 世界书多选 (modal) —— coread / test / exam-info 三处共用 -->
+<div id="wb-select-modal" class="modal-overlay">
+  <div class="modal-window">
+    <h3>关联世界书</h3>
+    <!-- JS 动态填充 checkbox 行 -->
+    <ul id="wb-select-list" class="list-container wb-select-list"></ul>
+    <button class="btn btn-primary" id="wb-select-confirm" style="margin-top:16px;width:100%">确认绑定</button>
+  </div>
+</div>
+
+<!-- ④ 关联题库 modal (exam-info) -->
+<div id="ei-bank-modal" class="modal-overlay">
+  <div class="modal-window">
+    <h3>关联题库</h3>
+    <ul id="ei-bank-modal-list" class="list-container wb-select-list"></ul>
+    <button class="btn btn-primary" id="ei-bank-modal-confirm"
+            style="margin-top:16px;width:100%">确认选择</button>
+  </div>
+</div>
+
+<!-- ⑤ 答题人 modal (exam-info) -->
+<div id="ei-persona-modal" class="modal-overlay">
+  <div class="modal-window">
+    <h3>选择答题人</h3>
+    <ul id="ei-persona-modal-list" class="list-container wb-select-list"></ul>
+    <button class="btn btn-primary" id="ei-persona-modal-confirm"
+            style="margin-top:16px;width:100%">确认选择</button>
+  </div>
+</div>
+
+<!-- ⑥ 批改角色 modal (exam-info) -->
+<div id="ei-grader-modal" class="modal-overlay">
+  <div class="modal-window">
+    <h3>选择批改角色</h3>
+    <ul id="ei-grader-modal-list" class="list-container wb-select-list"></ul>
+    <button class="btn btn-primary" id="ei-grader-modal-confirm"
+            style="margin-top:16px;width:100%">确认选择</button>
+  </div>
+</div>
+
+<!-- ToDouo主页设置侧边栏 -->
+<div id="study-profile-sidebar" class="settings-sidebar">
+  <div class="header">个性设置</div>
+  <div class="bottom-content-scroll" id="st-sidebar-content">
+
+    <div class="settings-card menu-list-style">
+
+        <!-- 主页昵称 -->
+        <div class="settings-item" id="st-home-name-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">主页昵称</span></div>
+          <span class="item-value st-sidebar-meta-val" id="st-home-name-val"></span>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+
+        <!-- 主页问候语 -->
+        <div class="settings-item" id="st-home-greeting-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">主页问候语</span></div>
+          <span class="item-value st-sidebar-meta-val" id="st-home-greeting-val"></span>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+
+        <!-- 文字 API -->
+        <div class="settings-item">
+          <div class="setting-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">文字api</span></div>
+          <select id="st-api-text-select" class="inline-select"><!-- JS 填充 --></select>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+
+        <!-- 向量 API -->
+        <div class="settings-item">
+          <div class="setting-icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="3"/>
+              <circle cx="12" cy="12" r="9"/>
+              <line x1="12" y1="3" x2="12" y2="6"/>
+              <line x1="12" y1="18" x2="12" y2="21"/>
+              <line x1="3" y1="12" x2="6" y2="12"/>
+              <line x1="18" y1="12" x2="21" y2="12"/>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">向量api</span></div>
+          <select id="st-api-embedding-select" class="inline-select"><!-- JS 填充 --></select>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+
+      </div>
+
+  </div>
+</div>
+<!-- 遮罩：点击空白处收起 -->
+<div id="study-profile-overlay" class="reader-toc-overlay"></div>
+
 
 
  <!-- 番茄钟页面 -->           
@@ -5278,34 +6132,6 @@
             </div>
         </div>
 
-
-<!-- 导入书籍弹窗组件 -->
-<div id="study-import-modal" class="modal-overlay">
-    <div class="modal-window" style="padding: 24px;">
-        <h3 class="st-modal-title" style="margin-bottom: 24px;">导入书籍</h3>
-        <div class="st-form-group">
-            <label class="st-label">书籍名称</label>
-            <input type="text" id="imp-title" class="st-input" placeholder="输入书籍名称…">
-        </div>
-        <div class="st-form-group">
-            <label class="st-label">分类</label>
-            <input type="text" id="imp-cat" class="st-input" placeholder="例如：历史、英语…">
-        </div>
-        <div class="st-form-group">
-            <label class="st-label">选择文件</label>
-            <div class="st-file-row">
-                <button class="st-btn-secondary" id="btn-pick" style="flex:0 0 auto;padding:10px 16px;font-size:13px">选择文件</button>
-                <span class="st-file-name" id="fname">未选择文件</span>
-            </div>
-            <input type="file" id="imp-file" accept=".txt,.docx" style="display:none">
-        </div>
-        <div class="st-btn-row" style="margin-top: 28px;">
-            <button class="st-btn-cancel" id="btn-cancel-import">取消</button>
-            <button class="st-btn-primary" id="btn-ok-import">确定导入</button>
-        </div>
-    </div>
-</div>
-
         <!-- Pomodoro Certificate Modal -->
         <div id="pomodoro-certificate-modal" class="modal-overlay">
             <div class="modal-window" style="text-align: center;">
@@ -5571,11 +6397,14 @@
     <script src="js/study/study_core.js"></script>
     <script src="js/study/pomodoro.js"></script>
     <script src="js/study/study_home.js"></script>
-    <script src="js/study/study_bookshelf.js"></script>
-    <script src="js/study/study_test.js"></script>
     <script src="js/study/study_sidebar.js"></script>    
-    <script src="js/study/study_ai.js"></script>
+    <script src="js/study/study_bookshelf.js"></script>
+    <script src="js/study/study_summary.js"></script>
     <script src="js/study/study_coread.js"></script>
+    <script src="js/study/study_test.js"></script>
+    <script src="js/study/study_ai.js"></script>
+    <script src="js/study/study_bank.js"></script>
+
     <script src="js/study/study_db.js"></script>
     
 <!-- 论坛 -->
