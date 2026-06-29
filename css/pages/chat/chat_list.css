@@ -791,3 +791,106 @@ color: var(--primary-color);
     fill: var(--primary-color); 
 }
 
+/* =====================================
+   侧边栏通用样式 (复用 Study 模块风格)
+   ===================================== */
+#chat-list-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 300px;
+    background-color: var(--dgray-color, #f7f7f7);
+    z-index: 1000;
+    /* 侧边栏定位：右侧抽屉 */
+    left: auto;
+    right: -100%;
+    transition: right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-list-sidebar.active {
+    right: 0;
+}
+
+#chat-list-sidebar .header {
+    background-color: var(--dgray-color, #f7f7f7);
+    border: none;
+    color: var(--white-color, #333);
+    padding: 20px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+#chat-list-sidebar .bottom-content-scroll {
+    flex: 1;
+    border-top-left-radius: 32px;
+    background-color: var(--white-color, #ffffff);
+    padding-top: 20px;
+    overflow-y: auto;
+}
+
+#chat-list-sidebar .settings-card {
+    box-shadow: none;
+    background: transparent;
+    padding: 0 15px;
+}
+
+/* 侧边栏内的每一项菜单 */
+#chat-list-sidebar .settings-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    transition: background 0.2s ease;
+}
+
+#chat-list-sidebar .settings-item:active {
+    background-color: #e9ecef;
+}
+
+#chat-list-sidebar .setting-icon-box {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--primary-color, #007aff);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+}
+
+#chat-list-sidebar .setting-icon-box svg {
+    width: 20px;
+    height: 20px;
+}
+
+#chat-list-sidebar .item-details {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: #333;
+}
+
+#chat-list-sidebar .chevron-icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* 遮罩：点击空白处收起 */
+#chat-list-sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 999;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    display: none; /* 由 JS 控制 block/none */
+}
+
