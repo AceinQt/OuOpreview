@@ -19,7 +19,8 @@ function setupChatListScreen() {
 // --- 替换 chat_list.js 中 setupChatListScreen() 的 Tab 切换及按钮处理片段 ---
 
     const tabs = document.querySelectorAll('.nav-tab-item');
-    const views = document.querySelectorAll('.tab-content-view');
+    // 限定在 chat-list-screen 内，避免误伤 chat-appearance-screen 的 #tab-view-bubbles
+    const views = document.querySelectorAll('#chat-list-screen .tab-content-view');
     const title = document.getElementById('chat-list-title');
     
     // 获取底部弹窗相关元素
