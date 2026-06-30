@@ -466,7 +466,8 @@ window.saveData = async () => {
 
     // 2. 用户档案
     try {
-        if (db.userPersonas && db.userPersonas.length > 0) await dexieDB.userPersonas.bulkPut(JSON.parse(JSON.stringify(db.userPersonas)));
+        // ★ B-4：Dexie bulkPut 内部走结构化克隆序列化，前置深拷贝是重复劳动且占双倍内存
+        if (db.userPersonas && db.userPersonas.length > 0) await dexieDB.userPersonas.bulkPut(db.userPersonas);
         else if (db.userPersonas && db.userPersonas.length === 0) await dexieDB.userPersonas.clear();
     } catch (e) { console.error("❌ 用户档案保存失败:", e); }
 
@@ -477,7 +478,7 @@ window.saveData = async () => {
 
     // 4. RPG 存档
     try {
-        if (db.rpgProfiles && db.rpgProfiles.length > 0) await dexieDB.rpgProfiles.bulkPut(JSON.parse(JSON.stringify(db.rpgProfiles)));
+        if (db.rpgProfiles && db.rpgProfiles.length > 0) await dexieDB.rpgProfiles.bulkPut(db.rpgProfiles);
         else if (db.rpgProfiles && db.rpgProfiles.length === 0) await dexieDB.rpgProfiles.clear();
     } catch (e) { console.error("❌ RPG保存失败:", e); }
 
@@ -496,7 +497,8 @@ window.saveData = async () => {
     try {
         // 将内存中的字典对象转为数组存入数据库
         const peekArray = Object.entries(db.peekData).map(([charId, data]) => ({ charId: charId, data: data }));
-        if(peekArray.length > 0) await dexieDB.peekData.bulkPut(JSON.parse(JSON.stringify(peekArray)));
+        // ★ B-4：peekArray 是新构造的数组，无需再深拷贝
+        if(peekArray.length > 0) await dexieDB.peekData.bulkPut(peekArray);
     } catch (e) { console.error("❌ Peek数据保存失败:", e); }
 
     // 7. 论坛设置
