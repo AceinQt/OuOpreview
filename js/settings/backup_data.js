@@ -337,17 +337,19 @@ async function* createFullBackupStream() {
     }
     yield ']';
 
-    // ── 4. studyBookContents / studyCoreadMessages（从 Dexie 读，可能较大）──
+    // ── 4. studyBookContents / studyCoreadMessages / studyBookSummaries（从 Dexie 读，可能较大）──
     try {
-        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+        const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
             dexieDB.studyBookContents.toArray(),
             dexieDB.studyCoreadMessages.toArray(),
+            dexieDB.studyBookSummaries.toArray(),
         ]);
         yield ',"studyBookContents":' + JSON.stringify(studyBookContents);
         yield ',"studyCoreadMessages":' + JSON.stringify(studyCoreadMessages);
+        yield ',"studyBookSummaries":' + JSON.stringify(studyBookSummaries);
     } catch (e) {
-        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
-        yield ',"studyBookContents":[],"studyCoreadMessages":[]';
+        console.error('❌ [Backup] 读取书籍正文/共读消息/章节总结失败:', e);
+        yield ',"studyBookContents":[],"studyCoreadMessages":[],"studyBookSummaries":[]';
     }
 
     yield '}'; // JSON 对象结束
@@ -399,6 +401,10 @@ if (typeof dexieDB !== 'undefined') {
         dexieDB.studyPageCache.clear(),     // ★ V8：清空分页缓存
         dexieDB.studyQuestions.clear(),     // ★ V8：清空题目
         dexieDB.studyRecords.clear(),       // ★ V8：清空答题记录
+        dexieDB.studyBanks.clear(),         // ★ V9：清空题库
+        dexieDB.studyExams.clear(),         // ★ V10：清空考卷
+        dexieDB.studyExamRecords.clear(),   // ★ V11：清空考试记录
+        dexieDB.studyBookSummaries.clear(), // ★ V12：清空书本章节总结
     ]);
 }
             message = "全量数据已恢复";
@@ -509,6 +515,11 @@ if (typeof dexieDB !== 'undefined') {
         // ★ V8：将备份中的共读消息写入 studyCoreadMessages 独立表
         if (data.studyCoreadMessages && data.studyCoreadMessages.length > 0) {
             await dexieDB.studyCoreadMessages.bulkPut(data.studyCoreadMessages);
+        }
+
+        // ★ V12：将备份中的书本章节总结写入 studyBookSummaries 独立表
+        if (data.studyBookSummaries && data.studyBookSummaries.length > 0) {
+            await dexieDB.studyBookSummaries.bulkPut(data.studyBookSummaries);
         }
 
         // 兜底补全
@@ -790,12 +801,16 @@ async function performOptimizedCloudBackup() {
 
         // ★ 学习模块设置（量小，放 systemData）
         studySettings: db.studySettings,
+        studyBanks:    db.studyBanks    || [],
+        studyExams:    db.studyExams    || [],
+        studyExamRecords: db.studyExamRecords || [],
     };
 
-// ★ V8：书籍正文和共读消息已独立存表，需从 DB 读取
-const [studyBookContents, studyCoreadMessages] = await Promise.all([
+// ★ V8：书籍正文和共读消息已独立存表，需从 DB 读取；★ V12：章节总结同
+const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
     dexieDB.studyBookContents.toArray(),
     dexieDB.studyCoreadMessages.toArray(),
+    dexieDB.studyBookSummaries.toArray(),
 ]);
 
 const chatData = {
@@ -813,6 +828,7 @@ const chatData = {
     studyRecords:        db.studyRecords        || [],
     studyBookContents:   studyBookContents      || [], // ★ V8：书籍正文（量大，按需读取）
     studyCoreadMessages: studyCoreadMessages    || [], // ★ V8：共读消息
+    studyBookSummaries:  studyBookSummaries     || [], // ★ V12：书本章节总结
 };
 
     // ★★★ 修复:增加备份验证 ★★★
