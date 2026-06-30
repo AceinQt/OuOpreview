@@ -114,20 +114,27 @@ const dataStorage = {
             categorizedSizes.settings += stringify(db.homeScreenMode);
             categorizedSizes.settings += stringify(db.fontUrl);
             categorizedSizes.settings += stringify(db.homeStatusBarColor);
+            categorizedSizes.settings += stringify(db.homeNavigationBarColor);
 
 // ★ 8. 学习模块
 categorizedSizes.study += stringify(db.studyBooks);
 categorizedSizes.study += stringify(db.studyQuestions);
 categorizedSizes.study += stringify(db.studyRecords);
-// ★ V8：正文和共读消息在独立表，需从 Dexie 读取
+categorizedSizes.study += stringify(db.studyBanks);
+categorizedSizes.study += stringify(db.studyExams);
+categorizedSizes.study += stringify(db.studyExamRecords);
+categorizedSizes.study += stringify(db.studySettings);
+// ★ V8：正文和共读消息在独立表，需从 Dexie 读取；★ V12：章节总结同
 if (typeof dexieDB !== 'undefined') {
     try {
-        const [allContents, allCoreadMsgs] = await Promise.all([
+        const [allContents, allCoreadMsgs, allBookSummaries] = await Promise.all([
             dexieDB.studyBookContents.toArray(),
             dexieDB.studyCoreadMessages.toArray(),
+            dexieDB.studyBookSummaries.toArray(),
         ]);
         allContents.forEach(r => categorizedSizes.study += stringify(r));
         allCoreadMsgs.forEach(r => categorizedSizes.study += stringify(r));
+        allBookSummaries.forEach(r => categorizedSizes.study += stringify(r));
     } catch(e) {}
 }
 
