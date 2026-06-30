@@ -381,7 +381,8 @@ async function importBackupData(data, isCloudPartialRestore = false) {
                 if (key === 'peekData') {
                     db.peekData = normalizePeek(data.peekData);
                 } else if (data[key] !== undefined) {
-                    db[key] = JSON.parse(JSON.stringify(data[key])); 
+                    // ★ B-2：云端部分恢复分支，data 同样是已解析的新对象，直接赋值
+                    db[key] = data[key];
                 }
             });
         }
@@ -413,7 +414,8 @@ if (typeof dexieDB !== 'undefined') {
                     if (key === 'peekData') {
                         db.peekData = normalizePeek(data[key]);
                     } else {
-                        db[key] = JSON.parse(JSON.stringify(data[key])); // ★ 修复：深拷贝防止引用污染，与其他分支保持一致
+                        // ★ B-1：data 来自 JSON.parse/json()，本身就是新对象树，无需深拷贝
+                        db[key] = data[key];
                     }
                 }
             });
@@ -448,23 +450,45 @@ if (typeof dexieDB !== 'undefined') {
 
         // =================================================================
         // ★★★ 数据导入后：把老备份文件包含的 History 对象抽取为独立的消息行入库 ★★★
+        // ★ B-3：分批 bulkPut + 删除提前 + isMessageMigrated 延后，避免大数组常驻
         // =================================================================
-        let importMsgs =[];
-        if (db.characters) db.characters.forEach(c => { if(c.history) c.history.forEach((m, idx) => {
-            if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`; // ★ 兜底：老备份消息可能没有 id，强制补全防止 bulkPut 报错
-            importMsgs.push({...m, chatId: c.id, chatType: 'private'});
-        })});
-        if (db.groups) db.groups.forEach(g => { if(g.history) g.history.forEach((m, idx) => {
-            if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`; // ★ 同上
-            importMsgs.push({...m, chatId: g.id, chatType: 'group'});
-        })});
-        
-        if (importMsgs.length > 0) {
-            // 如果导入数据包含这些角色，清理掉数据库中旧的消息以免冗余叠加
-            if (data.characters) await dexieDB.messages.where('chatId').anyOf(data.characters.map(c=>c.id)).delete();
-            if (data.groups) await dexieDB.messages.where('chatId').anyOf(data.groups.map(g=>g.id)).delete();
-            
-            await dexieDB.messages.bulkPut(importMsgs);
+        // 1) 先收集所有需要迁移的 chatId（用于一次性删除旧消息，避免边删边插）
+        const migrateChatIds = [];
+        if (db.characters) db.characters.forEach(c => { if (c.history && c.history.length) migrateChatIds.push(c.id); });
+        if (db.groups)     db.groups.forEach(g =>     { if (g.history && g.history.length) migrateChatIds.push(g.id); });
+
+        if (migrateChatIds.length > 0) {
+            // 2) 一次性删除这些 chatId 下的旧消息，必须在 bulkPut 之前
+            await dexieDB.messages.where('chatId').anyOf(migrateChatIds).delete();
+
+            // 3) 边收集边分批 bulkPut，每批 500 条；保留浅拷贝避免污染 history 对象
+            const BATCH_SIZE = 500;
+            let batch = [];
+            const flush = async () => {
+                if (batch.length === 0) return;
+                const toPut = batch;
+                batch = [];
+                await dexieDB.messages.bulkPut(toPut);
+            };
+
+            const collectFromHistory = async (historyArr, chatId, chatType) => {
+                historyArr.forEach((m, idx) => {
+                    if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`;
+                    batch.push({ ...m, chatId, chatType });
+                });
+                // 每个角色处理完，若批次满则 flush，避免 batch 无上限增长
+                while (batch.length >= BATCH_SIZE) {
+                    const toPut = batch.splice(0, BATCH_SIZE);
+                    await dexieDB.messages.bulkPut(toPut);
+                }
+            };
+
+            if (db.characters) for (const c of db.characters) { if (c.history && c.history.length) await collectFromHistory(c.history, c.id, 'private'); }
+            if (db.groups)     for (const g of db.groups)     { if (g.history && g.history.length) await collectFromHistory(g.history, g.id, 'group'); }
+
+            // 4) flush 剩余不足一批的尾巴
+            await flush();
+            // 5) 所有批次入库完成后才标记迁移完成
             window.isMessageMigrated = true; // ★ 修复：导入后标记迁移完成，防止 saveData 把 history 写回 IndexedDB 导致下次加载重复触发升级弹窗
         }
 
