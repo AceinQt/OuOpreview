@@ -180,6 +180,9 @@ const pageActions = {
     'storage-analysis-screen': window.refreshStorageScreen,
     'chat-list-screen': resetChatListTabs ,
     'chat-appearance-screen': () => {
+        // 防御：清除 chat-list-screen Tab 切换可能遗留的 inline display
+        const tabBubbles = document.getElementById('tab-view-bubbles');
+        if (tabBubbles) tabBubbles.style.display = '';
         if (typeof window.renderGlobalBubblePresets === 'function') {
             window.renderGlobalBubblePresets();
         }
