@@ -178,8 +178,9 @@ async function handleImport(event) {
     if (!file) return;
 
     if (await AppUI.confirm('此操作将覆盖当前数据。确定要导入吗?', "系统提示", "确认", "取消")) {
+        // ★ 改用持续的 showLoadingToast，覆盖整个导入过程（解析+入库+保存），避免短暂提示后无反馈
+        const hideLoading = (typeof showLoadingToast === 'function') ? showLoadingToast('正在解析文件...') : null;
         try {
-            showToast('正在解析文件...');
             const decompressionStream = new DecompressionStream('gzip');
             const decompressedStream = file.stream().pipeThrough(decompressionStream);
             const jsonString = await new Response(decompressedStream).text();
@@ -193,12 +194,14 @@ async function handleImport(event) {
                 usedLazy = true;
             } catch (lazyErr) {
                 console.warn('⚠️ 惰性切分导入失败，回退到原路径:', lazyErr.message);
-                showToast('正在回退到标准解析...');
                 // 清掉惰性路径可能已写入的半成品数据（清表重置，交给 importBackupData 重新走全量清表+导入）
                 let data = JSON.parse(jsonString);
                 importResult = await importBackupData(data);
             }
             console.log('[Import] 使用路径:', usedLazy ? 'lazy' : 'fallback');
+
+            // 导入完成，关闭持续提示
+            if (hideLoading) hideLoading();
 
             if (importResult.success) {
                 showToast(`导入成功!${importResult.message}`);
@@ -208,6 +211,7 @@ async function handleImport(event) {
             }
         } catch (error) {
             console.error("Import error:", error);
+            if (hideLoading) hideLoading(); // 异常时也要关闭
             await AppUI.alert(`文件解析错误: ${error.message}`);
         } finally {
             event.target.value = null; 
