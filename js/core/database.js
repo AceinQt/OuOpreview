@@ -478,6 +478,7 @@ window.saveData = async () => {
 
     // 4. RPG 存档
     try {
+        // ★ B-4：同上，去掉前置深拷贝
         if (db.rpgProfiles && db.rpgProfiles.length > 0) await dexieDB.rpgProfiles.bulkPut(db.rpgProfiles);
         else if (db.rpgProfiles && db.rpgProfiles.length === 0) await dexieDB.rpgProfiles.clear();
     } catch (e) { console.error("❌ RPG保存失败:", e); }
