@@ -184,6 +184,15 @@ dexieDB.version(12).stores({
     console.log("Upgrading database to version 12 (studyBookSummaries table added)...");
 });
 
+// ★★★ Version 13（懒加载：messages 加复合索引 [chatId+timestamp]）★★★
+// 仅新增一个复合索引，不修改任何消息数据。Dexie 升级时会自动扫一遍现有数据建索引。
+// 用途：让 loadRecentMessages 能"按时间直接取最近 N 条"，而不必把全表读进内存。
+dexieDB.version(13).stores({
+    messages: '&id, chatId, timestamp, [chatId+timestamp]',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 13 (messages compound index [chatId+timestamp] added)...");
+});
+
 window.loadData = async () => {
     try {
         console.log("📦 正在加载数据...");
@@ -202,7 +211,7 @@ window.loadData = async () => {
             dexieDB.characters.toArray(), dexieDB.groups.toArray(), dexieDB.worldBooks.toArray(),
             dexieDB.myStickers.toArray(), dexieDB.globalSettings.toArray(), dexieDB.userPersonas.toArray(),
             dexieDB.forumPosts.toArray(), dexieDB.rpgProfiles.toArray(), dexieDB.forumMetadata.toArray(),
-            dexieDB.peekData.toArray(), dexieDB.messages.toArray(),
+            dexieDB.peekData.toArray(), (window.LAZY_LOAD ? null : dexieDB.messages.toArray()),
             dexieDB.studyBooks.toArray(), dexieDB.studyQuestions.toArray(), dexieDB.studyRecords.toArray(), dexieDB.studyBanks.toArray(), dexieDB.studyExams.toArray(), dexieDB.studyExamRecords.toArray(), 
             dexieDB.memories.toArray(),
             dexieDB.memoryChunks.toArray(),
@@ -223,10 +232,20 @@ window.loadData = async () => {
         }
 
         const messagesByChatId = {};
-        newMessages.forEach(m => {
-            if (!messagesByChatId[m.chatId]) messagesByChatId[m.chatId] = [];
-            messagesByChatId[m.chatId].push(m);
-        });
+        if (window.LAZY_LOAD) {
+            // ★ Step 2 懒加载：每个 chat 只取最近 LAZY_LOAD_LIMIT 条（按时间，loadRecentMessages 内已用铁律排序）
+            //   只读 limit 条进内存，不全量 toArray —— 这是省内存的核心。
+            const allIds = [...characters.map(c => c.id), ...groups.map(g => g.id)];
+            await Promise.all(allIds.map(async id => {
+                messagesByChatId[id] = await window.loadRecentMessages(id, window.LAZY_LOAD_LIMIT);
+            }));
+            console.log(`📦 [懒加载] 已为 ${allIds.length} 个会话各载入最近 ${window.LAZY_LOAD_LIMIT} 条消息（全量载入已跳过）`);
+        } else {
+            newMessages.forEach(m => {
+                if (!messagesByChatId[m.chatId]) messagesByChatId[m.chatId] = [];
+                messagesByChatId[m.chatId].push(m);
+            });
+        }
 
         // =========================================================
         // 将消息挂载回内存对象，对老代码的逻辑保持完全隐形
