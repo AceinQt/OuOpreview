@@ -228,17 +228,21 @@ async function createFullBackupData() {
     backupData._exportTimestamp = Date.now();
 
     // ★ V8：书籍正文和共读消息不在 db 内存中，需单独从 Dexie 读取
+    // ★ V12：studyBookSummaries 同样独立存表，需一并读取
     try {
-        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+        const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
             dexieDB.studyBookContents.toArray(),
             dexieDB.studyCoreadMessages.toArray(),
+            dexieDB.studyBookSummaries.toArray(),
         ]);
         backupData.studyBookContents   = studyBookContents   || [];
         backupData.studyCoreadMessages = studyCoreadMessages || [];
+        backupData.studyBookSummaries  = studyBookSummaries  || [];
     } catch (e) {
-        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
+        console.error('❌ [Backup] 读取书籍正文/共读消息/书本总结失败:', e);
         backupData.studyBookContents   = [];
         backupData.studyCoreadMessages = [];
+        backupData.studyBookSummaries  = [];
     }
 
     return backupData;
@@ -372,17 +376,19 @@ async function* createFullBackupStream() {
     }
     yield ']';
 
-    // ── 4. studyBookContents / studyCoreadMessages（从 Dexie 读，可能较大）──
+    // ── 4. studyBookContents / studyCoreadMessages / studyBookSummaries（从 Dexie 读，可能较大）──
     try {
-        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+        const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
             dexieDB.studyBookContents.toArray(),
             dexieDB.studyCoreadMessages.toArray(),
+            dexieDB.studyBookSummaries.toArray(),
         ]);
         yield ',"studyBookContents":' + JSON.stringify(studyBookContents);
         yield ',"studyCoreadMessages":' + JSON.stringify(studyCoreadMessages);
+        yield ',"studyBookSummaries":' + JSON.stringify(studyBookSummaries);
     } catch (e) {
-        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
-        yield ',"studyBookContents":[],"studyCoreadMessages":[]';
+        console.error('❌ [Backup] 读取书籍正文/共读消息/书本总结失败:', e);
+        yield ',"studyBookContents":[],"studyCoreadMessages":[],"studyBookSummaries":[]';
     }
 
     yield '}'; // JSON 对象结束
@@ -546,6 +552,7 @@ async function lazyImportBackupData(jsonString) {
     }
 
     // 3) 清空所有表（与原全量分支一致）
+    // ★ V9~V12：补清 studyBanks/studyExams/studyExamRecords/studyBookSummaries，避免恢复后旧数据残留
     if (typeof dexieDB !== 'undefined') {
         await Promise.all([
             dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
@@ -561,6 +568,10 @@ async function lazyImportBackupData(jsonString) {
             dexieDB.studyPageCache.clear(),
             dexieDB.studyQuestions.clear(),
             dexieDB.studyRecords.clear(),
+            dexieDB.studyBanks.clear(),
+            dexieDB.studyExams.clear(),
+            dexieDB.studyExamRecords.clear(),
+            dexieDB.studyBookSummaries.clear(),
         ]);
     }
 
@@ -714,6 +725,12 @@ async function lazyImportBackupData(jsonString) {
         await batchBulkPut(dexieDB.studyBookSummaries, studyBatch);
     }
 
+    // 11.1) ★ V9~V11：studyBanks/studyExams/studyExamRecords 虽在 db 内存（已被 smallDataKeys 解析进 db），
+    //        但 Dexie 表不会自动写入，需显式 bulkPut，否则 loadData() 会用 Dexie 旧数据覆盖 db，导致恢复后丢失
+    if (Array.isArray(db.studyBanks) && db.studyBanks.length)       await batchBulkPut(dexieDB.studyBanks,       db.studyBanks);
+    if (Array.isArray(db.studyExams) && db.studyExams.length)       await batchBulkPut(dexieDB.studyExams,       db.studyExams);
+    if (Array.isArray(db.studyExamRecords) && db.studyExamRecords.length) await batchBulkPut(dexieDB.studyExamRecords, db.studyExamRecords);
+
     // 12) 兜底补全（与原逻辑一致）
     if (!db.pomodoroTasks) db.pomodoroTasks = [];
     if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
@@ -780,6 +797,10 @@ if (typeof dexieDB !== 'undefined') {
         dexieDB.studyPageCache.clear(),     // ★ V8：清空分页缓存
         dexieDB.studyQuestions.clear(),     // ★ V8：清空题目
         dexieDB.studyRecords.clear(),       // ★ V8：清空答题记录
+        dexieDB.studyBanks.clear(),         // ★ V9：清空题库
+        dexieDB.studyExams.clear(),         // ★ V10：清空考卷
+        dexieDB.studyExamRecords.clear(),   // ★ V11：清空考试记录
+        dexieDB.studyBookSummaries.clear(), // ★ V12：清空书本总结
     ]);
 }
             message = "全量数据已恢复";
@@ -914,6 +935,17 @@ if (typeof dexieDB !== 'undefined') {
         if (data.studyCoreadMessages && data.studyCoreadMessages.length > 0) {
             await dexieDB.studyCoreadMessages.bulkPut(data.studyCoreadMessages);
         }
+
+        // ★ V12：将备份中的书本章节总结写入 studyBookSummaries 独立表
+        if (data.studyBookSummaries && data.studyBookSummaries.length > 0) {
+            await dexieDB.studyBookSummaries.bulkPut(data.studyBookSummaries);
+        }
+
+        // ★ V9~V11：studyBanks/studyExams/studyExamRecords 虽在 db 内存（已被 Object.keys 遍历赋值进 db），
+        //   但 Dexie 表不会自动写入，需显式 bulkPut，否则 loadData() 会用 Dexie 旧数据覆盖 db，导致恢复后丢失
+        if (Array.isArray(db.studyBanks) && db.studyBanks.length)             await dexieDB.studyBanks.bulkPut(db.studyBanks);
+        if (Array.isArray(db.studyExams) && db.studyExams.length)             await dexieDB.studyExams.bulkPut(db.studyExams);
+        if (Array.isArray(db.studyExamRecords) && db.studyExamRecords.length) await dexieDB.studyExamRecords.bulkPut(db.studyExamRecords);
 
         // 兜底补全
         if (!db.pomodoroTasks) db.pomodoroTasks =[];
@@ -1195,12 +1227,18 @@ async function performOptimizedCloudBackup() {
 
         // ★ 学习模块设置（量小，放 systemData）
         studySettings: db.studySettings,
+        // ★ V9~V11：题库/考卷/考试记录量小，随 systemData 一起备份
+        studyBanks:       db.studyBanks       || [],
+        studyExams:       db.studyExams       || [],
+        studyExamRecords: db.studyExamRecords || [],
     };
 
 // ★ V8：书籍正文和共读消息已独立存表，需从 DB 读取
-const [studyBookContents, studyCoreadMessages] = await Promise.all([
+// ★ V12：studyBookSummaries 同样独立存表，一并读取
+const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
     dexieDB.studyBookContents.toArray(),
     dexieDB.studyCoreadMessages.toArray(),
+    dexieDB.studyBookSummaries.toArray(),
 ]);
 
 const chatData = {
@@ -1218,6 +1256,7 @@ const chatData = {
     studyRecords:        db.studyRecords        || [],
     studyBookContents:   studyBookContents      || [], // ★ V8：书籍正文（量大，按需读取）
     studyCoreadMessages: studyCoreadMessages    || [], // ★ V8：共读消息
+    studyBookSummaries:  studyBookSummaries     || [], // ★ V12：书本章节总结
 };
 
     // ★★★ 修复:增加备份验证 ★★★
