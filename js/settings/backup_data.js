@@ -1,0 +1,1336 @@
+// --- START OF FILE js/settings/backup_data.js ---
+
+// 全局变量防止重复点击
+window.isBackupLoading = false;
+
+// --- 1. 核心工具:压缩与解压 ---
+
+/**
+ * 将数据对象压缩为 Gzip 格式的 Base64 字符串 (用于上传)
+ */
+async function compressDataToEeBase64(dataObj) {
+    const jsonString = JSON.stringify(dataObj);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+    const compressedResponse = new Response(stream);
+    const compressedBlob = await compressedResponse.blob();
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64data = reader.result.split(',')[1];
+            resolve(base64data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(compressedBlob);
+    });
+}
+
+/**
+ * 从 GitHub 下载并解压 .ee 文件 (用于恢复)
+ */
+async function fetchAndDecompressGitHubFile(config, fileName) {
+    const fileInfo = await GitHubService.getFileInfo(config, fileName);
+    if (!fileInfo || !fileInfo.download_url) {
+        throw new Error(`找不到文件: ${fileName}`);
+    }
+    const response = await fetch(fileInfo.download_url);
+    if (!response.ok) throw new Error(`下载失败 ${fileName}: ${response.status}`);
+    
+    const blob = await response.blob();
+    const ds = new DecompressionStream('gzip');
+    const stream = blob.stream().pipeThrough(ds);
+    const jsonResponse = new Response(stream);
+
+    return await jsonResponse.json();
+}
+
+/**
+ * 从 GitHub 下载并解压 .ee 文件，返回解压后的字符串（不 parse）。
+ * 工单 C：供惰性切分导入路径使用，避免 jsonResponse.json() 一次性 parse 大文件导致 OOM。
+ */
+async function fetchAndDecompressGitHubFileAsString(config, fileName) {
+    const fileInfo = await GitHubService.getFileInfo(config, fileName);
+    if (!fileInfo || !fileInfo.download_url) {
+        throw new Error(`找不到文件: ${fileName}`);
+    }
+    const response = await fetch(fileInfo.download_url);
+    if (!response.ok) throw new Error(`下载失败 ${fileName}: ${response.status}`);
+
+    const blob = await response.blob();
+    const ds = new DecompressionStream('gzip');
+    const stream = blob.stream().pipeThrough(ds);
+    return await new Response(stream).text();
+}
+
+// --- 2. 初始化按钮事件 ---
+window.setupBackupButtons = function() {
+    const backupBtn = document.getElementById('btn-backup-full');
+    const importInput = document.getElementById('import-data-input');
+
+    if (backupBtn) backupBtn.onclick = handleFullBackup; 
+    
+    if (importInput) {
+        const newImportInput = importInput.cloneNode(true);
+        importInput.parentNode.replaceChild(newImportInput, importInput);
+        newImportInput.addEventListener('change', handleImport);
+    }
+};
+
+// --- 3. 本地备份/导出逻辑 ---
+async function handleFullBackup(e) {
+    if (e) e.preventDefault();
+    if (window.isBackupLoading) return;
+
+    window.isBackupLoading = true;
+    const btn = document.getElementById('btn-backup-full');
+    const originalText = btn ? btn.innerHTML : '备份全部数据';
+    if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 打包中...'; btn.style.opacity = '0.7'; }
+
+    try {
+        showToast('正在准备导出全部数据...');
+        await new Promise(r => setTimeout(r, 50));
+        // ★ 改为流式导出，不再一次性创建大对象
+        await downloadDataStream(createFullBackupStream(), '全量备份');
+        showToast('备份导出成功');
+    } catch (err) {
+        console.error(err);
+        showToast(`导出失败: ${err.message}`);
+    } finally {
+        window.isBackupLoading = false;
+        if (btn) { btn.innerHTML = originalText; btn.style.opacity = '1'; }
+    }
+}
+
+// ★★★ 修复:单项导出逻辑 (补充缺失字段) ★★★
+window.exportPartialData = async function(categoryKey) {
+    if (window.isBackupLoading) return;
+    window.isBackupLoading = true;
+
+    try {
+        showToast(`正在导出: ${categoryKey}...`);
+        const partialData = {
+            _exportVersion: '4.0',
+            _exportTimestamp: Date.now(),
+            _partialType: categoryKey 
+        };
+
+        if (!window.db) throw new Error("数据库未就绪");
+
+        switch (categoryKey) {
+            case 'worldBooks': partialData.worldBooks = db.worldBooks || []; break;
+            case 'rpg': partialData.rpgProfiles = db.rpgProfiles || []; break;
+            case 'forum':
+                partialData.forumPosts = db.forumPosts || [];
+                partialData.forumBindings = db.forumBindings || {};
+                partialData.forumUserIdentity = db.forumUserIdentity || {}; 
+                partialData.watchingPostIds = db.watchingPostIds || [];
+                partialData.favoritePostIds = db.favoritePostIds || [];
+                break;
+            case 'personalization':
+                partialData.myStickers = db.myStickers || [];
+                partialData.userPersonas = db.userPersonas || [];
+                partialData.wallpaper = db.wallpaper;
+                partialData.customIcons = db.customIcons;
+                partialData.bubbleCssPresets = db.bubbleCssPresets;
+                partialData.globalCss = db.globalCss;
+                partialData.globalCssPresets = db.globalCssPresets;
+                partialData.homeSignature = db.homeSignature;
+                partialData.insWidgetSettings = db.insWidgetSettings;
+                partialData.homeWidgetSettings = db.homeWidgetSettings;
+                break;
+            case 'settings':
+                partialData.apiSettings = db.apiSettings;
+                partialData.apiPresets = db.apiPresets;
+                partialData.pomodoroSettings = db.pomodoroSettings;
+                partialData.pomodoroTasks = db.pomodoroTasks;
+                partialData.homeScreenMode = db.homeScreenMode;
+                partialData.fontUrl = db.fontUrl;
+                partialData.homeStatusBarColor = db.homeStatusBarColor;
+                partialData.homeNavigationBarColor = db.homeNavigationBarColor;
+    partialData.enableTopSafeArea = db.enableTopSafeArea;
+    partialData.enableBottomSafeArea = db.enableBottomSafeArea;
+    partialData.enableScreenAdaptation = db.enableScreenAdaptation;
+    partialData.enableSwipeBack = db.enableSwipeBack;
+                break;
+            case 'characters':
+                partialData.characters = db.characters || [];
+                partialData.groups = db.groups || [];
+                partialData.peekData = db.peekData || {};
+                break;
+            default: throw new Error("未知分类");
+        }
+
+        await downloadData(partialData, categoryKey);
+        showToast(`${categoryKey} 导出完成`);
+
+    } catch (err) {
+        console.error(err);
+        showToast(`导出错误: ${err.message}`);
+    } finally {
+        window.isBackupLoading = false;
+    }
+};
+
+// --- 4. 导入逻辑 (文件选择) ---
+async function handleImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (await AppUI.confirm('此操作将覆盖当前数据。确定要导入吗?', "系统提示", "确认", "取消")) {
+        // ★ 改用持续的 showLoadingToast，覆盖整个导入过程（解析+入库+保存），避免短暂提示后无反馈
+        const hideLoading = (typeof showLoadingToast === 'function') ? showLoadingToast('正在解析文件...') : null;
+        try {
+            const decompressionStream = new DecompressionStream('gzip');
+            const decompressedStream = file.stream().pipeThrough(decompressionStream);
+            const jsonString = await new Response(decompressedStream).text();
+
+            // ★ 工单 C：优先走惰性切分导入（避免一次性 JSON.parse 73MB 造出 200MB+ 对象树导致 OOM）
+            // 失败则 fallback 到原 JSON.parse + importBackupData 路径
+            let importResult;
+            let usedLazy = false;
+            try {
+                importResult = await lazyImportBackupData(jsonString);
+                usedLazy = true;
+            } catch (lazyErr) {
+                console.warn('⚠️ 惰性切分导入失败，回退到原路径:', lazyErr.message);
+                // 清掉惰性路径可能已写入的半成品数据（清表重置，交给 importBackupData 重新走全量清表+导入）
+                let data = JSON.parse(jsonString);
+                importResult = await importBackupData(data);
+            }
+            console.log('[Import] 使用路径:', usedLazy ? 'lazy' : 'fallback');
+
+            // 导入完成，关闭持续提示
+            if (hideLoading) hideLoading();
+
+            if (importResult.success) {
+                showToast(`导入成功!${importResult.message}`);
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                await AppUI.alert(`导入失败: ${importResult.error}`);
+            }
+        } catch (error) {
+            console.error("Import error:", error);
+            if (hideLoading) hideLoading(); // 异常时也要关闭
+            await AppUI.alert(`文件解析错误: ${error.message}`);
+        } finally {
+            event.target.value = null; 
+        }
+    } else {
+        event.target.value = null;
+    }
+}
+
+// --- 5. 核心数据构造函数 (全量备份) ---
+async function createFullBackupData() {
+    const backupData = JSON.parse(JSON.stringify(db));
+    backupData._exportVersion = '4.0';
+    backupData._exportTimestamp = Date.now();
+
+    // ★ V8：书籍正文和共读消息不在 db 内存中，需单独从 Dexie 读取
+    try {
+        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+            dexieDB.studyBookContents.toArray(),
+            dexieDB.studyCoreadMessages.toArray(),
+        ]);
+        backupData.studyBookContents   = studyBookContents   || [];
+        backupData.studyCoreadMessages = studyCoreadMessages || [];
+    } catch (e) {
+        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
+        backupData.studyBookContents   = [];
+        backupData.studyCoreadMessages = [];
+    }
+
+    return backupData;
+}
+
+// --- 6. 下载辅助函数（保留给小数据用） ---
+async function downloadData(dataObj, filenameSuffix) {
+    const jsonString = JSON.stringify(dataObj);
+    const dataBlob = new Blob([jsonString]);
+    const compressionStream = new CompressionStream('gzip');
+    const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
+    const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
+
+    const url = URL.createObjectURL(compressedBlob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    a.href = url;
+    a.download = `QChat_${filenameSuffix}_${date}_${time}.ee`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ★ 新增：流式下载（用于全量备份，大数据专用）
+async function downloadDataStream(jsonChunkGenerator, filenameSuffix) {
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+
+    // 后台把 generator 的 JSON 片段逐块写入管道
+    const writePromise = (async () => {
+        try {
+            for await (const chunk of jsonChunkGenerator) {
+                await writer.write(encoder.encode(chunk));
+            }
+        } catch (e) {
+            await writer.abort(e);
+            throw e;
+        } finally {
+            await writer.close().catch(() => {});
+        }
+    })();
+
+    // 同时把管道接上 gzip，收集成 Blob
+    const gzipStream = readable.pipeThrough(new CompressionStream('gzip'));
+    const [compressedBlob] = await Promise.all([
+    new Response(gzipStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob(),
+    writePromise,
+]);
+
+    const url = URL.createObjectURL(compressedBlob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    a.href = url;
+    a.download = `QChat_${filenameSuffix}_${date}_${time}.ee`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ★ 新增：全量备份 JSON 流生成器（替换 createFullBackupData）
+// 核心：characters/groups 逐个序列化，任意时刻内存只持有一个角色的数据
+async function* createFullBackupStream() {
+    // ── 1. 所有小数据（设置、世界书、论坛等）一次性序列化 ──
+    const smallData = {
+        _exportVersion: '4.0',
+        _exportTimestamp: Date.now(),
+        worldBooks:             db.worldBooks             || [],
+        rpgProfiles:            db.rpgProfiles            || [],
+        forumPosts:             db.forumPosts             || [],
+        forumBindings:          db.forumBindings          || {},
+        forumUserIdentity:      db.forumUserIdentity      || {},
+        watchingPostIds:        db.watchingPostIds         || [],
+        favoritePostIds:        db.favoritePostIds         || [],
+        myStickers:             db.myStickers              || [],
+        userPersonas:           db.userPersonas            || [],
+        wallpaper:              db.wallpaper,
+        customIcons:            db.customIcons,
+        bubbleCssPresets:       db.bubbleCssPresets,
+        globalCss:              db.globalCss,
+        globalCssPresets:       db.globalCssPresets,
+        homeSignature:          db.homeSignature,
+        insWidgetSettings:      db.insWidgetSettings,
+        homeWidgetSettings:     db.homeWidgetSettings,
+        apiSettings:            db.apiSettings,
+        apiPresets:             db.apiPresets,
+        pomodoroSettings:       db.pomodoroSettings,
+        pomodoroTasks:          db.pomodoroTasks           || [],
+        homeScreenMode:         db.homeScreenMode,
+        fontUrl:                db.fontUrl,
+        homeStatusBarColor:     db.homeStatusBarColor,
+        homeNavigationBarColor: db.homeNavigationBarColor,
+        enableTopSafeArea:      db.enableTopSafeArea,
+        enableBottomSafeArea:   db.enableBottomSafeArea,
+        enableScreenAdaptation: db.enableScreenAdaptation,
+        enableSwipeBack:        db.enableSwipeBack,
+        studySettings:          db.studySettings,
+        studyBanks:             db.studyBanks              || [],
+        studyExams:             db.studyExams              || [],
+        studyExamRecords:       db.studyExamRecords        || [],
+        studyBooks:             db.studyBooks              || [],
+        studyQuestions:         db.studyQuestions          || [],
+        studyRecords:           db.studyRecords            || [],
+        peekData:               db.peekData                || {},
+    };
+    // 去掉末尾的 }，后面继续拼 characters/groups
+    yield JSON.stringify(smallData).slice(0, -1);
+
+    // ── 2. characters：逐个序列化，每次只有一个角色在内存里 ──
+    const chars = db.characters || [];
+    yield ',"characters":[';
+    for (let i = 0; i < chars.length; i++) {
+        yield JSON.stringify(chars[i]);
+        if (i < chars.length - 1) yield ',';
+        // 每处理5个角色让出控制权，给 GC 和 UI 喘息
+        if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
+    }
+    yield ']';
+
+    // ── 3. groups：同上 ──
+    const groups = db.groups || [];
+    yield ',"groups":[';
+    for (let i = 0; i < groups.length; i++) {
+        yield JSON.stringify(groups[i]);
+        if (i < groups.length - 1) yield ',';
+        if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
+    }
+    yield ']';
+
+    // ── 4. studyBookContents / studyCoreadMessages（从 Dexie 读，可能较大）──
+    try {
+        const [studyBookContents, studyCoreadMessages] = await Promise.all([
+            dexieDB.studyBookContents.toArray(),
+            dexieDB.studyCoreadMessages.toArray(),
+        ]);
+        yield ',"studyBookContents":' + JSON.stringify(studyBookContents);
+        yield ',"studyCoreadMessages":' + JSON.stringify(studyCoreadMessages);
+    } catch (e) {
+        console.error('❌ [Backup] 读取书籍正文/共读消息失败:', e);
+        yield ',"studyBookContents":[],"studyCoreadMessages":[]';
+    }
+
+    yield '}'; // JSON 对象结束
+}
+
+// --- 7. 数据合并/恢复核心逻辑 ---
+
+// =========================================================
+// --- 6.8 惰性切分解析器（工单 C）---
+// 不一次性 JSON.parse 整个 73MB 字符串（会造出 200MB+ 对象树导致手机 Chrome OOM），
+// 而是先扫描出顶层各 key 的 value 边界（不 parse），大数组字段逐元素 parse 入库释放，
+// 小数据字段整体 parse。峰值内存 = 字符串本身 + 当前一个角色对象。
+// 已通过 14 项边界用例自测（含特殊字符/嵌套/数字字面量/字段乱序），见 lazy_parse_test.js
+// =========================================================
+
+// 大数组字段：这些 key 的 value 是数组且元素可能很大，需逐元素 parse 入库
+const LAZY_ARRAY_KEYS = new Set(['characters', 'groups', 'studyBookContents', 'studyCoreadMessages', 'studyBookSummaries']);
+
+// 跳过空白，返回第一个非空白字符位置
+function _lazySkipWs(str, i) {
+    const len = str.length;
+    while (i < len && (str[i] === ' ' || str[i] === '\t' || str[i] === '\n' || str[i] === '\r')) i++;
+    return i;
+}
+
+// 给定 value 起始位置（指向第一个非空白字符），返回 value 结束位置（不含）
+// 支持：对象/数组/字符串/数字/true/false/null，正确处理字符串内转义和括号配平
+function _lazyFindValueEnd(str, start) {
+    let i = start;
+    const len = str.length;
+    if (i >= len) throw new Error('findValueEnd: 流结尾');
+    const ch = str[i];
+    if (ch === '"') {
+        i++;
+        let escape = false;
+        while (i < len) {
+            const c = str[i];
+            if (escape) { escape = false; i++; continue; }
+            if (c === '\\') { escape = true; i++; continue; }
+            if (c === '"') return i + 1;
+            i++;
+        }
+        throw new Error('findValueEnd: 字符串未闭合');
+    }
+    if (ch === '{' || ch === '[') {
+        let depth = 1, inStr = false, esc = false;
+        i++;
+        while (i < len) {
+            const c = str[i];
+            if (inStr) {
+                if (esc) { esc = false; i++; continue; }
+                if (c === '\\') { esc = true; i++; continue; }
+                if (c === '"') { inStr = false; i++; continue; }
+                i++; continue;
+            }
+            if (c === '"') { inStr = true; i++; continue; }
+            if (c === '{' || c === '[') { depth++; i++; continue; }
+            if (c === '}' || c === ']') { depth--; i++; if (depth === 0) return i; continue; }
+            i++;
+        }
+        throw new Error('findValueEnd: 括号未配平');
+    }
+    // 字面量：数字/true/false/null，遇 , } ] 空白结束
+    while (i < len) {
+        const c = str[i];
+        if (c === ',' || c === '}' || c === ']' || c === ' ' || c === '\t' || c === '\n' || c === '\r') return i;
+        i++;
+    }
+    return i;
+}
+
+// 读取字符串字面量（从 " 开始），返回 [字符串值, 结束位置]
+function _lazyReadStringLiteral(str, start) {
+    if (str[start] !== '"') throw new Error('readStringLiteral: 期望 "');
+    let i = start + 1;
+    const len = str.length;
+    let result = '';
+    let escape = false;
+    while (i < len) {
+        const c = str[i];
+        if (escape) {
+            if (c === '"') result += '"';
+            else if (c === '\\') result += '\\';
+            else if (c === '/') result += '/';
+            else if (c === 'b') result += '\b';
+            else if (c === 'f') result += '\f';
+            else if (c === 'n') result += '\n';
+            else if (c === 'r') result += '\r';
+            else if (c === 't') result += '\t';
+            else if (c === 'u') { result += String.fromCharCode(parseInt(str.slice(i + 1, i + 5), 16)); i += 4; }
+            else result += c;
+            escape = false; i++; continue;
+        }
+        if (c === '\\') { escape = true; i++; continue; }
+        if (c === '"') return [result, i + 1];
+        result += c; i++;
+    }
+    throw new Error('readStringLiteral: 未闭合');
+}
+
+// 解析顶层对象各 key 的 value 起止位置（不 parse，只定位边界）
+// 返回 { keyName: { vStart, vEnd }, ... }  vStart 指向 value 第一个非空白字符，vEnd 为结束位置（不含）
+function _lazyParseTopLevelKeys(str) {
+    const result = {};
+    let i = _lazySkipWs(str, 0);
+    const len = str.length;
+    if (str[i] !== '{') throw new Error('parseTopLevelKeys: 期望 {');
+    i++;
+    while (i < len) {
+        i = _lazySkipWs(str, i);
+        if (i >= len) throw new Error('parseTopLevelKeys: 流结尾');
+        if (str[i] === '}') return result;
+        if (str[i] === ',') { i++; continue; }
+        if (str[i] !== '"') throw new Error('parseTopLevelKeys: 期望 key " at ' + i);
+        const [key, afterKey] = _lazyReadStringLiteral(str, i);
+        i = _lazySkipWs(str, afterKey);
+        if (str[i] !== ':') throw new Error('parseTopLevelKeys: 期望 : at ' + i);
+        i++;
+        i = _lazySkipWs(str, i);
+        const vStart = i;
+        const vEnd = _lazyFindValueEnd(str, i);
+        result[key] = { vStart, vEnd };
+        i = vEnd;
+    }
+    throw new Error('parseTopLevelKeys: 未闭合');
+}
+
+// 在数组 value 区间内逐元素定位边界，回调传入每个元素的完整 JSON 子串
+// arrStart 指向 [，arrEnd 指向 ] 之后。onItem(elemStr) 返回 false 可停止
+function _lazyIterArrayItems(str, arrStart, arrEnd, onItem) {
+    let i = arrStart;
+    if (str[i] !== '[') throw new Error('iterArrayItems: 期望 [');
+    i++;
+    while (i < arrEnd) {
+        i = _lazySkipWs(str, i);
+        if (i >= arrEnd || str[i] === ']') break;
+        if (str[i] === ',') { i++; continue; }
+        const elemStart = i;
+        const elemEnd = _lazyFindValueEnd(str, i);
+        if (onItem(str.slice(elemStart, elemEnd)) === false) return;
+        i = elemEnd;
+    }
+}
+
+// =========================================================
+// 惰性切分全量导入（工单 C 核心）
+// 输入：完整的备份 JSON 字符串（已解压，73MB 量级）
+// 流程：先扫描顶层 key 边界（不 parse），大数组字段逐元素 parse 入库释放，
+//       小数据字段整体 parse。避免一次性 JSON.parse 造出 200MB+ 对象树导致 OOM。
+// 只处理全量导入（!isPartial），云端部分恢复仍走 importBackupData（数据量小）。
+// 任何步骤抛错由调用方 fallback 到 importBackupData(JSON.parse(jsonString))。
+// =========================================================
+async function lazyImportBackupData(jsonString) {
+    const startTime = Date.now();
+    // 1) 扫描顶层 key 边界（不 parse 整棵树）
+    const spans = _lazyParseTopLevelKeys(jsonString);
+
+    // 2) 判断是否部分恢复（含 _partialType）。若是，不走惰性路径，抛错让调用方 fallback
+    if (spans._partialType) {
+        throw new Error('lazyImport: 检测到 _partialType，应走 importBackupData');
+    }
+
+    // 3) 清空所有表（与原全量分支一致）
+    if (typeof dexieDB !== 'undefined') {
+        await Promise.all([
+            dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
+            dexieDB.myStickers.clear(), dexieDB.userPersonas.clear(), dexieDB.globalSettings.clear(),
+            dexieDB.forumPosts.clear(), dexieDB.peekData.clear(), dexieDB.rpgProfiles.clear(),
+            dexieDB.forumMetadata.clear(),
+            dexieDB.messages.clear(),
+            dexieDB.memories.clear(),
+            dexieDB.memoryChunks.clear(),
+            dexieDB.studyBooks.clear(),
+            dexieDB.studyBookContents.clear(),
+            dexieDB.studyCoreadMessages.clear(),
+            dexieDB.studyPageCache.clear(),
+            dexieDB.studyQuestions.clear(),
+            dexieDB.studyRecords.clear(),
+        ]);
+    }
+
+    // normalizePeek（与原逻辑一致）
+    const normalizePeek = (pd) => {
+        if (!pd) return {};
+        if (Array.isArray(pd)) {
+            let res = {};
+            pd.forEach(item => { if (item.charId && item.data) res[item.charId] = item.data; });
+            return res;
+        }
+        return JSON.parse(JSON.stringify(pd)); // 保留：格式转换语义，量小
+    };
+
+    // 4) 小数据字段：整体 parse 赋值给 db（除大数组字段和 peekData 特殊处理）
+    //    大数组字段单独处理
+    const message = "全量数据已恢复";
+
+    // 先把 db 现有的 characters/groups 清空（后面逐元素填充）
+    if (!db.characters) db.characters = []; else db.characters.length = 0;
+    if (!db.groups) db.groups = []; else db.groups.length = 0;
+
+    // 小数据 key 集合：顶层所有 key 减去大数组字段和 peekData
+    const smallDataKeys = Object.keys(spans).filter(k =>
+        !LAZY_ARRAY_KEYS.has(k) && k !== 'peekData' && !k.startsWith('_')
+    );
+    for (const key of smallDataKeys) {
+        const { vStart, vEnd } = spans[key];
+        db[key] = JSON.parse(jsonString.slice(vStart, vEnd));
+    }
+    // peekData 特殊处理
+    if (spans.peekData) {
+        db.peekData = normalizePeek(JSON.parse(jsonString.slice(spans.peekData.vStart, spans.peekData.vEnd)));
+    }
+
+    // 5) 分批写入辅助函数
+    const BATCH_SIZE = 500;
+    async function batchBulkPut(table, items) {
+        for (let i = 0; i < items.length; i += BATCH_SIZE) {
+            await table.bulkPut(items.slice(i, i + BATCH_SIZE));
+        }
+    }
+
+    // 6) 处理 characters 大数组：逐元素 parse → 元数据入 db.characters + history 入 messages + memories/chunks 入对应表
+    const migrateChatIds = []; // 收集有 history 的 chatId，用于一次性删旧消息
+    let memBatch = [];   // memories 待入库批次
+    let chunkBatch = []; // memoryChunks 待入库批次
+
+    const flushMemBatch = async () => { if (memBatch.length) { await batchBulkPut(dexieDB.memories, memBatch); memBatch = []; } };
+    const flushChunkBatch = async () => { if (chunkBatch.length) { await dexieDB.memoryChunks.bulkPut(chunkBatch); chunkBatch = []; } };
+
+    if (spans.characters) {
+        _lazyIterArrayItems(jsonString, spans.characters.vStart, spans.characters.vEnd, (elemStr) => {
+            const c = JSON.parse(elemStr);
+            // 收集 chatId（有 history 才需要删旧消息）
+            if (c.history && c.history.length) migrateChatIds.push(c.id);
+            // 拆 memories
+            const pushMem = (arr, memType) => (arr || []).forEach(item => {
+                if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                memBatch.push({ ...item, chatId: c.id, memType });
+            });
+            pushMem(c.memorySummaries, 'short');
+            pushMem(c.memoryJournals, 'journal');
+            pushMem(c.longTermSummaries, 'long');
+            // 拆 memoryChunks
+            (c.memoryChunks || []).forEach(chunk => {
+                if (!chunk.id) chunk.id = `chunk_${c.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                chunkBatch.push({ ...chunk, chatId: c.id });
+            });
+            // 元数据入 db.characters（保留 history 字段，下面统一处理 history→messages 迁移）
+            db.characters.push(c);
+            return true;
+        });
+    }
+
+    // 7) 处理 groups 大数组：同上
+    if (spans.groups) {
+        _lazyIterArrayItems(jsonString, spans.groups.vStart, spans.groups.vEnd, (elemStr) => {
+            const g = JSON.parse(elemStr);
+            if (g.history && g.history.length) migrateChatIds.push(g.id);
+            const pushMem = (arr, memType) => (arr || []).forEach(item => {
+                if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                memBatch.push({ ...item, chatId: g.id, memType });
+            });
+            pushMem(g.memorySummaries, 'short');
+            pushMem(g.memoryJournals, 'journal');
+            pushMem(g.longTermSummaries, 'long');
+            (g.memoryChunks || []).forEach(chunk => {
+                if (!chunk.id) chunk.id = `chunk_${g.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                chunkBatch.push({ ...chunk, chatId: g.id });
+            });
+            db.groups.push(g);
+            return true;
+        });
+    }
+
+    // 8) 删除旧消息（按 migrateChatIds，避免边删边插）
+    if (migrateChatIds.length > 0) {
+        await dexieDB.messages.where('chatId').anyOf(migrateChatIds).delete();
+    }
+
+    // 9) history → messages 分批入库（边遍历角色边分批 flush，保留浅拷贝避免污染 history）
+    let msgBatch = [];
+    const flushMsgBatch = async () => { if (msgBatch.length) { await batchBulkPut(dexieDB.messages, msgBatch); msgBatch = []; } };
+
+    const collectHistory = async (historyArr, chatId, chatType) => {
+        historyArr.forEach((m, idx) => {
+            if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`;
+            msgBatch.push({ ...m, chatId, chatType });
+        });
+        while (msgBatch.length >= BATCH_SIZE) {
+            const toPut = msgBatch.splice(0, BATCH_SIZE);
+            await dexieDB.messages.bulkPut(toPut);
+        }
+    };
+
+    for (const c of db.characters) { if (c.history && c.history.length) await collectHistory(c.history, c.id, 'private'); }
+    for (const g of db.groups)     { if (g.history && g.history.length) await collectHistory(g.history, g.id, 'group'); }
+    await flushMsgBatch();
+    if (migrateChatIds.length > 0) {
+        window.isMessageMigrated = true; // 所有消息入库完成后才标记
+    }
+
+    // 10) memories / memoryChunks 入库
+    await flushMemBatch();
+    await flushChunkBatch();
+
+    // 11) study 大表逐元素分批入库（不入 db，db 不持有这些大表）
+    if (spans.studyBookContents) {
+        let studyBatch = [];
+        _lazyIterArrayItems(jsonString, spans.studyBookContents.vStart, spans.studyBookContents.vEnd, (elemStr) => {
+            studyBatch.push(JSON.parse(elemStr));
+            return true;
+        });
+        await batchBulkPut(dexieDB.studyBookContents, studyBatch);
+    }
+    if (spans.studyCoreadMessages) {
+        let studyBatch = [];
+        _lazyIterArrayItems(jsonString, spans.studyCoreadMessages.vStart, spans.studyCoreadMessages.vEnd, (elemStr) => {
+            studyBatch.push(JSON.parse(elemStr));
+            return true;
+        });
+        await batchBulkPut(dexieDB.studyCoreadMessages, studyBatch);
+    }
+    if (spans.studyBookSummaries) {
+        let studyBatch = [];
+        _lazyIterArrayItems(jsonString, spans.studyBookSummaries.vStart, spans.studyBookSummaries.vEnd, (elemStr) => {
+            studyBatch.push(JSON.parse(elemStr));
+            return true;
+        });
+        await batchBulkPut(dexieDB.studyBookSummaries, studyBatch);
+    }
+
+    // 12) 兜底补全（与原逻辑一致）
+    if (!db.pomodoroTasks) db.pomodoroTasks = [];
+    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+    if (typeof defaultWidgetSettings !== 'undefined') {
+        if (!db.homeWidgetSettings) {
+            db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
+        } else if (!db.homeWidgetSettings.centralCircleImage) {
+            db.homeWidgetSettings.centralCircleImage = defaultWidgetSettings.centralCircleImage;
+        }
+    }
+
+    // 13) 保存 + 应用设置（与原逻辑一致）
+    if (typeof saveData === 'function') await saveData(db);
+    if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
+    if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
+
+    const duration = Date.now() - startTime;
+    return { success: true, message: `${message} (耗时${duration}ms, 惰性切分)` };
+}
+
+async function importBackupData(data, isCloudPartialRestore = false) {
+    const startTime = Date.now();
+    try {
+        const isPartial = !!data._partialType;
+        let message = "";
+
+        // === 核心修复：标准化 PeekData 防止旧版数组格式导致崩溃 ===
+        const normalizePeek = (pd) => {
+            if (!pd) return {};
+            if (Array.isArray(pd)) {
+                let res = {};
+                pd.forEach(item => { if(item.charId && item.data) res[item.charId] = item.data; });
+                return res;
+            }
+            return JSON.parse(JSON.stringify(pd));
+        };
+
+        if (isCloudPartialRestore && isPartial) {
+            message = `云端数据 (${data._partialType}) 已完整恢复`;
+            Object.keys(data).forEach(key => {
+                if (key.startsWith('_')) return; 
+                // 针对 peekData 单独洗数据
+                if (key === 'peekData') {
+                    db.peekData = normalizePeek(data.peekData);
+                } else if (data[key] !== undefined) {
+                    // ★ B-2：云端部分恢复分支，data 同样是已解析的新对象，直接赋值
+                    db[key] = data[key];
+                }
+            });
+        }
+        else if (!isPartial) {
+if (typeof dexieDB !== 'undefined') {
+    await Promise.all([
+        dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
+        dexieDB.myStickers.clear(), dexieDB.userPersonas.clear(), dexieDB.globalSettings.clear(),
+        dexieDB.forumPosts.clear(), dexieDB.peekData.clear(), dexieDB.rpgProfiles.clear(),
+        dexieDB.forumMetadata.clear(),
+        dexieDB.messages.clear(),           // 全量恢复时清空消息表
+        dexieDB.memories.clear(),           // ★ V6：清空记忆表
+        dexieDB.memoryChunks.clear(),       // ★ V6：清空向量切块表
+        dexieDB.studyBooks.clear(),         // ★ V8：清空学习书籍元数据
+        dexieDB.studyBookContents.clear(),  // ★ V8：清空书籍正文
+        dexieDB.studyCoreadMessages.clear(),// ★ V8：清空共读消息
+        dexieDB.studyPageCache.clear(),     // ★ V8：清空分页缓存
+        dexieDB.studyQuestions.clear(),     // ★ V8：清空题目
+        dexieDB.studyRecords.clear(),       // ★ V8：清空答题记录
+    ]);
+}
+            message = "全量数据已恢复";
+            Object.keys(db).forEach(key => { 
+                if (data[key] !== undefined) {
+                    if (key === 'peekData') {
+                        db.peekData = normalizePeek(data[key]);
+                    } else {
+                        // ★ B-1：data 来自 JSON.parse/json()，本身就是新对象树，无需深拷贝
+                        db[key] = data[key];
+                    }
+                }
+            });
+        }
+        else {
+            message = `部分数据 (${data._partialType}) 已合并`;
+            Object.keys(db).forEach(key => {
+                if (data[key] !== undefined) {
+                    // 安全合并 peekData，防止覆盖其他角色
+                    if (key === 'peekData') {
+                        if (!db.peekData) db.peekData = {};
+                        Object.assign(db.peekData, normalizePeek(data.peekData));
+                    }
+                    else if (Array.isArray(db[key]) && key !== 'characters' && key !== 'groups') {
+                        const existingIds = new Set(db[key].map(i => i.id));
+                        data[key].forEach(item => {
+                            if (!existingIds.has(item.id)) db[key].push(item);
+                            else { const idx = db[key].findIndex(i => i.id === item.id); if (idx !== -1) db[key][idx] = item; }
+                        });
+                    } 
+                    else if (key === 'characters' || key === 'groups') {
+                        data[key].forEach(newItem => {
+                            const existingItem = db[key].find(i => i.id === newItem.id);
+                            if (existingItem) Object.assign(existingItem, newItem);
+                            else db[key].push(newItem);
+                        });
+                    } 
+                    else db[key] = data[key];
+                }
+            });
+        }
+
+        // =================================================================
+        // ★★★ 数据导入后：把老备份文件包含的 History 对象抽取为独立的消息行入库 ★★★
+        // ★ B-3：分批 bulkPut + 删除提前 + isMessageMigrated 延后，避免大数组常驻
+        // =================================================================
+        // 1) 先收集所有需要迁移的 chatId（用于一次性删除旧消息，避免边删边插）
+        const migrateChatIds = [];
+        if (db.characters) db.characters.forEach(c => { if (c.history && c.history.length) migrateChatIds.push(c.id); });
+        if (db.groups)     db.groups.forEach(g =>     { if (g.history && g.history.length) migrateChatIds.push(g.id); });
+
+        if (migrateChatIds.length > 0) {
+            // 2) 一次性删除这些 chatId 下的旧消息，必须在 bulkPut 之前
+            await dexieDB.messages.where('chatId').anyOf(migrateChatIds).delete();
+
+            // 3) 边收集边分批 bulkPut，每批 500 条；保留浅拷贝避免污染 history 对象
+            const BATCH_SIZE = 500;
+            let batch = [];
+            const flush = async () => {
+                if (batch.length === 0) return;
+                const toPut = batch;
+                batch = [];
+                await dexieDB.messages.bulkPut(toPut);
+            };
+
+            const collectFromHistory = async (historyArr, chatId, chatType) => {
+                historyArr.forEach((m, idx) => {
+                    if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`;
+                    batch.push({ ...m, chatId, chatType });
+                });
+                // 每个角色处理完，若批次满则 flush，避免 batch 无上限增长
+                while (batch.length >= BATCH_SIZE) {
+                    const toPut = batch.splice(0, BATCH_SIZE);
+                    await dexieDB.messages.bulkPut(toPut);
+                }
+            };
+
+            if (db.characters) for (const c of db.characters) { if (c.history && c.history.length) await collectFromHistory(c.history, c.id, 'private'); }
+            if (db.groups)     for (const g of db.groups)     { if (g.history && g.history.length) await collectFromHistory(g.history, g.id, 'group'); }
+
+            // 4) flush 剩余不足一批的尾巴
+            await flush();
+            // 5) 所有批次入库完成后才标记迁移完成
+            window.isMessageMigrated = true; // ★ 修复：导入后标记迁移完成，防止 saveData 把 history 写回 IndexedDB 导致下次加载重复触发升级弹窗
+        }
+
+        // ★ V6：将备份中 character/group 携带的记忆字段写入 memories 独立表
+        const importMemItems = [];
+        const extractMemories = (objs) => {
+            (objs || []).forEach(obj => {
+                const push = (arr, memType) => (arr || []).forEach(item => {
+                    if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    importMemItems.push({ ...item, chatId: obj.id, memType });
+                });
+                push(obj.memorySummaries,  'short');
+                push(obj.memoryJournals,   'journal');
+                push(obj.longTermSummaries,'long');
+            });
+        };
+        extractMemories(db.characters);
+        extractMemories(db.groups);
+        if (importMemItems.length > 0) {
+            if (data.characters) await dexieDB.memories.where('chatId').anyOf(data.characters.map(c=>c.id)).delete();
+            if (data.groups)     await dexieDB.memories.where('chatId').anyOf(data.groups.map(g=>g.id)).delete();
+            await dexieDB.memories.bulkPut(importMemItems);
+        }
+
+        // ★ V6：将备份中 character/group 携带的 memoryChunks 写入 memoryChunks 独立表
+        const importChunks = [];
+        const extractChunks = (objs) => {
+            (objs || []).forEach(obj => {
+                (obj.memoryChunks || []).forEach(chunk => {
+                    if (!chunk.id) chunk.id = `chunk_${obj.id}_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+                    importChunks.push({ ...chunk, chatId: obj.id });
+                });
+            });
+        };
+        extractChunks(db.characters);
+        extractChunks(db.groups);
+        if (importChunks.length > 0) {
+            if (data.characters) await dexieDB.memoryChunks.where('chatId').anyOf(data.characters.map(c=>c.id)).delete();
+            if (data.groups)     await dexieDB.memoryChunks.where('chatId').anyOf(data.groups.map(g=>g.id)).delete();
+            await dexieDB.memoryChunks.bulkPut(importChunks);
+        }
+
+// ★ V8：将备份中的书籍正文写入 studyBookContents 独立表
+        if (data.studyBookContents && data.studyBookContents.length > 0) {
+            await dexieDB.studyBookContents.bulkPut(data.studyBookContents);
+        }
+
+        // ★ V8：将备份中的共读消息写入 studyCoreadMessages 独立表
+        if (data.studyCoreadMessages && data.studyCoreadMessages.length > 0) {
+            await dexieDB.studyCoreadMessages.bulkPut(data.studyCoreadMessages);
+        }
+
+        // 兜底补全
+        if (!db.pomodoroTasks) db.pomodoroTasks =[];
+        if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+        if (typeof defaultWidgetSettings !== 'undefined') {
+    if (!db.homeWidgetSettings) {
+        db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
+    } else if (!db.homeWidgetSettings.centralCircleImage) {
+        // homeWidgetSettings 存在但 centralCircleImage 是空/undefined，补默认值
+        db.homeWidgetSettings.centralCircleImage = defaultWidgetSettings.centralCircleImage;
+    }
+}
+
+        if (typeof saveData === 'function') await saveData(db);
+        if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
+        if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
+        
+        const duration = Date.now() - startTime;
+        return { success: true, message: `${message} (耗时${duration}ms)` };
+
+    } catch (error) {
+        console.error('导入数据失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// =========================================================
+// --- 8. GitHub Sync Logic (云端备份核心) ---
+// =========================================================
+
+const GH_CONFIG_KEY = 'qchat_github_config';
+const FILE_NAME_SYSTEM = 'qchat_backup_system.ee';
+const FILE_NAME_CHATS = 'qchat_backup_chats.ee';
+const FILE_NAME_LEGACY = 'qchat_auto_backup.json'; // ★ 新增:旧版备份文件名
+
+const GitHubService = {
+    getConfig: () => {
+        try { return JSON.parse(localStorage.getItem(GH_CONFIG_KEY)); } catch (e) { return null; }
+    },
+
+    saveConfig: (token, username, repo, autoBackup) => {
+        const config = { token, username, repo, autoBackup };
+        localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(config));
+        return config;
+    },
+
+    getFileInfo: async (config, fileName) => {
+        const url = `https://api.github.com/repos/${config.username}/${config.repo}/contents/${fileName}`;
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `token ${config.token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error(`GitHub 连接失败: ${response.status}`);
+        return await response.json();
+    },
+
+    uploadBlob: async (contentBase64, fileName) => {
+        const config = GitHubService.getConfig();
+        if (!config) throw new Error("请先配置 GitHub 连接");
+
+        let sha = null;
+        try {
+            const existingFile = await GitHubService.getFileInfo(config, fileName);
+            if (existingFile) sha = existingFile.sha;
+        } catch (e) {
+            console.warn(`新建文件: ${fileName}`);
+        }
+
+        const url = `https://api.github.com/repos/${config.username}/${config.repo}/contents/${fileName}`;
+        const body = {
+            message: `Backup ${fileName}: ${new Date().toLocaleString()}`,
+            content: contentBase64
+        };
+        if (sha) body.sha = sha;
+
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${config.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.message || `上传 ${fileName} 失败`);
+        }
+        return true;
+    },
+
+    // ★★★ 新增:下载旧版备份的方法 ★★★
+    // ★ 工单 C：返回字符串（未 parse），供惰性切分导入使用
+    downloadLegacyBackup: async () => {
+        const config = GitHubService.getConfig();
+        if (!config) throw new Error("GitHub 未配置");
+
+        try {
+            return await fetchAndDecompressGitHubFileAsString(config, FILE_NAME_LEGACY);
+        } catch (e) {
+            console.warn("未找到旧版备份文件");
+            return null;
+        }
+    },
+
+    initUI: () => {
+        const btnConfig = document.getElementById('btn-gh-config');
+        const btnUpload = document.getElementById('btn-gh-upload');
+        const btnDownload = document.getElementById('btn-gh-download');
+        const modal = document.getElementById('github-settings-modal');
+        const lastSync = document.getElementById('github-last-sync');
+        
+        GitHubService.updateUIState(!!GitHubService.getConfig());
+
+        btnConfig.onclick = () => {
+            modal.classList.add('visible');
+            const currentConfig = GitHubService.getConfig();
+            if (currentConfig) {
+                document.getElementById('gh-token-input').value = currentConfig.token || '';
+                document.getElementById('gh-username-input').value = currentConfig.username || '';
+                document.getElementById('gh-repo-input').value = currentConfig.repo || '';
+                document.getElementById('gh-auto-backup-switch').checked = !!currentConfig.autoBackup;
+            }
+        };
+
+        document.getElementById('btn-gh-cancel').onclick = () => modal.classList.remove('visible');
+        document.getElementById('btn-gh-save').onclick = async () => {
+            const token = document.getElementById('gh-token-input').value.trim();
+            const username = document.getElementById('gh-username-input').value.trim();
+            const repo = document.getElementById('gh-repo-input').value.trim();
+            const auto = document.getElementById('gh-auto-backup-switch').checked;
+
+            if (!token || !username || !repo) {
+                await AppUI.alert("请填写完整信息");
+                return;
+            }
+            GitHubService.saveConfig(token, username, repo, auto);
+            modal.classList.remove('visible');
+            GitHubService.updateUIState(true);
+            showToast("GitHub 配置已保存");
+        };
+
+        btnUpload.onclick = async () => {
+            if(await AppUI.confirm("将覆盖原有云端备份数据,确定要备份到云端吗?", "系统提示", "确认", "取消")) {
+                const btn = btnUpload;
+                const oldText = btn.innerText;
+                btn.innerText = "上传中";
+                btn.disabled = true;
+                
+                try {
+                    await performOptimizedCloudBackup();
+                    showToast("云端备份全部完成!");
+                } catch (e) {
+                    console.error(e);
+                    await AppUI.alert("上传过程中出错: " + e.message);
+                } finally {
+                    btn.innerText = oldText;
+                    btn.disabled = false;
+                }
+            }
+        };
+
+        btnDownload.onclick = async () => {
+            if(await AppUI.confirm("确定要从云端恢复吗?这会覆盖本地数据。", "系统提示", "确认", "取消")) {
+                 const btn = btnDownload;
+                 const oldText = btn.innerText;
+                 btn.innerText = "恢复中";
+                 btn.disabled = true;
+
+                 try {
+                     await performOptimizedCloudRestore();
+                     await AppUI.alert("恢复成功！页面即将刷新...");
+                     window.location.reload();
+                 } catch (e) {
+                     console.error("自动恢复失败:", e);
+                     const config = GitHubService.getConfig();
+                     const repoUrl = `https://github.com/${config ? config.username : 'your'}/${config ? config.repo : 'repo'}`;
+                     
+                     if(await AppUI.confirm(`自动恢复遇到问题: ${e.message}\n\n是否打开 GitHub 仓库手动下载备份文件?\n(下载 .ee 文件后,使用上方的"导入数据"按钮即可)`, "系统提示", "确认", "取消")) {
+                        window.open(repoUrl, '_blank');
+                     }
+                 } finally {
+                     btn.innerText = oldText;
+                     btn.disabled = false;
+                 }
+            }
+        };
+    },
+
+    updateUIState: (isConnected, lastDate) => {
+        const btnConfig = document.getElementById('btn-gh-config');
+        const btnUpload = document.getElementById('btn-gh-upload');
+        const btnDownload = document.getElementById('btn-gh-download');
+        const statusText = document.getElementById('github-status-text');
+        const iconBg = document.getElementById('github-status-icon');
+        const lastSync = document.getElementById('github-last-sync');
+
+        if (isConnected) {
+            statusText.innerText = "已连接 GitHub";
+            statusText.style.color = "#3A9EF6";
+            iconBg.style.background = "#3A9EF6";
+            btnConfig.innerText = "设置";
+            btnUpload.style.display = "inline-block";
+            btnDownload.style.display = "inline-block";
+            if (lastDate) {
+                lastSync.style.display = "block";
+                lastSync.innerText = "上次: " + lastDate.toLocaleTimeString();
+            }
+        } else {
+            statusText.innerText = "未连接";
+            statusText.style.color = "#888";
+            iconBg.style.background = "#24292e";
+            btnUpload.style.display = "none";
+            btnDownload.style.display = "none";
+            lastSync.style.display = "none";
+        }
+    }
+};
+
+// =========================================================
+// --- 9. 业务逻辑:分片备份与恢复 (扁平化修复版) ---
+// =========================================================
+
+/**
+ * ★★★ 修复版:执行优化后的云端备份 ★★★
+ * 确保数据完整性和原子性
+ */
+async function performOptimizedCloudBackup() {
+    if (!window.db) throw new Error("数据库未加载");
+    const timestamp = Date.now();
+    
+    // 1. 系统数据 (包含设置、个性化、论坛、RPG等)
+    const systemData = {
+        _exportVersion: '4.0',
+        _exportTimestamp: timestamp,
+        _partialType: 'system_core',
+        
+        // 世界书
+        worldBooks: db.worldBooks || [],
+        
+        // RPG
+        rpgProfiles: db.rpgProfiles || [],
+        
+        // 论坛
+        forumPosts: db.forumPosts || [],
+        forumBindings: db.forumBindings || {},
+        forumUserIdentity: db.forumUserIdentity || {},
+        watchingPostIds: db.watchingPostIds || [],
+        favoritePostIds: db.favoritePostIds || [],
+
+        // 个性化
+        myStickers: db.myStickers || [],
+        userPersonas: db.userPersonas || [],
+        wallpaper: db.wallpaper,
+        customIcons: db.customIcons,
+        bubbleCssPresets: db.bubbleCssPresets,
+        globalCss: db.globalCss,
+        globalCssPresets: db.globalCssPresets,
+        homeSignature: db.homeSignature,
+        insWidgetSettings: db.insWidgetSettings,
+        homeWidgetSettings: db.homeWidgetSettings,
+
+        // 系统设置
+        apiSettings: db.apiSettings,
+        apiPresets: db.apiPresets,
+        pomodoroSettings: db.pomodoroSettings,
+        pomodoroTasks: db.pomodoroTasks || [],
+        homeScreenMode: db.homeScreenMode,
+        fontUrl: db.fontUrl,
+        homeStatusBarColor: db.homeStatusBarColor,
+        homeNavigationBarColor: db.homeNavigationBarColor,
+    enableTopSafeArea: db.enableTopSafeArea,
+    enableBottomSafeArea: db.enableBottomSafeArea,
+    enableScreenAdaptation: db.enableScreenAdaptation,
+    enableSwipeBack: db.enableSwipeBack,
+
+        // ★ 学习模块设置（量小，放 systemData）
+        studySettings: db.studySettings,
+    };
+
+// ★ V8：书籍正文和共读消息已独立存表，需从 DB 读取
+const [studyBookContents, studyCoreadMessages] = await Promise.all([
+    dexieDB.studyBookContents.toArray(),
+    dexieDB.studyCoreadMessages.toArray(),
+]);
+
+const chatData = {
+    _exportVersion: '4.0',
+    _exportTimestamp: timestamp,
+    _partialType: 'chats_only',
+
+    characters: db.characters || [],
+    groups: db.groups || [],
+    peekData: db.peekData || {},
+
+    // ★ 学习模块大表（数据量可能很大，随聊天数据一起备份）
+    studyBooks:          db.studyBooks          || [],
+    studyQuestions:      db.studyQuestions      || [],
+    studyRecords:        db.studyRecords        || [],
+    studyBookContents:   studyBookContents      || [], // ★ V8：书籍正文（量大，按需读取）
+    studyCoreadMessages: studyCoreadMessages    || [], // ★ V8：共读消息
+};
+
+    // ★★★ 修复:增加备份验证 ★★★
+    console.log('[Backup] 系统数据字段数:', Object.keys(systemData).length);
+    console.log('[Backup] 聊天数据 - 角色数:', chatData.characters.length, '群组数:', chatData.groups.length);
+
+    try {
+        // 3. 压缩并上传系统数据
+        showToast("正在处理系统数据...");
+        const systemBase64 = await compressDataToEeBase64(systemData);
+        await GitHubService.uploadBlob(systemBase64, FILE_NAME_SYSTEM);
+        console.log('[Backup] 系统数据上传成功');
+
+        // 4. 压缩并上传聊天数据
+        showToast("正在压缩聊天记录 (请耐心等待)...");
+        const chatBase64 = await compressDataToEeBase64(chatData);
+        showToast(`正在上传聊天记录 (${(chatBase64.length/1024/1024).toFixed(1)}MB)...`);
+        await GitHubService.uploadBlob(chatBase64, FILE_NAME_CHATS);
+        console.log('[Backup] 聊天数据上传成功');
+
+        // 5. 更新状态
+        GitHubService.updateUIState(true, new Date());
+        
+    } catch (error) {
+        // ★★★ 修复:上传失败时回滚 ★★★
+        console.error('[Backup] 上传失败,需要人工检查备份完整性:', error);
+        throw error;
+    }
+}
+
+/**
+ * ★★★ 完全重写:执行优化后的云端恢复 ★★★
+ * 修复数据残留和不完整更新问题
+ */
+async function performOptimizedCloudRestore() {
+    const config = GitHubService.getConfig();
+    if (!config) throw new Error("GitHub 未配置");
+
+    let systemData = null;
+    let chatData = null;
+    let usingLegacyBackup = false;
+
+    // ★★★ 步骤1: 尝试下载分片备份 ★★★
+    try {
+        showToast("正在拉取系统配置...");
+        systemData = await fetchAndDecompressGitHubFile(config, FILE_NAME_SYSTEM);
+        console.log('[Restore] 系统数据下载成功');
+    } catch (e) {
+        console.warn("[Restore] 系统数据下载失败:", e.message);
+    }
+
+    try {
+        showToast("正在拉取聊天记录 (文件较大,请稍候)...");
+        chatData = await fetchAndDecompressGitHubFile(config, FILE_NAME_CHATS);
+        console.log('[Restore] 聊天数据下载成功,角色数:', chatData.characters?.length || 0);
+    } catch (e) {
+        console.warn("[Restore] 聊天数据下载失败:", e.message);
+    }
+
+    // ★★★ 步骤2: 如果分片备份都失败,尝试旧版全量备份 ★★★
+    if (!systemData && !chatData) {
+        console.warn("[Restore] 未找到分片备份,尝试查找旧版全量备份...");
+        try {
+            const legacyData = await GitHubService.downloadLegacyBackup();
+            if (legacyData) {
+                showToast("发现旧版备份,正在恢复...");
+                console.log('[Restore] 使用旧版全量备份');
+                // ★ 工单 C：优先惰性切分导入，失败 fallback 到 JSON.parse + importBackupData
+                try {
+                    const r = await lazyImportBackupData(legacyData);
+                    if (!r.success) throw new Error(r.error || '惰性导入失败');
+                    console.log('[Restore] 惰性切分恢复完成:', r.message);
+                } catch (lazyErr) {
+                    console.warn('⚠️ 惰性切分失败,回退标准路径:', lazyErr.message);
+                    const data = JSON.parse(legacyData);
+                    await importBackupData(data, false);
+                }
+                return;
+            }
+        } catch (oldErr) {
+            console.error("[Restore] 旧版备份也无法获取:", oldErr);
+        }
+        
+        throw new Error("无法获取任何云端备份文件");
+    }
+
+    // ★★★ 步骤3: 恢复系统数据 (完整替换模式) ★★★
+    if (systemData) {
+        showToast("恢复系统配置中...");
+        console.log('[Restore] 开始恢复系统数据...');
+        const result = await importBackupData(systemData, true); // ★ 传入 true 启用完整替换
+        if (!result.success) {
+            throw new Error(`系统数据恢复失败: ${result.error}`);
+        }
+        console.log('[Restore] 系统数据恢复完成');
+    }
+
+    // ★★★ 步骤4: 恢复聊天数据 (完整替换模式) ★★★
+    if (chatData) {
+        showToast("恢复聊天记录中...");
+        console.log('[Restore] 开始恢复聊天数据...');
+        const result = await importBackupData(chatData, true); // ★ 传入 true 启用完整替换
+        if (!result.success) {
+            throw new Error(`聊天数据恢复失败: ${result.error}`);
+        }
+        console.log('[Restore] 聊天数据恢复完成,最终角色数:', db.characters?.length || 0);
+    }
+
+    // ★★★ 步骤5: 验证恢复结果 ★★★
+    console.log('[Restore] === 恢复完成,数据摘要 ===');
+    console.log('- 角色数:', db.characters?.length || 0);
+    console.log('- 群组数:', db.groups?.length || 0);
+    console.log('- 世界书数:', db.worldBooks?.length || 0);
+    console.log('- 论坛帖子数:', db.forumPosts?.length || 0);
+    try { console.log('- 消息数:', await dexieDB.messages.count()); } catch(e) {}
+}
