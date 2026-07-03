@@ -170,6 +170,9 @@ function setupChatRoom() {
             // 只有当还有更旧的消息时才加载
             if (totalMessages > currentPage * MESSAGES_PER_PAGE) {
                 loadMoreMessages(); // 这是原有的加载旧消息函数
+            } else if (window.LAZY_LOAD && !chat._noMoreOlderInDB) {
+                // ★ Step 3：内存窗口已翻到顶，从 DB 取更旧的一页前插到 chat.history
+                loadOlderFromDB();
             }
         }
 
@@ -802,13 +805,48 @@ for (const sid of sessionIds) {
 function loadMoreMessages() {
     if (isLoadingHistory) return; // 如果正在加载，直接退出
     isLoadingHistory = true;      // 设为正在加载
-    
+
     // 稍微给一点延迟（例如 200ms），让 Loading 图标能显示出来一瞬间，
     // 否则本地渲染太快，用户可能感觉不到加载动作，体验反而生硬
     setTimeout(() => {
         currentPage++;
         renderMessages(true, false);
-    }, 200); 
+    }, 200);
+}
+
+// === Step 3：懒加载模式下，翻到内存窗口顶部时从 DB 取更旧的一页 ===
+async function loadOlderFromDB() {
+    if (isLoadingHistory) return;
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    if (!chat || !chat.history || chat.history.length === 0) return;
+    isLoadingHistory = true;
+
+    // 顶部 Loading 指示（复用现有样式）
+    const topLoader = document.createElement('div');
+    topLoader.className = 'history-loading-indicator';
+    topLoader.innerHTML = `<div class="custom-spinner"></div>`;
+    messageArea.insertBefore(topLoader, messageArea.firstChild);
+
+    try {
+        const oldestTs = chat.history[0].timestamp || 0;
+        const inMemoryIds = new Set(chat.history.map(m => m.id));
+        const older = await window.fetchOlderMessages(currentChatId, oldestTs, inMemoryIds, MESSAGES_PER_PAGE);
+        topLoader.remove();
+        if (!older || older.length === 0) {
+            chat._noMoreOlderInDB = true; // 真到头了，本次会话不再查
+            isLoadingHistory = false;
+            return;
+        }
+        // 前插到 chat.history（older 已升序且 timestamp 全 <= oldestTs，不整体重排，避免打乱已渲染 DOM）
+        chat.history.unshift(...older);
+        // 复用现有渲染路径：currentPage++ 后 renderMessages(true) 会切出这一页并前插到 DOM
+        currentPage++;
+        renderMessages(true, false); // 其内部会把 isLoadingHistory 置回 false
+    } catch (e) {
+        console.error('❌ [懒加载] 加载更旧消息失败:', e);
+        topLoader.remove();
+        isLoadingHistory = false;
+    }
 }
 
 // === 新增函数 1：触发加载后续消息 ===
