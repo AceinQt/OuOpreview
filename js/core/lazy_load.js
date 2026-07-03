@@ -10,7 +10,7 @@
 //   开关从 localStorage 读，方便控制台切换：
 //     开启：localStorage.setItem('LAZY_LOAD','1')   然后刷新
 //     关闭：localStorage.setItem('LAZY_LOAD','0')   然后刷新
-window.LAZY_LOAD = localStorage.getItem('LAZY_LOAD') === '1';
+window.LAZY_LOAD = true;
 window.LAZY_LOAD_LIMIT = 1500;
 
 // ★★★ 铁律：本文件内任何从 DB 取消息的函数，排序只能用下面这一行（原样抄自 database.js:235），
