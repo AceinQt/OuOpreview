@@ -1,4 +1,5 @@
-let isLoadingHistory = false; // 新增：防止重复加载标志位
+let isLoadingHistory = false; // 原有的：控制 DOM 渲染的锁
+let isFetchingDB = false;     // 新增的：控制后台静默读 DB 的锁
 let selectedLinkStickerIds = new Set(); // 关联弹窗选中的ID
 let currentStickerCategory = '全部';    // 主面板当前选中的分类
 let currentLinkStickerCategory = '全部';// 关联弹窗当前选中的分类
@@ -156,35 +157,41 @@ function setupChatRoom() {
     regenerateBtn.addEventListener('click', handleRegenerate);
 
 // ==========================================
-    // 【核心修复】双向滚动监听 (向上加载旧消息，向下加载新消息)
+    // 【核心修复】双向滚动监听 (加入无感预加载)
     // ==========================================
     messageArea.addEventListener('scroll', () => {
-        if (isLoadingHistory) return; // 如果正在加载，直接跳过
-
         // 1. 向上滚动：加载历史消息 (Older)
         if (messageArea.scrollTop < 50) {
             const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
             if (!chat || !chat.history) return;
-            const totalMessages = chat.history.length;
             
-            // 只有当还有更旧的消息时才加载
-            if (totalMessages > currentPage * MESSAGES_PER_PAGE) {
-                loadMoreMessages(); // 这是原有的加载旧消息函数
-            } else if (window.LAZY_LOAD && !chat._noMoreOlderInDB) {
-                // ★ Step 3：内存窗口已翻到顶，从 DB 取更旧的一页前插到 chat.history
-                loadOlderFromDB();
+            const totalMessages = chat.history.length;
+            const renderedMessages = currentPage * MESSAGES_PER_PAGE;
+            const unrenderedMemory = totalMessages - renderedMessages; // 内存里还没渲染的剩余条数
+
+            // [A] DOM 渲染逻辑：只要内存里还有货，就无脑调用 loadMoreMessages (它内部有 isLoadingHistory 锁防抖)
+            if (unrenderedMemory > 0) {
+                if (!isLoadingHistory) {
+                    loadMoreMessages(); 
+                }
+            } 
+            // 极端兜底：内存真的一滴都没有了，且后台还没拉回来，只能硬等（出现转圈）
+            else if (window.LAZY_LOAD && !chat._noMoreOlderInDB && !isLoadingHistory && !isFetchingDB) {
+                loadOlderFromDB(); 
+            }
+
+            // [B] 无感预加载逻辑 (Silent Pre-fetch)：
+            // 当内存剩余不足 3 页 (比如少于 60 条) 时，后台偷偷去 DB 进货 200 条
+            if (window.LAZY_LOAD && !chat._noMoreOlderInDB && unrenderedMemory < (MESSAGES_PER_PAGE * 3)) {
+                preloadOlderFromDBInBackground(chat);
             }
         }
 
-        // 2. 向下滚动：加载后续消息 (Newer)
-        // 判断是否接近底部 (容差 50px)
+        // 2. 向下滚动：加载后续消息 (Newer) 保持不变
+        if (isLoadingHistory) return;
         const isNearBottom = messageArea.scrollHeight - messageArea.scrollTop - messageArea.clientHeight < 50;
-        
-        if (isNearBottom) {
-            // 只有当我们不在第一页（即 currentPage > 1）时，说明下面还有更新的消息
-            if (currentPage > 1) {
-                loadNewerMessages(); // ===> 这是我们需要新增的函数 <===
-            }
+        if (isNearBottom && currentPage > 1) {
+            loadNewerMessages();
         }
     });
 
@@ -847,6 +854,32 @@ async function loadOlderFromDB() {
         console.error('❌ [懒加载] 加载更旧消息失败:', e);
         topLoader.remove();
         isLoadingHistory = false;
+    }
+}
+
+// === 新增：后台无感预加载 DB 数据 ===
+async function preloadOlderFromDBInBackground(chat) {
+    if (isFetchingDB || chat._noMoreOlderInDB) return;
+    isFetchingDB = true; // 上锁，防止重复查库
+
+    try {
+        const oldestTs = chat.history[0].timestamp || 0;
+        const inMemoryIds = new Set(chat.history.map(m => m.id));
+        
+        // 每次偷偷进货 200 条
+        const DB_FETCH_CHUNK = 200; 
+        const older = await window.fetchOlderMessages(currentChatId, oldestTs, inMemoryIds, DB_FETCH_CHUNK);
+
+        if (!older || older.length === 0) {
+            chat._noMoreOlderInDB = true; // 数据库到底了
+        } else {
+            // ★ 重点：只把数据塞进内存，绝对不触碰 DOM，也不改 currentPage
+            chat.history.unshift(...older);
+        }
+    } catch (e) {
+        console.error('❌ [懒加载] 后台预加载更旧消息失败:', e);
+    } finally {
+        isFetchingDB = false; // 解锁
     }
 }
 
