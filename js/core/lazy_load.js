@@ -7,8 +7,10 @@
 // ==========================================
 
 // ★★★ 总开关 + 窗口大小。窗口必须 > maxMemory 上限（已定 maxMemory 上限 1000、窗口 1500）。
-
-window.LAZY_LOAD = true;
+//   开关从 localStorage 读，方便控制台切换：
+//     开启：localStorage.setItem('LAZY_LOAD','1')   然后刷新
+//     关闭：localStorage.setItem('LAZY_LOAD','0')   然后刷新
+window.LAZY_LOAD = localStorage.getItem('LAZY_LOAD') === '1';
 window.LAZY_LOAD_LIMIT = 1500;
 
 // ★★★ 铁律：本文件内任何从 DB 取消息的函数，排序只能用下面这一行（原样抄自 database.js:235），
@@ -39,6 +41,27 @@ window.loadRecentMessages = async function (chatId, limit = 1500) {
     rows.reverse();
     rows.sort(_sortByTimestampExact);
     return rows;
+};
+
+// ──────────────────────────────────────────
+// Step 3：取"比当前内存窗口更旧"的一页（供往上翻历史调用）
+//   oldestTimestamp = 当前 chat.history[0].timestamp
+//   inMemoryIds     = 当前内存里所有消息 id 的 Set（dedup 用，防边界缝隙/重复）
+//   返回：紧邻窗口、更旧的最多 limit 条，升序，timestamp 全部 <= oldestTimestamp
+// ──────────────────────────────────────────
+window.fetchOlderMessages = async function (chatId, oldestTimestamp, inMemoryIds, limit) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    // between([chatId,-Inf],[chatId,oldestTs], 含下, 含上) → timestamp <= oldestTs
+    // .reverse().limit(limit+200) → 从最接近 oldestTs 的开始取一批（含等时间戳边界）
+    const buf = await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, Number.NEGATIVE_INFINITY], [chatId, oldestTimestamp], true, true)
+        .reverse()
+        .limit(limit + 200)
+        .toArray();
+    const fresh = buf.filter(r => !inMemoryIds.has(r.id)); // 去掉已在内存的
+    fresh.sort(_sortByTimestampExact);
+    return fresh.slice(-limit); // 取最接近窗口的那一页（升序）
 };
 
 // ──────────────────────────────────────────
