@@ -830,7 +830,8 @@ async function loadOlderFromDB() {
     try {
         const oldestTs = chat.history[0].timestamp || 0;
         const inMemoryIds = new Set(chat.history.map(m => m.id));
-        const older = await window.fetchOlderMessages(currentChatId, oldestTs, inMemoryIds, MESSAGES_PER_PAGE);
+        const DB_FETCH_CHUNK = 200; 
+        const older = await window.fetchOlderMessages(currentChatId, oldestTs, inMemoryIds, DB_FETCH_CHUNK);
         topLoader.remove();
         if (!older || older.length === 0) {
             chat._noMoreOlderInDB = true; // 真到头了，本次会话不再查
