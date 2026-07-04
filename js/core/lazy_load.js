@@ -177,6 +177,25 @@ window.assertHistoryOrder = function (chat, context = '') {
 };
 
 // ──────────────────────────────────────────
+// Step 5a：备份专用——从 DB 全量读 messages，返回按 chatId 分组的 map。
+//   备份时临时挂到 characters[i].history / groups[i].history 上，用完由调用方释放。
+//   目的：懒加载模式下 chat.history 只有 1500 条，直接备份会丢老消息；改从 DB 全量读。
+//   ★ 只保证 chatId 分组内按 timestamp 升序，跟原 loadData 的行为一致。
+// ──────────────────────────────────────────
+window.buildFullHistoryMap = async function () {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    const all = await window.dexieDB.messages.toArray();
+    const byChat = {};
+    for (const m of all) {
+        (byChat[m.chatId] || (byChat[m.chatId] = [])).push(m);
+    }
+    for (const arr of Object.values(byChat)) {
+        arr.sort(_sortByTimestampExact);
+    }
+    return byChat;
+};
+
+// ──────────────────────────────────────────
 // Step 0 + Step 1 验收工具：等价对照（只读，不改任何数据）
 //   对同一个 chat：
 //     老路径 = 全量 toArray + 铁律排序，取最后 limit 条的 id 序列
