@@ -223,9 +223,34 @@ async function handleImport(event) {
 
 // --- 5. 核心数据构造函数 (全量备份) ---
 async function createFullBackupData() {
-    const backupData = JSON.parse(JSON.stringify(db));
-    backupData._exportVersion = '4.0';
-    backupData._exportTimestamp = Date.now();
+    // ★ Step 5a：懒加载下 db.characters[i].history 只有 1500 条，会漏老消息。
+    //   临时从 DB 全量读 messages 挂回 characters/groups 的 history，
+    //   完成后（backupData 已生成，与内存 db 无引用关联）即可释放。
+    const histMap = window.LAZY_LOAD ? await window.buildFullHistoryMap() : null;
+    const originalHists = { chars: new Map(), groups: new Map() };
+    if (histMap) {
+        (db.characters || []).forEach(c => {
+            originalHists.chars.set(c.id, c.history);
+            c.history = histMap[c.id] || [];
+        });
+        (db.groups || []).forEach(g => {
+            originalHists.groups.set(g.id, g.history);
+            g.history = histMap[g.id] || [];
+        });
+    }
+
+    let backupData;
+    try {
+        backupData = JSON.parse(JSON.stringify(db));
+        backupData._exportVersion = '4.0';
+        backupData._exportTimestamp = Date.now();
+    } finally {
+        // ★ 无论成功与否，都把内存中的 history 恢复回懒加载窗口（1500 条），避免把全量留在内存
+        if (histMap) {
+            (db.characters || []).forEach(c => { c.history = originalHists.chars.get(c.id) || c.history; });
+            (db.groups     || []).forEach(g => { g.history = originalHists.groups.get(g.id) || g.history; });
+        }
+    }
 
     // ★ V8：书籍正文和共读消息不在 db 内存中，需单独从 Dexie 读取
     // ★ V12：studyBookSummaries 同样独立存表，需一并读取
@@ -356,10 +381,25 @@ async function* createFullBackupStream() {
     yield JSON.stringify(smallData).slice(0, -1);
 
     // ── 2. characters：逐个序列化，每次只有一个角色在内存里 ──
+    // ★ Step 5a：懒加载下，序列化前从 DB 读全量 history 临时挂上，序列化后立刻卸掉。
+    //   峰值内存 = 当前一个 char 的全量 history + 该 char 的 JSON 字符串（几十 MB 内），
+    //   比"一次性挂全"低得多，适合手机。
     const chars = db.characters || [];
     yield ',"characters":[';
     for (let i = 0; i < chars.length; i++) {
-        yield JSON.stringify(chars[i]);
+        const c = chars[i];
+        const origHist = c.history;
+        if (window.LAZY_LOAD) {
+            c.history = await window.dexieDB.messages
+                .where('[chatId+timestamp]')
+                .between([c.id, Number.NEGATIVE_INFINITY], [c.id, Number.POSITIVE_INFINITY], true, true)
+                .toArray();
+        }
+        try {
+            yield JSON.stringify(c);
+        } finally {
+            if (window.LAZY_LOAD) c.history = origHist; // 立即卸载全量，释放这几十 MB
+        }
         if (i < chars.length - 1) yield ',';
         // 每处理5个角色让出控制权，给 GC 和 UI 喘息
         if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
@@ -370,7 +410,19 @@ async function* createFullBackupStream() {
     const groups = db.groups || [];
     yield ',"groups":[';
     for (let i = 0; i < groups.length; i++) {
-        yield JSON.stringify(groups[i]);
+        const g = groups[i];
+        const origHist = g.history;
+        if (window.LAZY_LOAD) {
+            g.history = await window.dexieDB.messages
+                .where('[chatId+timestamp]')
+                .between([g.id, Number.NEGATIVE_INFINITY], [g.id, Number.POSITIVE_INFINITY], true, true)
+                .toArray();
+        }
+        try {
+            yield JSON.stringify(g);
+        } finally {
+            if (window.LAZY_LOAD) g.history = origHist;
+        }
         if (i < groups.length - 1) yield ',';
         if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
     }
@@ -1241,6 +1293,15 @@ const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promi
     dexieDB.studyBookSummaries.toArray(),
 ]);
 
+// ★ Step 5a：懒加载下 characters[i].history 只有 1500 条。临时挂全量 history 用于备份。
+// 备份完成会在 finally 里卸载（在下方 try 结构里）。
+const _histMap5a = window.LAZY_LOAD ? await window.buildFullHistoryMap() : null;
+const _origHists5a = { chars: new Map(), groups: new Map() };
+if (_histMap5a) {
+    (db.characters || []).forEach(c => { _origHists5a.chars.set(c.id, c.history); c.history = _histMap5a[c.id] || []; });
+    (db.groups     || []).forEach(g => { _origHists5a.groups.set(g.id, g.history); g.history = _histMap5a[g.id] || []; });
+}
+
 const chatData = {
     _exportVersion: '4.0',
     _exportTimestamp: timestamp,
@@ -1284,6 +1345,12 @@ const chatData = {
         // ★★★ 修复:上传失败时回滚 ★★★
         console.error('[Backup] 上传失败,需要人工检查备份完整性:', error);
         throw error;
+    } finally {
+        // ★ Step 5a：恢复内存中的 history（无论备份成功或失败），避免全量常驻内存
+        if (_histMap5a) {
+            (db.characters || []).forEach(c => { c.history = _origHists5a.chars.get(c.id) || c.history; });
+            (db.groups     || []).forEach(g => { g.history = _origHists5a.groups.get(g.id) || g.history; });
+        }
     }
 }
 
