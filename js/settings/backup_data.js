@@ -457,7 +457,7 @@ async function* createFullBackupStream() {
 // =========================================================
 
 // 大数组字段：这些 key 的 value 是数组且元素可能很大，需逐元素 parse 入库
-const LAZY_ARRAY_KEYS = new Set(['characters', 'groups', 'studyBookContents', 'studyCoreadMessages', 'studyBookSummaries']);
+const LAZY_ARRAY_KEYS = new Set(['characters', 'groups', 'studyBookContents', 'studyCoreadMessages', 'studyBookSummaries', 'forumPosts']);
 
 // 跳过空白，返回第一个非空白字符位置
 function _lazySkipWs(str, i) {
@@ -604,6 +604,28 @@ async function _lazyIterArrayItemsAsync(str, arrStart, arrEnd, onItem) {
     }
 }
 
+// ★ Step 5c：从对象 JSON 字符串中剥离指定"大数组字段"，返回元数据 + 大字段的字节区间
+//   输入：完整的对象 JSON 字符串（如一个 char 的 elemStr）+ 大 key 集合
+//   输出：{ meta: 已 parse 的对象（不含大 key）, largeSpans: { keyName: {vStart, vEnd} } }
+//   largeSpans 里的偏移是相对于输入字符串本身的，供 _lazyIterArrayItemsAsync 使用。
+//   目的：避免对含 12 万条 history 的 char 做一次性 JSON.parse（会造 30~40MB 对象树）。
+function _lazyStripLargeKeysFromObject(objStr, largeKeySet) {
+    const spans = _lazyParseTopLevelKeys(objStr);
+    const parts = [];
+    const largeSpans = {};
+    for (const key of Object.keys(spans)) {
+        if (largeKeySet.has(key)) {
+            largeSpans[key] = spans[key];
+        } else {
+            const { vStart, vEnd } = spans[key];
+            parts.push(JSON.stringify(key) + ':' + objStr.slice(vStart, vEnd));
+        }
+    }
+    // 拼出的字符串只含元数据（不含大数组的值），parse 峰值几 KB
+    const meta = JSON.parse('{' + parts.join(',') + '}');
+    return { meta, largeSpans };
+}
+
 // =========================================================
 // 惰性切分全量导入（工单 C 核心）
 // 输入：完整的备份 JSON 字符串（已解压，73MB 量级）
@@ -673,9 +695,34 @@ async function lazyImportBackupData(jsonString) {
         const { vStart, vEnd } = spans[key];
         db[key] = JSON.parse(jsonString.slice(vStart, vEnd));
     }
-    // peekData 特殊处理
+    // peekData 特殊处理（Step 5c：lazy 逐 charId 处理，避免整体 parse）
+    //   备份中的 peekData 通常是 {"charId1": {...}, "charId2": {...}} 形态；
+    //   兼容老格式的数组 [{charId, data}, ...]（走 fallback 整体 parse）。
     if (spans.peekData) {
-        db.peekData = normalizePeek(JSON.parse(jsonString.slice(spans.peekData.vStart, spans.peekData.vEnd)));
+        db.peekData = {};
+        const { vStart, vEnd } = spans.peekData;
+        // 快速判定：跳过空白后第一个字符是 { 则走 lazy，是 [ 则回退整体 parse
+        let scanI = _lazySkipWs(jsonString, vStart);
+        if (jsonString[scanI] === '{') {
+            try {
+                const entrySpans = _lazyParseTopLevelKeys(jsonString.slice(vStart, vEnd));
+                for (const charId of Object.keys(entrySpans)) {
+                    if (charId.startsWith('_')) continue;
+                    const { vStart: es, vEnd: ee } = entrySpans[charId];
+                    // 注意：entrySpans 的偏移是相对于切片的，转回原串
+                    const abs = jsonString.slice(vStart + es, vStart + ee);
+                    db.peekData[charId] = JSON.parse(abs);
+                    // 每 20 个让出一次
+                    if (Object.keys(db.peekData).length % 20 === 0) await new Promise(r => setTimeout(r, 0));
+                }
+            } catch (e) {
+                console.warn('[lazyImport] peekData 分块失败，回退整体 parse:', e && e.message);
+                db.peekData = normalizePeek(JSON.parse(jsonString.slice(vStart, vEnd)));
+            }
+        } else {
+            // 老格式数组：整体 parse（一般量小）
+            db.peekData = normalizePeek(JSON.parse(jsonString.slice(vStart, vEnd)));
+        }
     }
 
     // 5) 分批写入辅助函数
@@ -686,9 +733,11 @@ async function lazyImportBackupData(jsonString) {
         }
     }
 
-    // 6) 处理 characters/groups 大数组（Step 5b：解析一个 → 立即 flush 到 DB → 清 history 后 push 元数据）
-    //    峰值内存目标：任意时刻只有"当前一个 char 的 history 副本"在内存，不叠加。
-    const migrateChatIds = []; // 收集有 history 的 chatId，用于一次性删旧消息（在写入 message 前）
+    // 6) 处理 characters/groups 大数组（Step 5b + 5c）
+    //    5b：解析一个 → 立即 flush 到 DB → 清 history 后 push 元数据（多个 char 不再叠加）
+    //    5c：char 内部再分块——history/memoryChunks 从对象里剥离后 lazy 逐条 parse，
+    //        避免单个"12 万条"char 一次性 JSON.parse 造出 30~40MB 对象树。
+    const migrateChatIds = []; // 收集有 history 的 chatId
     let memBatch = [];   // memories 待入库批次
     let chunkBatch = []; // memoryChunks 待入库批次
     let msgBatch = [];   // messages 待入库批次
@@ -698,11 +747,26 @@ async function lazyImportBackupData(jsonString) {
     const flushChunkBatch = async () => { if (chunkBatch.length) { await dexieDB.memoryChunks.bulkPut(chunkBatch); chunkBatch = []; } };
     const flushMsgBatch   = async () => { if (msgBatch.length)   { await batchBulkPut(dexieDB.messages,     msgBatch);   msgBatch = []; } };
 
-    // 每处理完一个 char/group，先删旧消息再入其 history（避免边删边插造成的顺序问题）
-    // 与旧逻辑差异：旧的是"收集所有 chatId → 一次性 anyOf().delete() → 全量入库"，
-    //              新的是"当前一个 chat → 单独删旧 → 立即入库 → 释放"。功能等价，但内存不叠加。
-    const processOneChat = async (obj, chatType) => {
-        // 拆 memories
+    // ★ 5c 关键：char 对象内部要 lazy 剥离的大字段
+    const LARGE_KEYS_IN_CHAR = new Set(['history', 'memoryChunks']);
+
+    // 每个 char/group：先尝试剥离大字段（5c），失败则回退到 5b 老逻辑（整体 parse）
+    const processOneChat = async (elemStr, chatType) => {
+        let obj;
+        let historySpan = null;
+        let chunksSpan  = null;
+        try {
+            const stripped = _lazyStripLargeKeysFromObject(elemStr, LARGE_KEYS_IN_CHAR);
+            obj = stripped.meta;
+            historySpan = stripped.largeSpans.history      || null;
+            chunksSpan  = stripped.largeSpans.memoryChunks || null;
+        } catch (e) {
+            // 剥离失败（比如 char 结构异常），回退：整体 parse（可能占内存但保功能）
+            console.warn('[lazyImport] char 内部剥离失败，回退整体 parse:', e && e.message);
+            obj = JSON.parse(elemStr);
+        }
+
+        // 拆 memories（memories 通常不大，直接用 obj 上的数组处理）
         const pushMem = (arr, memType) => (arr || []).forEach(item => {
             if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             memBatch.push({ ...item, chatId: obj.id, memType });
@@ -710,17 +774,48 @@ async function lazyImportBackupData(jsonString) {
         pushMem(obj.memorySummaries, 'short');
         pushMem(obj.memoryJournals, 'journal');
         pushMem(obj.longTermSummaries, 'long');
-        // 拆 memoryChunks
-        (obj.memoryChunks || []).forEach(chunk => {
-            if (!chunk.id) chunk.id = `chunk_${obj.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-            chunkBatch.push({ ...chunk, chatId: obj.id });
-        });
-        // ★ history：立即处理，处理完清空该对象的 history 引用，避免常驻内存
-        if (obj.history && obj.history.length) {
+
+        // memoryChunks：lazy 剥离成功用 span 逐条 parse；否则从 obj 里读
+        if (chunksSpan) {
+            await _lazyIterArrayItemsAsync(elemStr, chunksSpan.vStart, chunksSpan.vEnd, async (chunkStr) => {
+                const chunk = JSON.parse(chunkStr);
+                if (!chunk.id) chunk.id = `chunk_${obj.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                chunkBatch.push({ ...chunk, chatId: obj.id });
+                if (chunkBatch.length >= BATCH_SIZE) {
+                    await flushChunkBatch();
+                    await new Promise(r => setTimeout(r, 0));
+                }
+                return true;
+            });
+        } else if (obj.memoryChunks && obj.memoryChunks.length) {
+            obj.memoryChunks.forEach(chunk => {
+                if (!chunk.id) chunk.id = `chunk_${obj.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                chunkBatch.push({ ...chunk, chatId: obj.id });
+            });
+            obj.memoryChunks = []; // 释放
+        }
+
+        // history：lazy 剥离成功用 span 逐条 parse+flush；否则从 obj.history 读
+        if (historySpan) {
             migrateChatIds.push(obj.id);
-            // 先删本 chat 的旧消息（用 equals 单键更快，避免 anyOf 大集合）
             await dexieDB.messages.where('chatId').equals(obj.id).delete();
-            // ★ 原地改而非 spread，省一份浅拷贝
+            let idx = 0;
+            await _lazyIterArrayItemsAsync(elemStr, historySpan.vStart, historySpan.vEnd, async (msgStr) => {
+                const m = JSON.parse(msgStr);
+                if (!m.id) m.id = `msg_${Date.now()}_${msgSeq++}_${idx}`;
+                m.chatId = obj.id;
+                m.chatType = chatType;
+                msgBatch.push(m);
+                idx++;
+                if (msgBatch.length >= BATCH_SIZE) {
+                    await flushMsgBatch();
+                    await new Promise(r => setTimeout(r, 0));
+                }
+                return true;
+            });
+        } else if (obj.history && obj.history.length) {
+            migrateChatIds.push(obj.id);
+            await dexieDB.messages.where('chatId').equals(obj.id).delete();
             const hist = obj.history;
             for (let idx = 0; idx < hist.length; idx++) {
                 const m = hist[idx];
@@ -730,29 +825,27 @@ async function lazyImportBackupData(jsonString) {
                 msgBatch.push(m);
                 if (msgBatch.length >= BATCH_SIZE) {
                     await flushMsgBatch();
-                    // 让浏览器插一次 GC
                     await new Promise(r => setTimeout(r, 0));
                 }
             }
-            obj.history = []; // 立即释放这份数组，让 GC 可以回收
+            obj.history = [];
         }
-        // 元数据入 db（history 已清空，占用极小）
+
+        // 元数据入 db（history/memoryChunks 已剥离或清空，占用极小）
         if (chatType === 'private') db.characters.push(obj);
         else                        db.groups.push(obj);
     };
 
     if (spans.characters) {
         await _lazyIterArrayItemsAsync(jsonString, spans.characters.vStart, spans.characters.vEnd, async (elemStr) => {
-            const c = JSON.parse(elemStr);
-            await processOneChat(c, 'private');
+            await processOneChat(elemStr, 'private');
             return true;
         });
     }
 
     if (spans.groups) {
         await _lazyIterArrayItemsAsync(jsonString, spans.groups.vStart, spans.groups.vEnd, async (elemStr) => {
-            const g = JSON.parse(elemStr);
-            await processOneChat(g, 'group');
+            await processOneChat(elemStr, 'group');
             return true;
         });
     }
@@ -764,6 +857,30 @@ async function lazyImportBackupData(jsonString) {
     }
     await flushMemBatch();
     await flushChunkBatch();
+
+    // 10.5) forumPosts（Step 5c：lazy 逐帖处理，避免整体 parse 10MB+ JSON）
+    if (spans.forumPosts) {
+        db.forumPosts = [];
+        let postBatch = [];
+        const flushPostBatch = async () => {
+            if (!postBatch.length) return;
+            // ★ forumPosts 是 db 挂载 + Dexie 写盘双持有；这里只入内存 + DB
+            db.forumPosts.push(...postBatch);
+            await batchBulkPut(dexieDB.forumPosts, postBatch);
+            postBatch = [];
+        };
+        await _lazyIterArrayItemsAsync(jsonString, spans.forumPosts.vStart, spans.forumPosts.vEnd, async (postStr) => {
+            postBatch.push(JSON.parse(postStr));
+            if (postBatch.length >= BATCH_SIZE) {
+                await flushPostBatch();
+                await new Promise(r => setTimeout(r, 0));
+            }
+            return true;
+        });
+        await flushPostBatch();
+        // 与 loadData 一致：按时间倒序
+        db.forumPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    }
 
     // 11) study 大表逐元素分批入库（不入 db，db 不持有这些大表）
     if (spans.studyBookContents) {
