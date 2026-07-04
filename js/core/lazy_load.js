@@ -65,6 +65,118 @@ window.fetchOlderMessages = async function (chatId, oldestTimestamp, inMemoryIds
 };
 
 // ──────────────────────────────────────────
+// Step 4：DB 搜索（日期 / 关键词 / 二者兼备）
+//   dateStr: 'YYYY-MM-DD' 或 空；keyword: string 或 空
+//   返回按 timestamp 降序的匹配数组（与现有 UI 顺序一致：最新在前）
+//   流式 each() 扫描，不把全表装入内存；命中 push 到结果里
+// ──────────────────────────────────────────
+window.searchMessagesInDB = async function (chatId, dateStr, keyword) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+
+    // 复用现有搜索的"不可见系统消息"规则（原样抄自 chat_search.js:85）
+    const invisibleRegex = /\[.*?更新状态为[:：].*?\]|\[system:.*?\]|\[.*?(?:接收|退回).*?的转账\]|\[.*?已接收礼物\]|\[系统情景通知：.*?\]/;
+
+    // 日期范围（当天 00:00 ~ 次日 00:00）
+    let tsLo = Number.NEGATIVE_INFINITY;
+    let tsHi = Number.POSITIVE_INFINITY;
+    if (dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        tsLo = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+        tsHi = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+    }
+
+    const kw = (keyword || '').toLowerCase();
+    const results = [];
+
+    // 流式扫描（有日期范围时用索引精准定位，否则扫该 chat 的全部）
+    await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, tsLo], [chatId, tsHi], true, true)
+        .each(msg => {
+            // 复用 chat_search.js:88-95 的过滤规则
+            if (msg.role === 'system' && msg.isHidden) return;
+            if (typeof msg.content !== 'string') return;
+            if (invisibleRegex.test(msg.content)) return;
+            if (msg.isWithdrawn) return;
+
+            if (kw) {
+                let contentToCheck = msg.content;
+                const textMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
+                if (textMatch) contentToCheck = textMatch[1];
+                if (contentToCheck.startsWith('[system-narration:')) {
+                    const narMatch = contentToCheck.match(/\[system-narration:([\s\S]+?)\]/);
+                    if (narMatch) contentToCheck = narMatch[1];
+                }
+                if (!contentToCheck.toLowerCase().includes(kw)) return;
+            }
+            results.push(msg);
+        });
+
+    // 铁律排序后倒序（最新在前，与现有 UI 一致）
+    results.sort(_sortByTimestampExact);
+    results.reverse();
+    return results;
+};
+
+// ──────────────────────────────────────────
+// Step 4：取"以目标 timestamp 为中心，前 before 条 + 后 after 条"
+//   用于搜索跳转时把老消息 merge 进 chat.history
+//   返回升序数组（未去重，由调用方按 id 去重后再 merge）
+// ──────────────────────────────────────────
+window.fetchAroundMessage = async function (chatId, targetTs, before = 100, after = 100) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    // 前 before 条：timestamp <= targetTs，逆序取 before+50 条（含边界余量）
+    const beforePart = await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, Number.NEGATIVE_INFINITY], [chatId, targetTs], true, true)
+        .reverse()
+        .limit(before + 50)
+        .toArray();
+    // 后 after 条：timestamp > targetTs，正序取 after+50 条
+    const afterPart = await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, targetTs], [chatId, Number.POSITIVE_INFINITY], false, true)
+        .limit(after + 50)
+        .toArray();
+    const all = [...beforePart, ...afterPart];
+    all.sort(_sortByTimestampExact);
+    return all;
+};
+
+// ──────────────────────────────────────────
+// Step 4：顺序 verify（防止 merge 后出现"记录乱"）
+//   检查 chat.history 相邻 timestamp 是否单调不递减、有无重复 id。
+//   出问题：console.error 详情；alert 只弹一次（避免刷屏）。
+// ──────────────────────────────────────────
+window._orderAlertShown = false;
+window.assertHistoryOrder = function (chat, context = '') {
+    if (!chat || !chat.history) return true;
+    const h = chat.history;
+    const ids = new Set();
+    for (let i = 0; i < h.length; i++) {
+        if (i > 0 && (h[i].timestamp || 0) < (h[i - 1].timestamp || 0)) {
+            console.error(`❌ [assertHistoryOrder] ${context} 逆序！位置 ${i}`, {
+                prev: { id: h[i - 1].id, ts: h[i - 1].timestamp },
+                curr: { id: h[i].id, ts: h[i].timestamp },
+            });
+            if (!window._orderAlertShown) {
+                window._orderAlertShown = true;
+                if (typeof AppUI !== 'undefined' && AppUI.alert) {
+                    AppUI.alert(`检测到消息顺序异常（${context} 位置 ${i}）。请查看控制台并联系开发者。`, '顺序异常');
+                }
+            }
+            return false;
+        }
+        if (ids.has(h[i].id)) {
+            console.error(`❌ [assertHistoryOrder] ${context} 重复 id：${h[i].id} 位置 ${i}`);
+            return false;
+        }
+        ids.add(h[i].id);
+    }
+    return true;
+};
+
+// ──────────────────────────────────────────
 // Step 0 + Step 1 验收工具：等价对照（只读，不改任何数据）
 //   对同一个 chat：
 //     老路径 = 全量 toArray + 铁律排序，取最后 limit 条的 id 序列
