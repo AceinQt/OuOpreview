@@ -84,9 +84,11 @@ async function performSearch(dateStr, keyword) {
 
     // ★ Step 4：懒加载时改查 IndexedDB（能搜到窗口外的老消息）
     if (window.LAZY_LOAD) {
+        const hideLoading = (typeof showLoadingToast === 'function')
+            ? showLoadingToast('搜索中…') : null;
         try {
-            if (typeof showToast === 'function') showToast('搜索中…');
             const results = await window.searchMessagesInDB(currentChatId, dateStr, keyword);
+            if (hideLoading) hideLoading();
             allMatchedResults = results; // 已按 timestamp 降序（最新在前），与老路径的 reverse() 结果等价
             renderedCount = 0;
             searchResultsList.innerHTML = '';
@@ -102,6 +104,7 @@ async function performSearch(dateStr, keyword) {
                 renderNextBatch();
             }
         } catch (e) {
+            if (hideLoading) hideLoading();
             console.error('❌ [搜索] DB 搜索失败:', e);
             if (typeof showToast === 'function') showToast('搜索失败');
         }
