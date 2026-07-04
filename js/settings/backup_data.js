@@ -585,6 +585,25 @@ function _lazyIterArrayItems(str, arrStart, arrEnd, onItem) {
     }
 }
 
+// ★ Step 5b：异步版本的逐元素遍历（同上，但 onItem 可以是 async；每个元素 await）
+//   目的：让"解析一个 char → 立即 flush 它的 history 到 DB → 释放"成为可能，
+//   避免所有 characters 的 history 同时常驻内存导致手机 Chrome OOM。
+async function _lazyIterArrayItemsAsync(str, arrStart, arrEnd, onItem) {
+    let i = arrStart;
+    if (str[i] !== '[') throw new Error('iterArrayItems: 期望 [');
+    i++;
+    while (i < arrEnd) {
+        i = _lazySkipWs(str, i);
+        if (i >= arrEnd || str[i] === ']') break;
+        if (str[i] === ',') { i++; continue; }
+        const elemStart = i;
+        const elemEnd = _lazyFindValueEnd(str, i);
+        const res = await onItem(str.slice(elemStart, elemEnd));
+        if (res === false) return;
+        i = elemEnd;
+    }
+}
+
 // =========================================================
 // 惰性切分全量导入（工单 C 核心）
 // 输入：完整的备份 JSON 字符串（已解压，73MB 量级）
@@ -667,87 +686,82 @@ async function lazyImportBackupData(jsonString) {
         }
     }
 
-    // 6) 处理 characters 大数组：逐元素 parse → 元数据入 db.characters + history 入 messages + memories/chunks 入对应表
-    const migrateChatIds = []; // 收集有 history 的 chatId，用于一次性删旧消息
+    // 6) 处理 characters/groups 大数组（Step 5b：解析一个 → 立即 flush 到 DB → 清 history 后 push 元数据）
+    //    峰值内存目标：任意时刻只有"当前一个 char 的 history 副本"在内存，不叠加。
+    const migrateChatIds = []; // 收集有 history 的 chatId，用于一次性删旧消息（在写入 message 前）
     let memBatch = [];   // memories 待入库批次
     let chunkBatch = []; // memoryChunks 待入库批次
+    let msgBatch = [];   // messages 待入库批次
+    let msgSeq = 0;      // ★ 用于生成缺失 id，避免同一毫秒内的碰撞
 
-    const flushMemBatch = async () => { if (memBatch.length) { await batchBulkPut(dexieDB.memories, memBatch); memBatch = []; } };
+    const flushMemBatch   = async () => { if (memBatch.length)   { await batchBulkPut(dexieDB.memories,     memBatch);   memBatch = []; } };
     const flushChunkBatch = async () => { if (chunkBatch.length) { await dexieDB.memoryChunks.bulkPut(chunkBatch); chunkBatch = []; } };
+    const flushMsgBatch   = async () => { if (msgBatch.length)   { await batchBulkPut(dexieDB.messages,     msgBatch);   msgBatch = []; } };
 
-    if (spans.characters) {
-        _lazyIterArrayItems(jsonString, spans.characters.vStart, spans.characters.vEnd, (elemStr) => {
-            const c = JSON.parse(elemStr);
-            // 收集 chatId（有 history 才需要删旧消息）
-            if (c.history && c.history.length) migrateChatIds.push(c.id);
-            // 拆 memories
-            const pushMem = (arr, memType) => (arr || []).forEach(item => {
-                if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                memBatch.push({ ...item, chatId: c.id, memType });
-            });
-            pushMem(c.memorySummaries, 'short');
-            pushMem(c.memoryJournals, 'journal');
-            pushMem(c.longTermSummaries, 'long');
-            // 拆 memoryChunks
-            (c.memoryChunks || []).forEach(chunk => {
-                if (!chunk.id) chunk.id = `chunk_${c.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-                chunkBatch.push({ ...chunk, chatId: c.id });
-            });
-            // 元数据入 db.characters（保留 history 字段，下面统一处理 history→messages 迁移）
-            db.characters.push(c);
-            return true;
+    // 每处理完一个 char/group，先删旧消息再入其 history（避免边删边插造成的顺序问题）
+    // 与旧逻辑差异：旧的是"收集所有 chatId → 一次性 anyOf().delete() → 全量入库"，
+    //              新的是"当前一个 chat → 单独删旧 → 立即入库 → 释放"。功能等价，但内存不叠加。
+    const processOneChat = async (obj, chatType) => {
+        // 拆 memories
+        const pushMem = (arr, memType) => (arr || []).forEach(item => {
+            if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            memBatch.push({ ...item, chatId: obj.id, memType });
         });
-    }
-
-    // 7) 处理 groups 大数组：同上
-    if (spans.groups) {
-        _lazyIterArrayItems(jsonString, spans.groups.vStart, spans.groups.vEnd, (elemStr) => {
-            const g = JSON.parse(elemStr);
-            if (g.history && g.history.length) migrateChatIds.push(g.id);
-            const pushMem = (arr, memType) => (arr || []).forEach(item => {
-                if (!item.id) item.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                memBatch.push({ ...item, chatId: g.id, memType });
-            });
-            pushMem(g.memorySummaries, 'short');
-            pushMem(g.memoryJournals, 'journal');
-            pushMem(g.longTermSummaries, 'long');
-            (g.memoryChunks || []).forEach(chunk => {
-                if (!chunk.id) chunk.id = `chunk_${g.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-                chunkBatch.push({ ...chunk, chatId: g.id });
-            });
-            db.groups.push(g);
-            return true;
+        pushMem(obj.memorySummaries, 'short');
+        pushMem(obj.memoryJournals, 'journal');
+        pushMem(obj.longTermSummaries, 'long');
+        // 拆 memoryChunks
+        (obj.memoryChunks || []).forEach(chunk => {
+            if (!chunk.id) chunk.id = `chunk_${obj.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            chunkBatch.push({ ...chunk, chatId: obj.id });
         });
-    }
-
-    // 8) 删除旧消息（按 migrateChatIds，避免边删边插）
-    if (migrateChatIds.length > 0) {
-        await dexieDB.messages.where('chatId').anyOf(migrateChatIds).delete();
-    }
-
-    // 9) history → messages 分批入库（边遍历角色边分批 flush，保留浅拷贝避免污染 history）
-    let msgBatch = [];
-    const flushMsgBatch = async () => { if (msgBatch.length) { await batchBulkPut(dexieDB.messages, msgBatch); msgBatch = []; } };
-
-    const collectHistory = async (historyArr, chatId, chatType) => {
-        historyArr.forEach((m, idx) => {
-            if (!m.id) m.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${idx}`;
-            msgBatch.push({ ...m, chatId, chatType });
-        });
-        while (msgBatch.length >= BATCH_SIZE) {
-            const toPut = msgBatch.splice(0, BATCH_SIZE);
-            await dexieDB.messages.bulkPut(toPut);
+        // ★ history：立即处理，处理完清空该对象的 history 引用，避免常驻内存
+        if (obj.history && obj.history.length) {
+            migrateChatIds.push(obj.id);
+            // 先删本 chat 的旧消息（用 equals 单键更快，避免 anyOf 大集合）
+            await dexieDB.messages.where('chatId').equals(obj.id).delete();
+            // ★ 原地改而非 spread，省一份浅拷贝
+            const hist = obj.history;
+            for (let idx = 0; idx < hist.length; idx++) {
+                const m = hist[idx];
+                if (!m.id) m.id = `msg_${Date.now()}_${msgSeq++}_${idx}`;
+                m.chatId = obj.id;
+                m.chatType = chatType;
+                msgBatch.push(m);
+                if (msgBatch.length >= BATCH_SIZE) {
+                    await flushMsgBatch();
+                    // 让浏览器插一次 GC
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            obj.history = []; // 立即释放这份数组，让 GC 可以回收
         }
+        // 元数据入 db（history 已清空，占用极小）
+        if (chatType === 'private') db.characters.push(obj);
+        else                        db.groups.push(obj);
     };
 
-    for (const c of db.characters) { if (c.history && c.history.length) await collectHistory(c.history, c.id, 'private'); }
-    for (const g of db.groups)     { if (g.history && g.history.length) await collectHistory(g.history, g.id, 'group'); }
+    if (spans.characters) {
+        await _lazyIterArrayItemsAsync(jsonString, spans.characters.vStart, spans.characters.vEnd, async (elemStr) => {
+            const c = JSON.parse(elemStr);
+            await processOneChat(c, 'private');
+            return true;
+        });
+    }
+
+    if (spans.groups) {
+        await _lazyIterArrayItemsAsync(jsonString, spans.groups.vStart, spans.groups.vEnd, async (elemStr) => {
+            const g = JSON.parse(elemStr);
+            await processOneChat(g, 'group');
+            return true;
+        });
+    }
+
+    // 收尾 flush
     await flushMsgBatch();
     if (migrateChatIds.length > 0) {
         window.isMessageMigrated = true; // 所有消息入库完成后才标记
     }
-
-    // 10) memories / memoryChunks 入库
     await flushMemBatch();
     await flushChunkBatch();
 
