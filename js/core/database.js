@@ -11,7 +11,9 @@ const globalSettingKeys =[
     'enableScreenAdaptation',
     'enableSwipeBack',
     // ★ 学习模块设置（绑定人设/API预设，存量小放 globalSettings）
-    'studySettings'
+    'studySettings',
+    // ★ 系统消息通知设置（总开关 / 全局后台保活时长）
+    'globalNotifySettings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源
@@ -41,6 +43,11 @@ window.db = {
     enableBottomSafeArea: true,
     enableScreenAdaptation: false,
     enableSwipeBack: false,
+
+    // ★ 系统消息通知设置
+    //   enabled: 总开关（是否弹系统通知，含桌面角标）
+    //   keepAliveMinutes: 全局后台保活时长（分钟）——仅当"按聊天保活"未生效时作为兜底
+    globalNotifySettings: { enabled: false, keepAliveMinutes: 30 },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
