@@ -20,7 +20,31 @@
 //  注意：消息时间戳字段假设为 m.timestamp（毫秒）
 //  若字段名不同（如 m.time、m.createdAt），请同步修改此处
 // ============================================================
-function _findRangeByTime(history, startTs, endTs) {
+// [Step S2] 懒加载后 chat.history 只有内存里最近 1500 条，老时间段在数组里根本找不到。
+// 改法：LAZY_LOAD 开时走 DB 索引 count，返回全局 1-based 序号；关时保留原逻辑。
+// 铁律：这里也不排序，只 count；返回值语义与老版一致（找不到时 -1/-1）。
+async function _findRangeByTime(chat, startTs, endTs) {
+    if (window.LAZY_LOAD) {
+        if (!chat || !window.dexieDB) return { start: -1, end: -1 };
+        const chatId = chat.id;
+        // 先探一眼该 ts 范围内到底有没有消息（有 → 才有意义算 start/end）
+        const inRange = await window.getMessagesByTsRange(chatId, startTs, endTs);
+        if (inRange.length === 0) return { start: -1, end: -1 };
+        // start = 1 + 该 chat 中 ts < startTs 的消息条数
+        //   between 第 5 参数 false = 上界开区间（严格小于 startTs）
+        const startCount = await window.dexieDB.messages
+            .where('[chatId+timestamp]')
+            .between([chatId, Number.NEGATIVE_INFINITY], [chatId, startTs], true, false)
+            .count();
+        // end = 该 chat 中 ts <= endTs 的消息条数
+        const end = await window.dexieDB.messages
+            .where('[chatId+timestamp]')
+            .between([chatId, Number.NEGATIVE_INFINITY], [chatId, endTs], true, true)
+            .count();
+        return { start: startCount + 1, end };
+    }
+    // 非懒加载：原逻辑（保证一键回滚时行为完全不变）
+    const history = chat?.history || [];
     let start = -1, end = -1;
     for (let i = 0; i < history.length; i++) {
         const ts = history[i].timestamp;
@@ -35,7 +59,10 @@ function _findRangeByTime(history, startTs, endTs) {
 // ============================================================
 //  辅助：实时预览按时间新建的序号范围
 // ============================================================
-function _updateTimeRangePreview() {
+// [Step S2] 时间范围预览：改 async。快速改时间字段时用 seq 号丢弃过期结果，
+// 避免"先返回的老查询覆盖新查询"的显示错乱。
+let _timeRangePreviewSeq = 0;
+async function _updateTimeRangePreview() {
     const sY = parseInt(document.getElementById('time-start-year').value);
     const sM = parseInt(document.getElementById('time-start-month').value);
     const sD = parseInt(document.getElementById('time-start-day').value);
@@ -65,7 +92,10 @@ function _updateTimeRangePreview() {
     const chat = getCurrentChatObject();
     if (!chat) return;
 
-    const { start, end } = _findRangeByTime(chat.history, startTs, endTs);
+    // 竞态保护：只有当前这次是最新调用才允许写 DOM
+    const mySeq = ++_timeRangePreviewSeq;
+    const { start, end } = await _findRangeByTime(chat, startTs, endTs);
+    if (mySeq !== _timeRangePreviewSeq) return;
 
     if (start === -1 || end === -1) {
         resultEl.style.color = 'var(--danger-color, #e74c3c)';
@@ -79,7 +109,9 @@ function _updateTimeRangePreview() {
 // ============================================================
 //  辅助：实时预览单日期（日记tab）
 // ============================================================
-function _updateSingleDatePreview() {
+// [Step S2] 单日期预览：同上 async 化 + 竞态保护
+let _singleDatePreviewSeq = 0;
+async function _updateSingleDatePreview() {
     const sY = parseInt(document.getElementById('time-single-year').value);
     const sM = parseInt(document.getElementById('time-single-month').value);
     const sD = parseInt(document.getElementById('time-single-day').value);
@@ -91,7 +123,11 @@ function _updateSingleDatePreview() {
     const endTs   = new Date(sY, sM - 1, sD, 23, 59, 59, 999).getTime();
     const chat = getCurrentChatObject();
     if (!chat) return;
-    const { start, end } = _findRangeByTime(chat.history, startTs, endTs);
+
+    const mySeq = ++_singleDatePreviewSeq;
+    const { start, end } = await _findRangeByTime(chat, startTs, endTs);
+    if (mySeq !== _singleDatePreviewSeq) return;
+
     if (start === -1 || end === -1) {
         resultEl.style.color = 'var(--danger-color, #e74c3c)';
         resultEl.textContent = '⚠ 该日期内未找到聊天记录';
@@ -386,7 +422,7 @@ function setupMemoryJournalScreen() {
     // ============================================================
     //  生成按钮逻辑分流（+号）
     // ============================================================
-    generateNewBtn.addEventListener('click', () => {
+    generateNewBtn.addEventListener('click', async () => {
         if (currentChatType === 'group' && currentMemoryTab === 'journal') {
             showToast('群聊无法生成个人日记');
             return;
@@ -404,7 +440,10 @@ function setupMemoryJournalScreen() {
 
         // 短期总结 / 日记 —— 打开三模式弹窗
         const chat = getCurrentChatObject();
-        const totalMessages = chat ? chat.history.length : 0;
+        // [Step S2] 懒加载后 chat.history.length 只有 1500，必须查 DB 拿真实总数
+        const totalMessages = chat
+            ? (window.LAZY_LOAD ? await window.getMessageCount(chat.id) : chat.history.length)
+            : 0;
 
         const modalTitle = document.getElementById('generate-modal-title');
         if (currentMemoryTab === 'summary') {
@@ -512,7 +551,8 @@ function setupMemoryJournalScreen() {
             }
 
             const chat = getCurrentChatObject();
-            const { start, end } = _findRangeByTime(chat.history, startTs, endTs);
+            // [Step S2] async 化，DB 走全局查询
+            const { start, end } = await _findRangeByTime(chat, startTs, endTs);
             if (start === -1 || end === -1) { showToast('该时间段内未找到聊天记录'); return; }
 
             const generateBoth = (
