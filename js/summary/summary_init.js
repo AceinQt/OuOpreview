@@ -438,13 +438,10 @@ function setupMemoryJournalScreen() {
             return;
         }
 
-        // 短期总结 / 日记 —— 打开三模式弹窗
+        // 短期总结 / 日记 —— 立即打开弹窗（加载态），避免点击无反馈
+        // [Step S2+] 原实现先 await getMessageCount 再 show 弹窗，点击到弹窗出现有延迟，
+        //   用户会以为没点到反复点。改成：先把弹窗弹出来（带 spinner 占位），再异步取数填充。
         const chat = getCurrentChatObject();
-        // [Step S2] 懒加载后 chat.history.length 只有 1500，必须查 DB 拿真实总数
-        const totalMessages = chat
-            ? (window.LAZY_LOAD ? await window.getMessageCount(chat.id) : chat.history.length)
-            : 0;
-
         const modalTitle = document.getElementById('generate-modal-title');
         if (currentMemoryTab === 'summary') {
             modalTitle.textContent = '生成短期总结';
@@ -452,31 +449,19 @@ function setupMemoryJournalScreen() {
             modalTitle.textContent = '生成角色日记';
         }
 
-        document.getElementById('journal-range-info').textContent = `当前聊天总消息数: ${totalMessages}`;
-
         // 重置弹窗状态
         generateForm.reset();
         newEntryModeSelect.value = 'by-index';
         _applyModePanel('by-index');
-        document.getElementById('time-range-result').textContent  = '';
-        document.getElementById('time-single-result').textContent = '';
 
-        // --- 按消息序号：默认填入"未总结"的起止范围 ---
+        const rangeInfoEl       = document.getElementById('journal-range-info');
+        const rangeStartInput   = document.getElementById('journal-range-start');
+        const rangeEndInput     = document.getElementById('journal-range-end');
+        const timeRangeResult   = document.getElementById('time-range-result');
+        const timeSingleResult  = document.getElementById('time-single-result');
+
+        // 按时间面板的默认日期不依赖 DB，先填好（与原逻辑一致）
         const now = new Date();
-        if (chat && totalMessages > 0) {
-            const existingItems = currentMemoryTab === 'summary'
-                ? (chat.memorySummaries || [])
-                : (chat.memoryJournals  || []);
-            let maxEnd = 0;
-            existingItems.forEach(item => {
-                const e = typeof item.range?.end === 'number' ? item.range.end : parseInt(item.range?.end);
-                if (!isNaN(e) && e > maxEnd) maxEnd = e;
-            });
-            document.getElementById('journal-range-start').value = maxEnd > 0 && maxEnd < totalMessages ? maxEnd + 1 : 1;
-            document.getElementById('journal-range-end').value   = totalMessages;
-        }
-
-        // --- 按时间（总结）：今天 0:00 ~ 明天 0:00 ---
         const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         document.getElementById('time-start-year').value  = now.getFullYear();
         document.getElementById('time-start-month').value = now.getMonth() + 1;
@@ -492,7 +477,41 @@ function setupMemoryJournalScreen() {
         document.getElementById('time-single-month').value = now.getMonth() + 1;
         document.getElementById('time-single-day').value   = now.getDate();
 
+        // ★ 把"总消息数/序号范围"区先置为加载态，让用户立刻看到反馈
+        if (timeRangeResult)  timeRangeResult.textContent  = '';
+        if (timeSingleResult) timeSingleResult.textContent = '';
+        if (rangeStartInput)  rangeStartInput.value = '';
+        if (rangeEndInput)    rangeEndInput.value   = '';
+        if (rangeInfoEl) {
+            rangeInfoEl.innerHTML = '<span style="color:#888;"><i class="fas fa-spinner fa-spin"></i> 加载记忆中...</span>';
+        }
+
+        // ★ 立即显示弹窗（此时仍是加载态），用户不再觉得"没点到"
         generateModal.classList.add('visible');
+
+        // ★ 再异步取真实总数（懒加载下走 DB count，原 chat.history.length 只有 1500）
+        const totalMessages = chat
+            ? (window.LAZY_LOAD ? await window.getMessageCount(chat.id) : chat.history.length)
+            : 0;
+
+        if (rangeInfoEl) rangeInfoEl.textContent = `当前聊天总消息数: ${totalMessages}`;
+
+        // --- 按消息序号：默认填入"未总结"的起止范围（依赖 totalMessages，故放这） ---
+        if (chat && totalMessages > 0) {
+            const existingItems = currentMemoryTab === 'summary'
+                ? (chat.memorySummaries || [])
+                : (chat.memoryJournals  || []);
+            let maxEnd = 0;
+            existingItems.forEach(item => {
+                const e = typeof item.range?.end === 'number' ? item.range.end : parseInt(item.range?.end);
+                if (!isNaN(e) && e > maxEnd) maxEnd = e;
+            });
+            if (rangeStartInput) rangeStartInput.value = maxEnd > 0 && maxEnd < totalMessages ? maxEnd + 1 : 1;
+            if (rangeEndInput)   rangeEndInput.value   = totalMessages;
+        } else {
+            if (rangeStartInput) rangeStartInput.value = 1;
+            if (rangeEndInput)   rangeEndInput.value   = 0;
+        }
     });
 
     // ============================================================
