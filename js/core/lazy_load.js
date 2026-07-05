@@ -285,4 +285,40 @@ window.auditMessageOrder = async function () {
     return report;
 };
 
-console.log('lazy_load.js 已加载（Step 0+1，未接入）。可用：window.auditMessageOrder() / window.loadRecentMessages(chatId,1500) / window.verifyLazyLoad(chatId,1500)');
+// ──────────────────────────────────────────
+// Step S1：summary 模块配套 helper（只做 DB 查询，不掺内存路径判断）
+//   上层调用方自己决定是否先查内存，miss 再落到这里。
+// ──────────────────────────────────────────
+
+// getMessageCount(chatId): 返回该 chat 的 DB 消息总数（int）
+//   用途：summary 弹窗里"当前聊天总消息数"，懒加载后 chat.history.length 只有 1500，
+//         必须走 DB 才能拿到真实总数。
+//   走复合索引 [chatId+timestamp] 的 count()，不读消息体，很快。
+window.getMessageCount = async function (chatId) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    return await window.dexieDB.messages.where('chatId').equals(chatId).count();
+};
+
+// getMessagesByTsRange(chatId, tsLo, tsHi): 返回 [tsLo, tsHi] 闭区间内的全部消息，升序（铁律排序）
+//   用途：summary 生成 / chunk retry / 向量原文重建 —— 这些原来都在 chat.history.slice()，
+//         现在改成按时间戳从 DB 拉，避免"内存里没那段老消息就抓瞎"。
+//   参数：
+//     chatId ：会话 id
+//     tsLo   ：时间戳下界（含）。传 null/undefined 视为 -Infinity。
+//     tsHi   ：时间戳上界（含）。传 null/undefined 视为 +Infinity。
+//   注意：闭区间两端都是 inclusive（between 的 4/5 参数都传 true），
+//         同一 ts 的边界消息会被包含进来——调用方自己去重/裁切。
+window.getMessagesByTsRange = async function (chatId, tsLo, tsHi) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    const lo = (tsLo == null) ? Number.NEGATIVE_INFINITY : tsLo;
+    const hi = (tsHi == null) ? Number.POSITIVE_INFINITY : tsHi;
+    const rows = await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, lo], [chatId, hi], true, true)
+        .toArray();
+    // 铁律排序兜底（between 已按索引升序返回，这里保底一次，与 loadData 一致）
+    rows.sort(_sortByTimestampExact);
+    return rows;
+};
+
+console.log('lazy_load.js 已加载（Step 0+1+S1）。可用：window.auditMessageOrder() / window.loadRecentMessages(chatId,1500) / window.verifyLazyLoad(chatId,1500) / window.getMessageCount(chatId) / window.getMessagesByTsRange(chatId,tsLo,tsHi)');
