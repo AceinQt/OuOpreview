@@ -77,9 +77,10 @@
 
         const reg = await getActiveReg();
         if (!reg || typeof reg.showNotification !== 'function') {
-            console.warn('[通知] 拿不到可用的 Service Worker registration，无法弹通知。');
+            console.warn('[通知] 拿不到可用的 Service Worker registration，无法弹通知。reg=', reg);
             return false;
         }
+        console.log('[通知] 使用 registration:', reg.scope, 'active=', !!reg.active);
 
         try {
             await reg.showNotification(title || '新消息', {
@@ -153,12 +154,17 @@
     async function notifyMessages(chat, chatType, messages) {
         try {
             const s = getSettings();
-            if (!s.enabled) return;
-            if (document.visibilityState !== 'hidden') return; // 仅后台弹
-            if (!chat || !Array.isArray(messages) || !messages.length) return;
+            const vis = document.visibilityState;
+            const perm = ('Notification' in window) ? Notification.permission : 'n/a';
+            const cnt = Array.isArray(messages) ? messages.length : 0;
+            console.log(`[通知] notifyMessages: enabled=${s.enabled} vis=${vis} perm=${perm} chat=${chat && chat.id} msgs=${cnt}`);
+
+            if (!s.enabled) { console.log('[通知] 跳过：总开关未开'); return; }
+            if (vis !== 'hidden') { console.log('[通知] 跳过：前台可见（仅后台弹）'); return; }
+            if (!chat || !cnt) { console.log('[通知] 跳过：无 chat 或无消息'); return; }
 
             const notifiable = messages.filter(m => m && m.role === 'assistant' && previewOf(m));
-            if (!notifiable.length) return;
+            if (!notifiable.length) { console.log('[通知] 跳过：无可通知消息（都是系统/视觉类）'); return; }
 
             const last = notifiable[notifiable.length - 1];
             const title = chatDisplayName(chat, chatType);
@@ -168,11 +174,13 @@
             }
             if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
 
-            await fire(title, body, {
+            console.log(`[通知] 准备弹出: title="${title}" body="${body}"`);
+            const ok = await fire(title, body, {
                 tag: 'chat-' + chat.id,   // 同一会话折叠为一条（Step 3 再做可配置）
                 renotify: true,
                 data: { chatId: chat.id, chatType: chatType }
             });
+            console.log('[通知] fire 返回:', ok);
         } catch (e) {
             console.warn('[通知] notifyMessages 异常:', e);
         }

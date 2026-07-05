@@ -608,18 +608,19 @@ function startBackgroundAudioTimer() {
         });
     }
 
-    // 全局保活兜底：按聊天的保活优先；当没有任何按聊天保活生效时，
-    // 若开了系统通知总开关，则按用户在"消息通知"页设置的全局时长保活。
+    // 系统通知保活：只要开了通知总开关，就至少保活到"消息通知"页设置的时长。
+    // 与按聊天保活取【较大值】——谁的时长更长听谁的（不再是"原保活优先、短的赢"）。
+    const gn = (typeof db !== 'undefined') ? db.globalNotifySettings : null;
+    if (gn && gn.enabled && (gn.keepAliveMinutes || 0) > 0) {
+        needsGenerationOrTimer = true; // 开了通知也需要保活，好在后台弹通知
+        const gms = gn.keepAliveMinutes * 60 * 1000;
+        if (gms > maxKeepAliveMs) maxKeepAliveMs = gms;
+        console.log(`[精灵] 系统通知已开，保活下限 ${gn.keepAliveMinutes} 分钟，最终保活 ${Math.floor(maxKeepAliveMs/60000)} 分钟`);
+    }
+
     if (!needsGenerationOrTimer) {
-        const gn = (typeof db !== 'undefined') ? db.globalNotifySettings : null;
-        if (gn && gn.enabled && (gn.keepAliveMinutes || 0) > 0) {
-            needsGenerationOrTimer = true;
-            maxKeepAliveMs = gn.keepAliveMinutes * 60 * 1000;
-            console.log(`[精灵] 无按聊天保活，启用全局保活兜底：${gn.keepAliveMinutes} 分钟`);
-        } else {
-            console.log('[精灵] 虽然user离开了，但奖池已满且无固定定时任务，精灵休息。');
-            return;
-        }
+        console.log('[精灵] 虽然user离开了，但奖池已满且无固定定时任务、也没开系统通知，精灵休息。');
+        return;
     }
 
     console.log(`[精灵] user离开了，精灵开始唱歌... (本次保活上限: ${Math.floor(maxKeepAliveMs/60000)} 分钟)`);
