@@ -470,7 +470,29 @@
                 </div>
             </div>
         </div>
-        
+        <div class="settings-item-hint" id="notify-permission-hint" style="padding: 6px 16px; font-size: 12px; color: #999; line-height: 1.5;">
+            开启后，切到后台时若有新消息会弹出系统通知。iOS 需先"添加到主屏幕"。
+        </div>
+
+        <div class="settings-group-title">后台保活</div>
+        <div class="settings-card">
+            <div class="settings-item" style="cursor: default;">
+                <div class="item-details">
+                    <span class="item-name">后台保活时长（分钟）</span>
+                    <span class="item-desc" style="font-size: 12px; color: #999;">切后台后保持接收消息的时间。优先跟随聊天自身的保活设置，未设置时用此值兜底。</span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <input type="number" id="notify-keepalive-input" min="1" max="1440" value="30"
+                        class="form-control" style="width: 72px; padding: 8px; text-align: center;">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card" style="margin-top: 12px;">
+            <div class="settings-item" id="notify-test-btn" style="cursor: pointer; justify-content: center;">
+                <span class="item-name" style="color: var(--accent-color, #07c160);">发送一条测试通知</span>
+            </div>
+        </div>
 
     </main>
 </div>
@@ -6413,6 +6435,7 @@
     <script src="js/chat/chat_feature_basic.js"></script>
     <script src="js/chat/chat_feature_offline.js"></script>
     <script src="js/chat/chat_feature_proactive.js"></script>
+    <script src="js/chat/notification_center.js"></script>
     <script src="js/chat/chat_feature_call.js"></script>
     <script src="js/chat/chat_ai_service.js"></script>
     <script src="js/chat/chat_bubble_factory.js"></script>
