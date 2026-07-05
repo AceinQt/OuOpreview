@@ -2,7 +2,7 @@
 
 /* 聊天列表侧边栏（参照 study-profile-sidebar） */
 #chat-list-sidebar {
-  background-color: var(--dgray-color);
+  background-color: var(--gray-color);
   left: auto;
   right: -100%;
 }
@@ -10,9 +10,9 @@
   right: 0;
 }
 #chat-list-sidebar .header {
-  background-color: var(--dgray-color);
+  background-color: var(--gray-color);
   border: none;
-  color: var(--white-color);
+  color: var(--text-color);
 }
 #chat-list-sidebar .bottom-content-scroll {
   border-top-left-radius: 32px;
