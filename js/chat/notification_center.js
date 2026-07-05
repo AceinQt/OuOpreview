@@ -10,13 +10,19 @@
     const KEEPALIVE_MIN = 1;
     const KEEPALIVE_MAX = 1440;
 
-    // 读取全局通知设置（带默认值兜底，兼容旧库）
+    // 读取全局通知设置（带默认值兜底，兼容旧库——旧库缺的新字段在这里补齐）
     function getSettings() {
-        if (!window.db) return { enabled: false, keepAliveMinutes: 30 };
+        const defaults = { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true };
+        if (!window.db) return defaults;
         if (!db.globalNotifySettings || typeof db.globalNotifySettings !== 'object') {
-            db.globalNotifySettings = { enabled: false, keepAliveMinutes: 30 };
+            db.globalNotifySettings = { ...defaults };
         }
-        return db.globalNotifySettings;
+        const s = db.globalNotifySettings;
+        if (s.enabled === undefined) s.enabled = defaults.enabled;
+        if (s.keepAliveMinutes === undefined) s.keepAliveMinutes = defaults.keepAliveMinutes;
+        if (s.foldMessages === undefined) s.foldMessages = defaults.foldMessages;
+        if (s.showSenderName === undefined) s.showSenderName = defaults.showSenderName;
+        return s;
     }
 
     function isSupported() {
@@ -150,14 +156,31 @@
         return '群成员';
     }
 
-    // 后台收到一批新消息时弹通知（Step 2）。messages 为本次新增的消息数组。
+    // 按"是否显示角色名"开关，构造一条消息的通知标题/正文
+    function buildTitleBody(chat, chatType, message, showName) {
+        const preview = previewOf(message);
+        if (!showName) {
+            // 隐藏身份：标题统一"新消息"，正文只给内容，不暴露是谁
+            return { title: '新消息', body: preview };
+        }
+        if (chatType === 'group') {
+            return {
+                title: chatDisplayName(chat, chatType),
+                body: senderName(chat, chatType, message) + '：' + preview
+            };
+        }
+        return { title: chatDisplayName(chat, chatType), body: preview };
+    }
+
+    // 后台收到一批新消息时弹通知。messages 为本次新增的消息数组。
+    // 受两个开关控制：foldMessages（折叠/分开）、showSenderName（是否显示角色名）。
     async function notifyMessages(chat, chatType, messages) {
         try {
             const s = getSettings();
             const vis = document.visibilityState;
             const perm = ('Notification' in window) ? Notification.permission : 'n/a';
             const cnt = Array.isArray(messages) ? messages.length : 0;
-            console.log(`[通知] notifyMessages: enabled=${s.enabled} vis=${vis} perm=${perm} chat=${chat && chat.id} msgs=${cnt}`);
+            console.log(`[通知] notifyMessages: enabled=${s.enabled} vis=${vis} perm=${perm} fold=${s.foldMessages} showName=${s.showSenderName} chat=${chat && chat.id} msgs=${cnt}`);
 
             if (!s.enabled) { console.log('[通知] 跳过：总开关未开'); return; }
             if (vis !== 'hidden') { console.log('[通知] 跳过：前台可见（仅后台弹）'); return; }
@@ -166,21 +189,27 @@
             const notifiable = messages.filter(m => m && m.role === 'assistant' && previewOf(m));
             if (!notifiable.length) { console.log('[通知] 跳过：无可通知消息（都是系统/视觉类）'); return; }
 
-            const last = notifiable[notifiable.length - 1];
-            const title = chatDisplayName(chat, chatType);
-            let body = previewOf(last);
-            if (chatType === 'group') {
-                body = senderName(chat, chatType, last) + '：' + body;
-            }
-            if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
+            const showName = s.showSenderName !== false;
+            const data = { chatId: chat.id, chatType: chatType };
 
-            console.log(`[通知] 准备弹出: title="${title}" body="${body}"`);
-            const ok = await fire(title, body, {
-                tag: 'chat-' + chat.id,   // 同一会话折叠为一条（Step 3 再做可配置）
-                renotify: true,
-                data: { chatId: chat.id, chatType: chatType }
-            });
-            console.log('[通知] fire 返回:', ok);
+            if (s.foldMessages !== false) {
+                // 折叠：同一会话只弹一条，tag 固定，后到的替换先到的
+                const last = notifiable[notifiable.length - 1];
+                let { title, body } = buildTitleBody(chat, chatType, last, showName);
+                if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
+                console.log(`[通知] 折叠弹出: title="${title}" body="${body}"`);
+                const ok = await fire(title, body, { tag: 'chat-' + chat.id, renotify: true, data });
+                console.log('[通知] fire 返回:', ok);
+            } else {
+                // 分开：每条一个通知，tag 各不相同
+                for (const m of notifiable) {
+                    const { title, body } = buildTitleBody(chat, chatType, m, showName);
+                    const tag = 'msg-' + (m.id || (chat.id + '-' + (m.timestamp || '')));
+                    console.log(`[通知] 分开弹出: title="${title}" body="${body}"`);
+                    const ok = await fire(title, body, { tag, renotify: false, data });
+                    console.log('[通知] fire 返回:', ok);
+                }
+            }
         } catch (e) {
             console.warn('[通知] notifyMessages 异常:', e);
         }
@@ -319,6 +348,18 @@
                 persist();
             }
             toggle.onchange = onToggleChange;
+        }
+
+        const foldToggle = document.getElementById('notify-fold-toggle');
+        if (foldToggle) {
+            foldToggle.checked = s.foldMessages !== false;
+            foldToggle.onchange = async (e) => { getSettings().foldMessages = e.target.checked; await persist(); };
+        }
+
+        const nameToggle = document.getElementById('notify-showname-toggle');
+        if (nameToggle) {
+            nameToggle.checked = s.showSenderName !== false;
+            nameToggle.onchange = async (e) => { getSettings().showSenderName = e.target.checked; await persist(); };
         }
 
         const keepInput = document.getElementById('notify-keepalive-input');
