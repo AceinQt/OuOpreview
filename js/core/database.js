@@ -46,8 +46,10 @@ window.db = {
 
     // ★ 系统消息通知设置
     //   enabled: 总开关（是否弹系统通知，含桌面角标）
-    //   keepAliveMinutes: 全局后台保活时长（分钟）——仅当"按聊天保活"未生效时作为兜底
-    globalNotifySettings: { enabled: false, keepAliveMinutes: 30 },
+    //   keepAliveMinutes: 全局后台保活时长（分钟）——与按聊天保活取较大值
+    //   foldMessages: 同一会话多条消息是否折叠成一条通知
+    //   showSenderName: 通知里是否显示角色/群名
+    globalNotifySettings: { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
