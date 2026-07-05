@@ -232,7 +232,7 @@
 
 <!-- 聊天列表侧边栏 -->
 <div id="chat-list-sidebar" class="settings-sidebar sidebar">
-  <div class="header">设置</div>
+  <div class="header">设 置</div>
   <div class="bottom-content-scroll" id="chat-sidebar-content">
     <div class="settings-card menu-list-style">
         <!-- 外观 -->
@@ -246,6 +246,18 @@
             </svg>
           </div>
           <div class="item-details"><span class="item-name">外观</span></div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+                <!-- 消息通知按钮 -->
+        <div class="settings-item" id="chat-sidebar-notification-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <!-- 铃铛图标 -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">消息通知</span></div>
           <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
     </div>
@@ -268,7 +280,7 @@
         <div class="action-btn-group"></div>
     </header>
     <main class="content">
-        <div id="tab-view-bubbles" class="tab-content-view">
+        <div id="tab-view-bubbles" class="tab-content-view active" style="display:flex;">
 
             <!-- 上半部分：固定卡片 (预设名称、操作按钮、预览区) -->
             <div class="appearance-card top-fixed-card" id="bubble-preset-header-card">
@@ -422,6 +434,46 @@
     </main>
 </div>
 
+<!-- 消息通知设置页面 -->
+<div id="notification-settings-screen" class="screen">
+    <header class="app-header">
+        <!-- 返回按钮：指向聊天列表页 -->
+        <button class="back-btn" data-target="chat-list-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">消息通知</h1>
+        </div>
+        <div class="placeholder"></div>
+    </header>
+    <main class="content">        
+        <div class="settings-group-title">系统通知</div>
+        <div class="settings-card">
+            <!-- 允许通知开关 -->
+            <div class="settings-item toggle-setting" style="cursor: default;">
+                <div class="setting-icon-box">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                </div>
+                <div class="item-details">
+                    <span class="item-name">允许系统通知</span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <label class="switch">
+                        <input type="checkbox" id="system-notification-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+
+    </main>
+</div>
 
     <!-- 聊天室页面 -->
         <div id="chat-room-screen" class="screen">
@@ -6328,7 +6380,6 @@
 <!-- js文件引入开始 -->
 <script src="js/core/globals.js"></script>
 <script src="js/core/database.js"></script>
-<script src="js/core/lazy_load.js"></script><!-- 懒加载改造 Step0+1，未接入，可随时删除 -->
 <script src="js/core/utils.js"></script>
 
 <!-- 设置页面 -->
