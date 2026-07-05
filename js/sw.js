@@ -1,6 +1,6 @@
 // --- sw.js ---
 
-const CACHE_NAME = 'qchat-cache-Q1.7';
+const CACHE_NAME = 'qchat-cache-Q1.8';
 // 每次部署新版本时，把上面的 v1 改成 v2、v3...
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
@@ -67,6 +67,27 @@ self.addEventListener('fetch', (event) => {
                 caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 return response;
             });
+        })
+    );
+});
+
+// 点击系统通知：聚焦已打开的窗口，没有就打开一个
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const targetChatId = event.notification.data && event.notification.data.chatId;
+
+    event.waitUntil(
+        self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
+            for (const client of clients) {
+                if ('focus' in client) {
+                    // 顺带把点击的会话 id 投给前台，方便后续跳转（Step 2 用得上）
+                    if (targetChatId) client.postMessage({ type: 'NOTIFICATION_CLICK', chatId: targetChatId });
+                    return client.focus();
+                }
+            }
+            if (self.clients.openWindow) {
+                return self.clients.openWindow('./');
+            }
         })
     );
 });

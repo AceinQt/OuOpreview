@@ -178,6 +178,7 @@ const pageActions = {
     'customize-screen': typeof renderCustomizeForm !== 'undefined' ? renderCustomizeForm : null,
     'tutorial-screen': typeof renderTutorialContent !== 'undefined' ? renderTutorialContent : null,
     'storage-analysis-screen': window.refreshStorageScreen,
+    'notification-settings-screen': () => window.NotifyCenter?.initSettingsUI(),
     'chat-list-screen': resetChatListTabs ,
     'chat-appearance-screen': () => {
         // 防御：清除 chat-list-screen Tab 切换可能遗留的 inline display
