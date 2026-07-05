@@ -30,6 +30,36 @@
         return Notification.permission; // 'default' | 'granted' | 'denied'
     }
 
+    // 拿到一个 active 的 ServiceWorkerRegistration。
+    // 注意：本项目 SW 注册在 ./js/sw.js，scope 是 /js/，不控制根页面，
+    //       所以 navigator.serviceWorker.ready 会永久挂起，绝不能用它。
+    //       这里改用已存下的 reg / getRegistration / getRegistrations，并加超时兜底。
+    async function getActiveReg() {
+        if (window.__swRegistration && window.__swRegistration.active) {
+            return window.__swRegistration;
+        }
+        let reg = null;
+        try {
+            reg = await navigator.serviceWorker.getRegistration();
+            if (!reg) {
+                const all = await navigator.serviceWorker.getRegistrations();
+                reg = (all && all[0]) || window.__swRegistration || null;
+            }
+        } catch (_) {
+            reg = window.__swRegistration || null;
+        }
+        if (reg && reg.active) return reg;
+        // 还没 active：等一会儿，但最多 3 秒，避免永久挂起
+        try {
+            return await Promise.race([
+                navigator.serviceWorker.ready,
+                new Promise(res => setTimeout(() => res(reg || null), 3000))
+            ]);
+        } catch (_) {
+            return reg || null;
+        }
+    }
+
     // 核心：弹一条系统通知（经 Service Worker，移动端唯一可靠路径）
     // opts: { tag, renotify, data, silent, force }
     //   force=true 时忽略"仅后台"限制（测试按钮用）
@@ -40,22 +70,30 @@
             // 仅在后台时弹，避免前台看着页面还弹通知
             if (document.visibilityState !== 'hidden') return false;
         }
-        if (!isSupported() || Notification.permission !== 'granted') return false;
+        if (!isSupported() || Notification.permission !== 'granted') {
+            console.warn('[通知] 未满足弹出条件: supported=', isSupported(), 'perm=', ('Notification' in window) ? Notification.permission : 'n/a');
+            return false;
+        }
+
+        const reg = await getActiveReg();
+        if (!reg || typeof reg.showNotification !== 'function') {
+            console.warn('[通知] 拿不到可用的 Service Worker registration，无法弹通知。');
+            return false;
+        }
 
         try {
-            const reg = await navigator.serviceWorker.ready;
             await reg.showNotification(title || '新消息', {
                 body: body || '',
                 icon: APP_ICON,
                 badge: APP_ICON,
                 tag: opts.tag || undefined,
-                renotify: opts.renotify || false,
+                renotify: opts.tag ? (opts.renotify || false) : false,
                 silent: opts.silent || false,
                 data: opts.data || {}
             });
             return true;
         } catch (e) {
-            console.warn('[通知] 弹出失败:', e);
+            console.warn('[通知] showNotification 抛错:', e);
             return false;
         }
     }
