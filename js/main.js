@@ -466,7 +466,10 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./js/sw.js')
             .then(async reg => {
                 console.log('✅ SW 注册成功:', reg.scope);
-                
+                // 存下 registration，供通知模块直接使用（SW scope 为 /js/ 时不控制根页面，
+                // navigator.serviceWorker.ready 会永久挂起，必须用这个 reg 而非 ready）
+                window.__swRegistration = reg;
+
                 // 尝试注册周期性后台同步 (Periodic Background Sync)
                 if ('periodicSync' in reg) {
                     try {
