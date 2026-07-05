@@ -337,10 +337,7 @@ function setupInsWidgetAvatarModal() {
 
 // --- 新增：更新主页聊天图标的未读消息角标 ---
 function updateHomeChatBadge() {
-    const chatAppIcon = document.getElementById('app-icon-chat-list-screen');
-    if (!chatAppIcon) return;
-    
-    // 计算私聊和群聊的总未读数
+    // 计算私聊和群聊的总未读数（先算，供桌面角标使用，不受 DOM 早退影响）
     let totalUnread = 0;
     if (db && db.characters) {
         totalUnread += db.characters.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -348,7 +345,22 @@ function updateHomeChatBadge() {
     if (db && db.groups) {
         totalUnread += db.groups.reduce((sum, g) => sum + (g.unreadCount || 0), 0);
     }
-    
+
+    // ★ Step 4：同步 PWA 桌面图标角标（受通知总开关控制）
+    try {
+        const notifyOn = db && db.globalNotifySettings && db.globalNotifySettings.enabled;
+        if (navigator.setAppBadge) {
+            if (notifyOn && totalUnread > 0) {
+                navigator.setAppBadge(totalUnread).catch(() => {});
+            } else if (navigator.clearAppBadge) {
+                navigator.clearAppBadge().catch(() => {});
+            }
+        }
+    } catch (_) {}
+
+    const chatAppIcon = document.getElementById('app-icon-chat-list-screen');
+    if (!chatAppIcon) return;
+
     let badge = chatAppIcon.querySelector('.home-unread-badge');
     
     // 如果有未读消息
