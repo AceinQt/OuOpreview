@@ -131,6 +131,18 @@ function setupChatListScreen() {
             });
         }
     }
+    
+            // ====== 消息通知按钮：跳转到通知设置页面 ======
+        const notificationBtn = document.getElementById('chat-sidebar-notification-btn');
+        if (notificationBtn) {
+            notificationBtn.addEventListener('click', () => {
+                sidebar.classList.remove('active'); // 收起侧边栏
+                sidebarOverlay?.classList.remove('visible'); // 收起遮罩
+                if (typeof navigateTo === 'function') {
+                    navigateTo('notification-settings-screen'); // 触发路由跳转
+                }
+            });
+        }
 
     chatListContainer.addEventListener('click', (e) => {
         const chatItem = e.target.closest('.chat-item');
