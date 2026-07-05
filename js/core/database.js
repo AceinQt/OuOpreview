@@ -257,6 +257,16 @@ window.loadData = async () => {
         characters.forEach(c => { c.history = messagesByChatId[c.id] ||[]; });
         groups.forEach(g => { g.history = messagesByChatId[g.id] ||[]; });
 
+        // ★ Step 2.5：maxMemory 上限 1000。
+        //   内存窗口 N=1500 必须严格大于 maxMemory 上限，否则 slice(-maxMemory) 会取到窗口外的"已驱逐"消息。
+        //   这里对历史/导入数据做防御性 cap；UI 输入端在 chat_settings/group_settings 里也各自 cap。
+        const _capMaxMemory = (obj) => {
+            const m = parseInt(obj.maxMemory, 10);
+            if (!isNaN(m) && m > 1000) obj.maxMemory = 1000;
+        };
+        characters.forEach(_capMaxMemory);
+        groups.forEach(_capMaxMemory);
+
         // =========================================================
         // ★ V7 向量迁移：memoryChunks → memoryChunks 独立表
         // =========================================================
