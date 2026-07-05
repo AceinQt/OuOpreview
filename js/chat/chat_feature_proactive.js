@@ -515,11 +515,15 @@ let bgTimeoutId = null;
 const silentWavBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 function unlockAudioElement() {
-    const needsAudio = typeof db !== 'undefined' && 
+    // 需要后台保活音频的两种情况：① 有聊天开了 fixed/timer 主动模式；② 开了系统通知总开关（全局保活兜底）
+    const hasProactive = typeof db !== 'undefined' &&
         [...(db.characters || []), ...(db.groups || [])].some(
             chat => chat.proactiveMode === 'fixed' || chat.proactiveMode === 'timer'
         );
-    
+    const notifyOn = typeof db !== 'undefined' && db.globalNotifySettings
+        && db.globalNotifySettings.enabled && (db.globalNotifySettings.keepAliveMinutes || 0) > 0;
+    const needsAudio = hasProactive || notifyOn;
+
     if (!needsAudio) {
         window.removeEventListener('touchstart', unlockAudioElement, { passive: true });
         window.removeEventListener('click', unlockAudioElement, { passive: true });
@@ -543,6 +547,20 @@ function unlockAudioElement() {
     window.removeEventListener('touchstart', unlockAudioElement, { passive: true });
     window.removeEventListener('click', unlockAudioElement, { passive: true });
 }
+
+// 供通知模块调用：打开系统通知开关时，在同一用户手势内预热保活音频。
+// 与 unlockAudioElement 不同，本函数不移除全局监听器，失败时仍由下次点击兜底解锁。
+function ensureBgAudioUnlocked() {
+    if (!bgAudioElement) {
+        bgAudioElement = new Audio(silentWavBase64);
+        bgAudioElement.loop = true;
+        bgAudioElement.volume = 1;
+        bgAudioElement.setAttribute('playsinline', '');
+        bgAudioElement.setAttribute('webkit-playsinline', '');
+    }
+    bgAudioElement.play().then(() => bgAudioElement.pause()).catch(() => {});
+}
+window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
 
 function startBackgroundAudioTimer() {
     stopBackgroundAudioTimer(); 
@@ -585,9 +603,18 @@ function startBackgroundAudioTimer() {
         });
     }
 
+    // 全局保活兜底：按聊天的保活优先；当没有任何按聊天保活生效时，
+    // 若开了系统通知总开关，则按用户在"消息通知"页设置的全局时长保活。
     if (!needsGenerationOrTimer) {
-        console.log('[精灵] 虽然user离开了，但奖池已满且无固定定时任务，精灵休息。');
-        return; 
+        const gn = (typeof db !== 'undefined') ? db.globalNotifySettings : null;
+        if (gn && gn.enabled && (gn.keepAliveMinutes || 0) > 0) {
+            needsGenerationOrTimer = true;
+            maxKeepAliveMs = gn.keepAliveMinutes * 60 * 1000;
+            console.log(`[精灵] 无按聊天保活，启用全局保活兜底：${gn.keepAliveMinutes} 分钟`);
+        } else {
+            console.log('[精灵] 虽然user离开了，但奖池已满且无固定定时任务，精灵休息。');
+            return;
+        }
     }
 
     console.log(`[精灵] user离开了，精灵开始唱歌... (本次保活上限: ${Math.floor(maxKeepAliveMs/60000)} 分钟)`);
