@@ -12,7 +12,7 @@
 
     // 读取全局通知设置（带默认值兜底，兼容旧库——旧库缺的新字段在这里补齐）
     function getSettings() {
-        const defaults = { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true };
+        const defaults = { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false };
         if (!window.db) return defaults;
         if (!db.globalNotifySettings || typeof db.globalNotifySettings !== 'object') {
             db.globalNotifySettings = { ...defaults };
@@ -22,6 +22,7 @@
         if (s.keepAliveMinutes === undefined) s.keepAliveMinutes = defaults.keepAliveMinutes;
         if (s.foldMessages === undefined) s.foldMessages = defaults.foldMessages;
         if (s.showSenderName === undefined) s.showSenderName = defaults.showSenderName;
+        if (s.silent === undefined) s.silent = defaults.silent;
         return s;
     }
 
@@ -190,6 +191,7 @@
             if (!notifiable.length) { console.log('[通知] 跳过：无可通知消息（都是系统/视觉类）'); return; }
 
             const showName = s.showSenderName !== false;
+            const silent = s.silent === true;
             const data = { chatId: chat.id, chatType: chatType };
 
             if (s.foldMessages !== false) {
@@ -197,16 +199,16 @@
                 const last = notifiable[notifiable.length - 1];
                 let { title, body } = buildTitleBody(chat, chatType, last, showName);
                 if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
-                console.log(`[通知] 折叠弹出: title="${title}" body="${body}"`);
-                const ok = await fire(title, body, { tag: 'chat-' + chat.id, renotify: true, data });
+                console.log(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent}`);
+                const ok = await fire(title, body, { tag: 'chat-' + chat.id, renotify: true, silent, data });
                 console.log('[通知] fire 返回:', ok);
             } else {
                 // 分开：每条一个通知，tag 各不相同
                 for (const m of notifiable) {
                     const { title, body } = buildTitleBody(chat, chatType, m, showName);
                     const tag = 'msg-' + (m.id || (chat.id + '-' + (m.timestamp || '')));
-                    console.log(`[通知] 分开弹出: title="${title}" body="${body}"`);
-                    const ok = await fire(title, body, { tag, renotify: false, data });
+                    console.log(`[通知] 分开弹出: title="${title}" body="${body}" silent=${silent}`);
+                    const ok = await fire(title, body, { tag, renotify: false, silent, data });
                     console.log('[通知] fire 返回:', ok);
                 }
             }
@@ -277,6 +279,8 @@
             }
             s.enabled = true;
             updateHint();
+            // 立即把当前未读数反映到桌面角标
+            if (typeof updateHomeChatBadge === 'function') updateHomeChatBadge();
             await persist();
         } else {
             s.enabled = false;
@@ -360,6 +364,12 @@
         if (nameToggle) {
             nameToggle.checked = s.showSenderName !== false;
             nameToggle.onchange = async (e) => { getSettings().showSenderName = e.target.checked; await persist(); };
+        }
+
+        const silentToggle = document.getElementById('notify-silent-toggle');
+        if (silentToggle) {
+            silentToggle.checked = s.silent === true;
+            silentToggle.onchange = async (e) => { getSettings().silent = e.target.checked; await persist(); };
         }
 
         const keepInput = document.getElementById('notify-keepalive-input');
