@@ -321,4 +321,26 @@ window.getMessagesByTsRange = async function (chatId, tsLo, tsHi) {
     return rows;
 };
 
-console.log('lazy_load.js 已加载（Step 0+1+S1）。可用：window.auditMessageOrder() / window.loadRecentMessages(chatId,1500) / window.verifyLazyLoad(chatId,1500) / window.getMessageCount(chatId) / window.getMessagesByTsRange(chatId,tsLo,tsHi)');
+// getMessagesByGlobalRange(chatId, start, end): 返回全局 1-based 序号 [start, end] 闭区间内的消息，升序（铁律排序）
+//   用途：summary 生成 performGeneration —— 原来 chat.history.slice(startIndex, endIndex)，
+//         懒加载后老范围在内存窗口外根本取不到，改走 DB 按全局序号精准取。
+//   实现：复合索引 [chatId+timestamp] 已按 timestamp 升序，.offset(start-1).limit(条数) 定位。
+//   注意：.offset() 是 O(offset) 跳过，但 summary 生成是用户主动操作（非热路径），可接受。
+//   start/end 语义与 chat.history.slice(start-1, end) 完全一致（end 为 1-based 闭区间上界）。
+window.getMessagesByGlobalRange = async function (chatId, start, end) {
+    if (!window.dexieDB) throw new Error('dexieDB 未就绪');
+    const startIndex = Math.max(0, (start || 1) - 1);
+    const limit = (end || 0) - (start || 1) + 1;  // 闭区间条数
+    if (limit <= 0) return [];
+    const rows = await window.dexieDB.messages
+        .where('[chatId+timestamp]')
+        .between([chatId, Number.NEGATIVE_INFINITY], [chatId, Number.POSITIVE_INFINITY], true, true)
+        .offset(startIndex)
+        .limit(limit)
+        .toArray();
+    // 铁律排序兜底（offset+limit 已按索引升序返回，这里保底一次，与 loadData 一致）
+    rows.sort(_sortByTimestampExact);
+    return rows;
+};
+
+console.log('lazy_load.js 已加载（Step 0+1+S1）。可用：window.auditMessageOrder() / window.loadRecentMessages(chatId,1500) / window.verifyLazyLoad(chatId,1500) / window.getMessageCount(chatId) / window.getMessagesByTsRange(chatId,tsLo,tsHi) / window.getMessagesByGlobalRange(chatId,start,end)');
