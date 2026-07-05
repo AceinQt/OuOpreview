@@ -49,7 +49,8 @@ window.db = {
     //   keepAliveMinutes: 全局后台保活时长（分钟）——与按聊天保活取较大值
     //   foldMessages: 同一会话多条消息是否折叠成一条通知
     //   showSenderName: 通知里是否显示角色/群名
-    globalNotifySettings: { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true },
+    //   silent: 静音通知（弹出但不响铃/不振动）
+    globalNotifySettings: { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
