@@ -1,0 +1,17 @@
+#notification-settings-screen {
+    background-color: var(--gray-color);  /* 与存储页面一致的浅灰色背景 */   
+}
+
+#notification-settings-screen .app-header {
+    background-color: var(--gray-color); 
+    border:none;
+}
+
+#notification-settings-screen .content {
+    padding: 0 15px 10px; /* 上下左右留出间距 */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
