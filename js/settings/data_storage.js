@@ -50,6 +50,20 @@ const dataStorage = {
         };
 
         try {
+            // ★ [懒加载] char/group.history 只有内存窗口内的 ~1500 条，
+            //   直接 stringify 会严重低估"角色与聊天"体积。先从 DB 流式累加每个 chat 的全量消息体积，
+            //   后面 char 统计时删掉内存 history、改用这份全量体积补回。关掉懒加载时不走这步。
+            const histBytesByChat = {};
+            if (window.LAZY_LOAD && typeof dexieDB !== 'undefined') {
+                try {
+                    await dexieDB.messages.toCollection().each(msg => {
+                        const cid = msg && msg.chatId;
+                        if (!cid) return;
+                        try { histBytesByChat[cid] = (histBytesByChat[cid] || 0) + JSON.stringify(msg).length; } catch (e) {}
+                    });
+                } catch (e) { console.warn('[storage] 消息体积统计失败:', e); }
+            }
+
             // 1. 角色与聊天 (包含 PeekData，不含已剥离的记忆/向量字段)
             (db.characters || []).forEach(char => {
                 const safeChar = { ...char };
@@ -57,15 +71,27 @@ const dataStorage = {
                 delete safeChar.memoryJournals;
                 delete safeChar.longTermSummaries;
                 delete safeChar.memoryChunks;
-                // history 已挂载回内存，直接 stringify 统计消息体积，无需估算
-                categorizedSizes.characters += stringify(safeChar);
+                if (window.LAZY_LOAD) {
+                    // history 只是窗口，不能代表全量；删掉后用 DB 全量体积补回
+                    delete safeChar.history;
+                    categorizedSizes.characters += stringify(safeChar) + (histBytesByChat[char.id] || 0);
+                } else {
+                    // history 已挂载回内存，直接 stringify 统计消息体积，无需估算
+                    categorizedSizes.characters += stringify(safeChar);
+                }
             });
             (db.groups || []).forEach(group => {
                 const safeGroup = { ...group };
                 delete safeGroup.memorySummaries;
+                delete safeGroup.memoryJournals;
                 delete safeGroup.longTermSummaries;
                 delete safeGroup.memoryChunks;
-                categorizedSizes.characters += stringify(safeGroup);
+                if (window.LAZY_LOAD) {
+                    delete safeGroup.history;
+                    categorizedSizes.characters += stringify(safeGroup) + (histBytesByChat[group.id] || 0);
+                } else {
+                    categorizedSizes.characters += stringify(safeGroup);
+                }
             });
             categorizedSizes.characters += stringify(db.peekData);
 
