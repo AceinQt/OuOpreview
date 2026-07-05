@@ -480,6 +480,11 @@ async function checkAndDeliverProactiveMessages() {
                 }
                 deliveredCount++;
 
+                // Step 2：后台主动消息投递时弹系统通知（内部已判权限/开关/可见性）
+                if (window.NotifyCenter) {
+                    NotifyCenter.notifyMessages(chat, type, msgsToPut);
+                }
+
                 // 【修复 2 续】发成功后销毁其余所有候选，只发一组
                 for (const rest of candidates) {
                     delete draft.content[rest.slotId];

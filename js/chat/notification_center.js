@@ -98,6 +98,86 @@
         }
     }
 
+    // ── 消息内容 → 通知文案 提取 ──────────────────────────────
+    function contentOf(message) {
+        if (!message) return '';
+        if (typeof message.content === 'string') return message.content;
+        if (message.parts && message.parts[0] && typeof message.parts[0].text === 'string') {
+            return message.parts[0].text;
+        }
+        return '';
+    }
+
+    // 把一条消息转成通知正文预览；返回 '' 表示这条不该弹通知（系统/视觉类）
+    function previewOf(message) {
+        if (message && message.isWithdrawn) return '撤回了一条消息';
+        let t = contentOf(message);
+        if (!t) return '';
+        // 系统 / 视觉类不通知
+        if (t.includes('[time-divider]') || t.includes('system-narration')
+            || t.includes('system-display') || t.startsWith('[system')) return '';
+        // 特殊消息类型 → 占位
+        if (/(发来的?照片|照片\/视频|的照片)/.test(t)) return '[照片]';
+        if (/(发来的?语音|的语音)/.test(t)) return '[语音]';
+        if (/(发来的?转账|的转账)/.test(t)) return '[转账]';
+        if (/(送来的?礼物|的礼物)/.test(t)) return '[礼物]';
+        // 去掉 [名字的消息：正文] 之类的包装
+        if (t.startsWith('[')) {
+            const m = t.match(/^\[[^\]]*?[:：]([\s\S]+?)\]?$/);
+            if (m) t = m[1];
+        }
+        t = t.replace(/^\[+/, '').replace(/\]+$/, '').trim();
+        if (t.length > 80) t = t.slice(0, 80) + '…';
+        return t;
+    }
+
+    function chatDisplayName(chat, chatType) {
+        if (!chat) return '新消息';
+        if (chatType === 'group') return chat.name || chat.groupName || '群聊';
+        return chat.remarkName || chat.realName || chat.name || '新消息';
+    }
+
+    function senderName(chat, chatType, message) {
+        if (chatType !== 'group') return chatDisplayName(chat, chatType);
+        if (message && message.senderId && Array.isArray(chat.members)) {
+            const m = chat.members.find(x => x.id === message.senderId);
+            if (m) return m.groupNickname || m.realName || m.name || '成员';
+        }
+        const t = contentOf(message);
+        const mm = t.match(/^\[([^\]:：]+?)(?:的消息|发来|的语音|的转账|送来|更新状态|的照片)/);
+        if (mm) return mm[1];
+        return '群成员';
+    }
+
+    // 后台收到一批新消息时弹通知（Step 2）。messages 为本次新增的消息数组。
+    async function notifyMessages(chat, chatType, messages) {
+        try {
+            const s = getSettings();
+            if (!s.enabled) return;
+            if (document.visibilityState !== 'hidden') return; // 仅后台弹
+            if (!chat || !Array.isArray(messages) || !messages.length) return;
+
+            const notifiable = messages.filter(m => m && m.role === 'assistant' && previewOf(m));
+            if (!notifiable.length) return;
+
+            const last = notifiable[notifiable.length - 1];
+            const title = chatDisplayName(chat, chatType);
+            let body = previewOf(last);
+            if (chatType === 'group') {
+                body = senderName(chat, chatType, last) + '：' + body;
+            }
+            if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
+
+            await fire(title, body, {
+                tag: 'chat-' + chat.id,   // 同一会话折叠为一条（Step 3 再做可配置）
+                renotify: true,
+                data: { chatId: chat.id, chatType: chatType }
+            });
+        } catch (e) {
+            console.warn('[通知] notifyMessages 异常:', e);
+        }
+    }
+
     // 请求通知权限（必须在用户手势内调用，例如点击开关）
     async function requestPermission() {
         if (!('Notification' in window)) return 'unsupported';
@@ -250,6 +330,7 @@
         isSupported,
         permissionState,
         fire,
+        notifyMessages,
         requestPermission,
         initSettingsUI
     };
