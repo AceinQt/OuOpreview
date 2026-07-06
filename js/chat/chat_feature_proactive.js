@@ -519,6 +519,7 @@ let bgAudioElement = null;
 let bgTimeoutId = null;        // 负责控制音频什么时候停
 let generationTimeoutId = null; // 负责严格的5分钟生成倒计时
 const silentWavBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+let audioCtx = null; // 在顶部声明
 
 // 评估保活时长，同时返回是否需要生成消息
 function evaluateKeepAliveNeeds() {
@@ -573,47 +574,86 @@ function evaluateKeepAliveNeeds() {
     return { keepAliveDuration, needsGeneration };
 }
 
-// 核心解锁与双轨倒计时
+
+
 function handleUserInteractionForAudio() {
     const { keepAliveDuration, needsGeneration } = evaluateKeepAliveNeeds();
 
     if (keepAliveDuration <= 0) {
         if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        if (audioCtx && audioCtx.state === 'running') audioCtx.suspend(); // 同步暂停发生器
         if (generationTimeoutId) clearTimeout(generationTimeoutId);
         return;
     }
 
-    // 初始化音频标签 (防杀核心)
+    // 初始化音频标签与动态音频发生器 (防杀核心 2.0)
     if (!bgAudioElement) {
-        bgAudioElement = new Audio(silentWavBase64);
+        bgAudioElement = new Audio();
         bgAudioElement.loop = true;
-        bgAudioElement.volume = 1;
+        bgAudioElement.volume = 1; // 标签音量保持正常，以获取系统焦点
         bgAudioElement.setAttribute('playsinline', '');
         bgAudioElement.setAttribute('webkit-playsinline', '');
 
+        // 1. 创建音频上下文
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+
+        // 2. 创建一个振荡器（生成波形）
+        const oscillator = audioCtx.createOscillator();
+        oscillator.type = 'sine'; // 正弦波
+        oscillator.frequency.value = 10; // 10Hz，低于人耳下限，听不见，但机器能检测到波形
+
+        // 3. 创建一个音量控制节点
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.01; // 极其微弱的音量，防止部分手机次声波引起喇叭震动
+
+        // 4. 创建一个媒体流目的地
+        const dest = audioCtx.createMediaStreamDestination();
+
+        // 5. 将节点连接起来：振荡器 -> 音量控制 -> 目的地
+        oscillator.connect(gainNode);
+        gainNode.connect(dest);
+        oscillator.start();
+
+        // 6. 【核心魔法】把生成的动态流直接喂给你的 Audio 标签
+        bgAudioElement.srcObject = dest.stream;
+
+        // 媒体控制中心适配
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'QChat 后台服务',
+                title: 'OuO后台服务',
                 artist: '保持后台以接收新消息',
                 album: '消息通知运行中'
             });
-            navigator.mediaSession.setActionHandler('play', () => { bgAudioElement.play(); });
-            navigator.mediaSession.setActionHandler('pause', () => { bgAudioElement.pause(); });
+            navigator.mediaSession.setActionHandler('play', () => { 
+                bgAudioElement.play(); 
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+            });
+            navigator.mediaSession.setActionHandler('pause', () => { 
+                bgAudioElement.pause(); 
+                audioCtx.suspend();
+            });
         }
     }
 
+    // 播放和唤醒
     if (bgAudioElement.paused) {
         bgAudioElement.play().catch(e => console.log("[保活精灵] 解锁失败:", e));
     }
+    // iOS/部分安卓要求必须在用户交互时 resume AudioContext
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
 
-    // ── 轨道1：音频保活倒计时（听全局设置的，比如 30 分钟） ──
+    // ── 轨道1：音频保活倒计时 ──
     if (bgTimeoutId) clearTimeout(bgTimeoutId);
     bgTimeoutId = setTimeout(() => {
         console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
         if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
     }, keepAliveDuration);
 
-    // ── 轨道2：雷打不动的 5 分钟生成倒计时（只要手离开屏幕 5 分钟，立刻生成！） ──
+    // ── 轨道2：雷打不动的 5 分钟生成倒计时 ──
     if (generationTimeoutId) clearTimeout(generationTimeoutId);
     if (needsGeneration) {
         generationTimeoutId = setTimeout(() => {
@@ -621,7 +661,7 @@ function handleUserInteractionForAudio() {
             if (typeof triggerIdleProactiveGeneration === 'function') {
                 triggerIdleProactiveGeneration(); 
             }
-        }, 5 * 60 * 1000); // 严格的 5 分钟
+        }, 5 * 60 * 1000);
     }
 }
 
