@@ -367,17 +367,32 @@
                 });
             }          
             
-             function openDeleteChunkModal() {
+             async function openDeleteChunkModal() {
                 const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-                if (!chat || !chat.history || chat.history.length === 0) {
+                if (!chat) {
                     showToast('当前没有聊天记录可删除');
                     return;
                 }
-                const totalMessages = chat.history.length;
+                // 先弹窗给即时反馈，再异步计算真实总数（懒加载下 chat.history 只有内存窗口，必须走 DB count）
                 const rangeInfo = document.getElementById('delete-chunk-range-info');
-                rangeInfo.textContent = `当前聊天总消息数: ${totalMessages}`;
                 document.getElementById('delete-chunk-form').reset();
+                rangeInfo.textContent = '正在统计消息总数...';
                 document.getElementById('delete-chunk-modal').classList.add('visible');
+
+                let totalMessages;
+                if (window.LAZY_LOAD && typeof window.getMessageCount === 'function') {
+                    try { totalMessages = await window.getMessageCount(chat.id); }
+                    catch (e) { totalMessages = chat.history ? chat.history.length : 0; }
+                } else {
+                    totalMessages = chat.history ? chat.history.length : 0;
+                }
+
+                if (!totalMessages) {
+                    document.getElementById('delete-chunk-modal').classList.remove('visible');
+                    showToast('当前没有聊天记录可删除');
+                    return;
+                }
+                rangeInfo.textContent = `当前聊天总消息数: ${totalMessages}`;
             }
 
             function setupDeleteHistoryChunk() {
@@ -391,10 +406,18 @@
                 // 🌟 修复1：在这里提前声明 messagesToDelete，让下面两个步骤都能共享这个变量
                 let startRange, endRange, messagesToDelete;
 
-                deleteChunkForm.addEventListener('submit', (e) => {
+                deleteChunkForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-                    const totalMessages = chat.history.length;
+
+                    // 用真实总数校验（懒加载下 chat.history 只有内存窗口）
+                    let totalMessages;
+                    if (window.LAZY_LOAD && typeof window.getMessageCount === 'function') {
+                        try { totalMessages = await window.getMessageCount(chat.id); }
+                        catch (err) { totalMessages = chat.history.length; }
+                    } else {
+                        totalMessages = chat.history.length;
+                    }
 
                     startRange = parseInt(document.getElementById('delete-range-start').value);
                     endRange = parseInt(document.getElementById('delete-range-end').value);
@@ -404,9 +427,13 @@
                         return;
                     }
 
-                    const startIndex = startRange - 1;
-                    const endIndex = endRange;
-                    messagesToDelete = chat.history.slice(startIndex, endIndex);
+                    // 取要删除的消息：懒加载走 DB 全局序号（老范围可能不在内存窗口内），否则内存 slice
+                    if (window.LAZY_LOAD && typeof window.getMessagesByGlobalRange === 'function') {
+                        try { messagesToDelete = await window.getMessagesByGlobalRange(chat.id, startRange, endRange); }
+                        catch (err) { messagesToDelete = chat.history.slice(startRange - 1, endRange); }
+                    } else {
+                        messagesToDelete = chat.history.slice(startRange - 1, endRange);
+                    }
 
                     // --- NEW PREVIEW LOGIC ---
                     let previewHtml = '';
@@ -446,11 +473,14 @@
 
                 confirmBtn.addEventListener('click', async () => {
                     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-                    const startIndex = startRange - 1;
-                    const count = endRange - startIndex;
+                    const idsToDelete = messagesToDelete.map(m => m.id);
+                    const count = idsToDelete.length;
 
-                    chat.history.splice(startIndex, count);
-                    await deleteMessagesFromDB(messagesToDelete.map(m=>m.id));
+                    // 先删 DB，再按 id 从内存窗口剔除命中的
+                    //（懒加载下 chat.history 只是最近窗口，按全局 index splice 会删错，必须按 id 过滤）
+                    await deleteMessagesFromDB(idsToDelete);
+                    const delSet = new Set(idsToDelete);
+                    chat.history = chat.history.filter(m => !delSet.has(m.id));
                     await saveSingleChat(currentChatId, currentChatType);
 
                     confirmModal.classList.remove('visible');

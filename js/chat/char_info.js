@@ -222,6 +222,11 @@ async function renderTokenStats(charId) {
     const char = db.characters.find(c => c.id === charId);
     if (!char) return;
 
+    // [懒加载 UI] 先把统计面板留空 + 弹出 loading，等全部算完再一次性揭开，避免空数据/旧数据闪烁
+    const statsPanel = document.querySelector('#character-edit-screen .char-info-tab-panel[data-panel="stats"]');
+    if (statsPanel) statsPanel.style.visibility = 'hidden';
+    const _hideLoading = (typeof showLoadingToast === 'function') ? showLoadingToast('正在统计数据...') : null;
+
     // 1. 聊天总数统计
     // [懒加载] char.history 只有内存窗口内的 ~1500 条，真实总数必须走 DB count。
     //   关掉懒加载时回退到 char.history.length，行为与改造前一致。
@@ -401,6 +406,10 @@ async function renderTokenStats(charId) {
         renderBar('memory', memoryTokens);
         renderBar('forum', forumTokens);
     });
+
+    // [懒加载 UI] 数字/内容已就绪，揭开面板并关掉 loading（柱状图在下一帧动画长出）
+    if (statsPanel) statsPanel.style.visibility = 'visible';
+    if (_hideLoading) _hideLoading();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
