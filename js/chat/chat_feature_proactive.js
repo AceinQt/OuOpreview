@@ -619,7 +619,20 @@ function handleUserInteractionForAudio() {
     // 播放和唤醒：必须在“用户手势内”首次调用 play() 才能解锁 iOS 的后台播放许可。
     // 本函数绑定在 window 的 touchstart/click 上，用户在前台随便点一下就完成解锁+起播。
     if (bgAudioElement.paused) {
-        bgAudioElement.play().catch(e => console.log("[保活精灵] 解锁失败:", e));
+        const p = bgAudioElement.play();
+        if (p && typeof p.catch === 'function') {
+            p.catch(e => {
+                // iOS 首次点击时音频常常还没加载完，play() 会抛 AbortError/NotAllowedError——属良性。
+                // 此刻元素已被用户手势“解锁”，等它就绪后自动补一次 play() 即可，无需用户二次点击。
+                if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) {
+                    const retry = () => { if (bgAudioElement.paused) bgAudioElement.play().catch(() => {}); };
+                    if (bgAudioElement.readyState >= 3) retry(); // 已就绪，直接补播
+                    else bgAudioElement.addEventListener('canplaythrough', retry, { once: true });
+                } else {
+                    console.log("[保活精灵] 解锁失败:", e);
+                }
+            });
+        }
     }
 
     // ── 轨道1：音频保活倒计时 ──
