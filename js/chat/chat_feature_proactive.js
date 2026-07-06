@@ -518,8 +518,13 @@ async function checkAndDeliverProactiveMessages() {
 let bgAudioElement = null;
 let bgTimeoutId = null;        // 负责控制音频什么时候停
 let generationTimeoutId = null; // 负责严格的5分钟生成倒计时
-const silentWavBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-let audioCtx = null; // 在顶部声明
+// 保活音频：近似静音(实测 mean -80dB / max -68dB，人耳完全听不见)但含真实波形的 MP3。
+// 循环播放让系统认定"正在播放媒体"，从而不冻结后台 JS。
+// 关键：用真实音频文件，而非纯静音 wav 或 WebAudio MediaStream——
+//   ① iOS Safari 不支持用 <audio>.srcObject 播放 MediaStream，play() 会抛 AbortError(“The operation was aborted”)；
+//   ② 安卓上 AudioContext 进后台会被 suspend，导致断流、媒体会话丢失、标签页被杀（“开了保活反而更容易被杀”的根因）；
+//   ③ 纯静音 wav 会被浏览器当作“无实际音频”优化掉，保活失效。
+const keepAliveAudioSrc = "data:audio/mpeg;base64,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V/ULs/i/FRZMQU1FMy45N1VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45N1VV//sSxOIARKAhHSekYqCTguNklIxMVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQxOcCBcAdGSekYkCIA6Ok8wxMVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xLE6IAFjB87oIxieLgF4uTDDJhVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xDE5QAEnCEZJ5hCgK4DY2TzDExVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EsTmAATYgSEhiGlwmQMWBDCMSFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EMTpg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
 
 // 评估保活时长，同时返回是否需要生成消息
 function evaluateKeepAliveNeeds() {
@@ -581,42 +586,19 @@ function handleUserInteractionForAudio() {
 
     if (keepAliveDuration <= 0) {
         if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
-        if (audioCtx && audioCtx.state === 'running') audioCtx.suspend(); // 同步暂停发生器
         if (generationTimeoutId) clearTimeout(generationTimeoutId);
         return;
     }
 
-    // 初始化音频标签与动态音频发生器 (防杀核心 2.0)
+    // 初始化音频标签：循环播放近似静音的真实 MP3（防杀核心）
     if (!bgAudioElement) {
         bgAudioElement = new Audio();
         bgAudioElement.loop = true;
-        bgAudioElement.volume = 1; // 标签音量保持正常，以获取系统焦点
+        bgAudioElement.volume = 1; // 音量正常以获取系统媒体焦点（音频本身近似静音，用户听不到）
         bgAudioElement.setAttribute('playsinline', '');
         bgAudioElement.setAttribute('webkit-playsinline', '');
-
-        // 1. 创建音频上下文
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-
-        // 2. 创建一个振荡器（生成波形）
-        const oscillator = audioCtx.createOscillator();
-        oscillator.type = 'sine'; // 正弦波
-        oscillator.frequency.value = 10; // 10Hz，低于人耳下限，听不见，但机器能检测到波形
-
-        // 3. 创建一个音量控制节点
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.01; // 极其微弱的音量，防止部分手机次声波引起喇叭震动
-
-        // 4. 创建一个媒体流目的地
-        const dest = audioCtx.createMediaStreamDestination();
-
-        // 5. 将节点连接起来：振荡器 -> 音量控制 -> 目的地
-        oscillator.connect(gainNode);
-        gainNode.connect(dest);
-        oscillator.start();
-
-        // 6. 【核心魔法】把生成的动态流直接喂给你的 Audio 标签
-        bgAudioElement.srcObject = dest.stream;
+        bgAudioElement.preload = 'auto';
+        bgAudioElement.src = keepAliveAudioSrc;
 
         // 媒体控制中心适配
         if ('mediaSession' in navigator) {
@@ -625,24 +607,19 @@ function handleUserInteractionForAudio() {
                 artist: '保持后台以接收新消息',
                 album: '消息通知运行中'
             });
-            navigator.mediaSession.setActionHandler('play', () => { 
-                bgAudioElement.play(); 
-                if (audioCtx.state === 'suspended') audioCtx.resume();
+            navigator.mediaSession.setActionHandler('play', () => {
+                bgAudioElement.play().catch(() => {});
             });
-            navigator.mediaSession.setActionHandler('pause', () => { 
-                bgAudioElement.pause(); 
-                audioCtx.suspend();
+            navigator.mediaSession.setActionHandler('pause', () => {
+                bgAudioElement.pause();
             });
         }
     }
 
-    // 播放和唤醒
+    // 播放和唤醒：必须在“用户手势内”首次调用 play() 才能解锁 iOS 的后台播放许可。
+    // 本函数绑定在 window 的 touchstart/click 上，用户在前台随便点一下就完成解锁+起播。
     if (bgAudioElement.paused) {
         bgAudioElement.play().catch(e => console.log("[保活精灵] 解锁失败:", e));
-    }
-    // iOS/部分安卓要求必须在用户交互时 resume AudioContext
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
     }
 
     // ── 轨道1：音频保活倒计时 ──
@@ -650,7 +627,6 @@ function handleUserInteractionForAudio() {
     bgTimeoutId = setTimeout(() => {
         console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
         if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
-        if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
     }, keepAliveDuration);
 
     // ── 轨道2：雷打不动的 5 分钟生成倒计时 ──
