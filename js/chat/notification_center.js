@@ -12,13 +12,14 @@
 
     // 读取全局通知设置（带默认值兜底，兼容旧库——旧库缺的新字段在这里补齐）
     function getSettings() {
-        const defaults = { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false };
+        const defaults = { enabled: false, keepAliveEnabled: true, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false };
         if (!window.db) return defaults;
         if (!db.globalNotifySettings || typeof db.globalNotifySettings !== 'object') {
             db.globalNotifySettings = { ...defaults };
         }
         const s = db.globalNotifySettings;
         if (s.enabled === undefined) s.enabled = defaults.enabled;
+        if (s.keepAliveEnabled === undefined) s.keepAliveEnabled = defaults.keepAliveEnabled; // 新增独立开关
         if (s.keepAliveMinutes === undefined) s.keepAliveMinutes = defaults.keepAliveMinutes;
         if (s.foldMessages === undefined) s.foldMessages = defaults.foldMessages;
         if (s.showSenderName === undefined) s.showSenderName = defaults.showSenderName;
@@ -370,6 +371,15 @@
         if (silentToggle) {
             silentToggle.checked = s.silent === true;
             silentToggle.onchange = async (e) => { getSettings().silent = e.target.checked; await persist(); };
+        }
+        
+        const keepAliveToggle = document.getElementById('notify-keepalive-toggle');
+        if (keepAliveToggle) {
+            keepAliveToggle.checked = s.keepAliveEnabled !== false;
+            keepAliveToggle.onchange = async (e) => { 
+                getSettings().keepAliveEnabled = e.target.checked; 
+                await persist(); 
+            };
         }
 
         const keepInput = document.getElementById('notify-keepalive-input');

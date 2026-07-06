@@ -513,71 +513,23 @@ async function checkAndDeliverProactiveMessages() {
 }
 
 // ==========================================
-// 全局闲置计时器与后台静默推演
+// 全局闲置计时器与后台静默推演 (重构版 - 独立计时双轨制 & 兼容iOS)
 // ==========================================
 let bgAudioElement = null;
-let bgTimeoutId = null;
+let bgTimeoutId = null;        // 负责控制音频什么时候停
+let generationTimeoutId = null; // 负责严格的5分钟生成倒计时
 const silentWavBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
-function unlockAudioElement() {
-    // 需要后台保活音频的两种情况：① 有聊天开了 fixed/timer 主动模式；② 开了系统通知总开关（全局保活兜底）
-    const hasProactive = typeof db !== 'undefined' &&
-        [...(db.characters || []), ...(db.groups || [])].some(
-            chat => chat.proactiveMode === 'fixed' || chat.proactiveMode === 'timer'
-        );
-    const notifyOn = typeof db !== 'undefined' && db.globalNotifySettings
-        && db.globalNotifySettings.enabled && (db.globalNotifySettings.keepAliveMinutes || 0) > 0;
-    const needsAudio = hasProactive || notifyOn;
-
-    if (!needsAudio) {
-        window.removeEventListener('touchstart', unlockAudioElement, { passive: true });
-        window.removeEventListener('click', unlockAudioElement, { passive: true });
-        return;
-    }
-
-    if (!bgAudioElement) {
-        bgAudioElement = new Audio(silentWavBase64);
-        bgAudioElement.loop = true; 
-        bgAudioElement.volume = 1;  
-        bgAudioElement.setAttribute('playsinline', '');
-        bgAudioElement.setAttribute('webkit-playsinline', '');
-    }
-    
-    bgAudioElement.play().then(() => {
-        bgAudioElement.pause();
-    }).catch(err => {
-        console.log("精灵唱歌被拦截，等待下一次敲击...");
-    });
-
-    window.removeEventListener('touchstart', unlockAudioElement, { passive: true });
-    window.removeEventListener('click', unlockAudioElement, { passive: true });
-}
-
-// 供通知模块调用：打开系统通知开关时，在同一用户手势内预热保活音频。
-// 与 unlockAudioElement 不同，本函数不移除全局监听器，失败时仍由下次点击兜底解锁。
-function ensureBgAudioUnlocked() {
-    if (!bgAudioElement) {
-        bgAudioElement = new Audio(silentWavBase64);
-        bgAudioElement.loop = true;
-        bgAudioElement.volume = 1;
-        bgAudioElement.setAttribute('playsinline', '');
-        bgAudioElement.setAttribute('webkit-playsinline', '');
-    }
-    bgAudioElement.play().then(() => bgAudioElement.pause()).catch(() => {});
-}
-window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
-
-function startBackgroundAudioTimer() {
-    stopBackgroundAudioTimer(); 
-    
-    let maxKeepAliveMs = 5 * 60 * 1000; 
-    let needsGenerationOrTimer = false;
+// 评估保活时长，同时返回是否需要生成消息
+function evaluateKeepAliveNeeds() {
+    let keepAliveDuration = 0;
+    let needsGeneration = false;
+    const todayStr = new Date().toDateString();
 
     if (typeof db !== 'undefined') {
-        const todayStr = new Date().toDateString();
         const allChats = [...(db.characters || []), ...(db.groups ||[])];
-        
         allChats.forEach(chat => {
+            // 1. 判断主动模式是否需要生成消息
             if (chat.proactiveMode === 'fixed') {
                 const maxCalls = chat.proactiveDailyLimit || 10;
                 const currentCount = (chat.dailyProactiveUsage && chat.dailyProactiveUsage.date === todayStr) ? chat.dailyProactiveUsage.count : 0;
@@ -594,69 +546,94 @@ function startBackgroundAudioTimer() {
                         if (m.type === 'time_window_idle') return m.generatedAt >= lastInteractTime;
                         return false;
                     });
-                    if (!hasValidDraft) needsGenerationOrTimer = true;
+                    if (!hasValidDraft) needsGeneration = true;
                 }
             }
-            
+            // 2. 判断固定定时模式
             if (chat.proactiveMode === 'timer') {
-                needsGenerationOrTimer = true;
+                needsGeneration = true;
                 const userKeepAliveMs = (chat.proactiveKeepAlive || 30) * 60 * 1000;
-                if (userKeepAliveMs > maxKeepAliveMs) {
-                    maxKeepAliveMs = userKeepAliveMs; 
-                }
+                if (userKeepAliveMs > keepAliveDuration) keepAliveDuration = userKeepAliveMs;
             }
         });
     }
 
-    // 系统通知保活：只要开了通知总开关，就至少保活到"消息通知"页设置的时长。
-    // 与按聊天保活取【较大值】——谁的时长更长听谁的（不再是"原保活优先、短的赢"）。
-    const gn = (typeof db !== 'undefined') ? db.globalNotifySettings : null;
-    if (gn && gn.enabled && (gn.keepAliveMinutes || 0) > 0) {
-        needsGenerationOrTimer = true; // 开了通知也需要保活，好在后台弹通知
-        const gms = gn.keepAliveMinutes * 60 * 1000;
-        if (gms > maxKeepAliveMs) maxKeepAliveMs = gms;
-        console.log(`[精灵] 系统通知已开，保活下限 ${gn.keepAliveMinutes} 分钟，最终保活 ${Math.floor(maxKeepAliveMs/60000)} 分钟`);
+    // 基础 5 分钟保活（防止生成还没跑完就被杀）
+    if (needsGeneration && keepAliveDuration < 5 * 60 * 1000) {
+        keepAliveDuration = 5 * 60 * 1000;
     }
 
-    if (!needsGenerationOrTimer) {
-        console.log('[精灵] 虽然user离开了，但奖池已满且无固定定时任务、也没开系统通知，精灵休息。');
+    // 3. 全局通知保活叠加
+    const gn = (typeof db !== 'undefined') ? db.globalNotifySettings : null;
+    if (gn && gn.enabled && gn.keepAliveEnabled !== false && (gn.keepAliveMinutes || 0) > 0) {
+        const gms = gn.keepAliveMinutes * 60 * 1000;
+        if (gms > keepAliveDuration) keepAliveDuration = gms;
+    }
+
+    return { keepAliveDuration, needsGeneration };
+}
+
+// 核心解锁与双轨倒计时
+function handleUserInteractionForAudio() {
+    const { keepAliveDuration, needsGeneration } = evaluateKeepAliveNeeds();
+
+    if (keepAliveDuration <= 0) {
+        if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        if (generationTimeoutId) clearTimeout(generationTimeoutId);
         return;
     }
 
-    console.log(`[精灵] user离开了，精灵开始唱歌... (本次保活上限: ${Math.floor(maxKeepAliveMs/60000)} 分钟)`);
-
+    // 初始化音频标签 (防杀核心)
     if (!bgAudioElement) {
         bgAudioElement = new Audio(silentWavBase64);
         bgAudioElement.loop = true;
-        bgAudioElement.volume = 1; 
+        bgAudioElement.volume = 1;
         bgAudioElement.setAttribute('playsinline', '');
         bgAudioElement.setAttribute('webkit-playsinline', '');
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'QChat 后台服务',
+                artist: '保持后台以接收新消息',
+                album: '消息通知运行中'
+            });
+            navigator.mediaSession.setActionHandler('play', () => { bgAudioElement.play(); });
+            navigator.mediaSession.setActionHandler('pause', () => { bgAudioElement.pause(); });
+        }
     }
 
-    bgAudioElement.play().catch(e => console.log("[精灵] 精灵发声失败:", e));
+    if (bgAudioElement.paused) {
+        bgAudioElement.play().catch(e => console.log("[保活精灵] 解锁失败:", e));
+    }
 
+    // ── 轨道1：音频保活倒计时（听全局设置的，比如 30 分钟） ──
+    if (bgTimeoutId) clearTimeout(bgTimeoutId);
     bgTimeoutId = setTimeout(() => {
-        console.log(`[精灵] 保活时间到期，精灵唱完了，唤醒一次主动补池...`);
-        triggerIdleProactiveGeneration(); 
-        stopBackgroundAudioTimer(); 
-    }, maxKeepAliveMs);
+        console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
+        if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+    }, keepAliveDuration);
+
+    // ── 轨道2：雷打不动的 5 分钟生成倒计时（只要手离开屏幕 5 分钟，立刻生成！） ──
+    if (generationTimeoutId) clearTimeout(generationTimeoutId);
+    if (needsGeneration) {
+        generationTimeoutId = setTimeout(() => {
+            console.log(`[保活精灵] 闲置5分钟达到，唤醒一次主动补池...`);
+            if (typeof triggerIdleProactiveGeneration === 'function') {
+                triggerIdleProactiveGeneration(); 
+            }
+        }, 5 * 60 * 1000); // 严格的 5 分钟
+    }
 }
 
-function stopBackgroundAudioTimer() {
-    if (bgTimeoutId) {
-        clearTimeout(bgTimeoutId);
-        bgTimeoutId = null;
-    }
-    if (bgAudioElement && !bgAudioElement.paused) {
-        bgAudioElement.pause();
-        bgAudioElement.currentTime = 0; 
-    }
+// 兼容旧代码调用
+function ensureBgAudioUnlocked() {
+    handleUserInteractionForAudio();
 }
+window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
 
 (function setupInactivityTracker() {
+    // 轮询检查发送
     setInterval(async () => {
-        console.log(`[时计] 定时检查是否到达抽奖时间 或 固定触发时间...`);
-        
         const now = Date.now();
         const lastRun = parseInt(localStorage.getItem('last_proactive_run') || '0', 10);
         if (now - lastRun < 50000) return;
@@ -674,15 +651,13 @@ function stopBackgroundAudioTimer() {
         }
     }, 60000);
 
-    window.addEventListener('touchstart', unlockAudioElement, { passive: true });
-    window.addEventListener('click', unlockAudioElement, { passive: true });
+    // 每次点击都会重置那两个计时器
+    window.addEventListener('touchstart', handleUserInteractionForAudio, { passive: true });
+    window.addEventListener('click', handleUserInteractionForAudio, { passive: true });
 
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-            startBackgroundAudioTimer();
-        } else {
-            console.log(`[精灵] user回来了，精灵噤声。`);
-            stopBackgroundAudioTimer();
+            console.log(`[保活精灵] App进入后台，当前保活状态: ${bgAudioElement && !bgAudioElement.paused ? '工作中' : '休眠中'}`);
         }
     });
 })();
