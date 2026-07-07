@@ -145,6 +145,60 @@ async function applyAwaySettings(chat, mode, dailyLimit, frequency, timerInterva
     });
 }
 
+// ==========================================
+// 【设计1 公共件】时段区间换算 + scheduledAt 冻结
+// ==========================================
+// 迟到多久以内仍算“到点送达”(据此决定是否弹系统通知):10 分钟
+const ON_TIME_NOTIFY_WINDOW_MS = 10 * 60 * 1000;
+
+// 由时段 ID(如 noon / noon_0)与锚点时间,推出该时段最近一次的 [start, end) 绝对区间。
+// 生成端(paFreezeScheduledAt)与配信端共用同一套换算,保证冻结值与回退值一致。
+function getRecentSlotInterval(slotId, anchorTime) {
+    let startHour, duration;
+    switch (slotId.toLowerCase().split('_')[0]) {
+        case 'night':     startHour = 22; duration = 8; break;
+        case 'morning':   startHour = 6;  duration = 4; break;
+        case 'noon':      startHour = 10; duration = 4; break;
+        case 'afternoon': startHour = 14; duration = 4; break;
+        case 'evening':   startHour = 18; duration = 4; break;
+        default:          startHour = 10; duration = 4; break;
+    }
+    let start = new Date(anchorTime);
+    start.setHours(startHour, 0, 0, 0);
+    let diff = start.getTime() - anchorTime;
+    if (diff > 12 * 3600 * 1000) start.setDate(start.getDate() - 1);
+    else if (diff < -12 * 3600 * 1000) start.setDate(start.getDate() + 1);
+    let end = new Date(start.getTime());
+    end.setHours(end.getHours() + duration);
+    return { start: start.getTime(), end: end.getTime() };
+}
+
+// 【设计1 核心】把一批预生成消息的 "HH:MM" 换算成“绝对发送时刻”并冻结到 msg.scheduledAt。
+// 只在生成时(锚点=生成时刻)算一次并存库,配信时直接读取,不再按“当前时间”重算——
+// 这正是修掉“同组消息重开被拆散/时间戳变成配信时刻”的根本:冻结值恒为连续。
+// 幂等:已冻结的不再改动;无 time 的兜底消息保持 null(配信端走回退)。
+function paFreezeScheduledAt(content, anchorTime) {
+    if (!content || typeof content !== 'object') return;
+    for (const slotId of Object.keys(content)) {
+        const slot = content[slotId];
+        if (!slot || !Array.isArray(slot.messages)) continue;
+        const anchor = slot.generatedAt || anchorTime; // 兼容自带 generatedAt 的槽
+        const { start, end } = getRecentSlotInterval(slotId, anchor);
+        for (const msg of slot.messages) {
+            if (typeof msg.scheduledAt === 'number') continue; // 幂等,已冻结
+            if (!msg.time) { msg.scheduledAt = null; continue; }
+            const [h, m] = String(msg.time).split(':').map(Number);
+            let d = new Date(start);
+            d.setHours(h, m, 0, 0);
+            let ts = d.getTime();
+            // 跨天修正:与配信端一致的 ±12h 阈值
+            if (ts < start - 12 * 3600 * 1000) ts += 24 * 3600 * 1000;
+            else if (ts > end + 12 * 3600 * 1000) ts -= 24 * 3600 * 1000;
+            msg.scheduledAt = ts;
+        }
+    }
+}
+
 /**
  * 往角色的主动消息队列中塞入一条预生成消息 (供外部“顺风车”功能调用)
  */
@@ -159,12 +213,15 @@ function pushProactiveMessage(chatId, type, content, expireHours = 24) {
         chat.proactiveMessageQueue = chat.proactiveMessageQueue.filter(m => m.type !== 'time_window_idle');
     }
     
+    const _genAt = Date.now();
+    // 【设计1】生成即冻结每条消息的绝对发送时刻 scheduledAt,配信时直接读取,不再按 time 重算
+    paFreezeScheduledAt(content, _genAt);
     chat.proactiveMessageQueue.push({
-        id: `promsg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        id: `promsg_${_genAt}_${Math.random().toString(36).substr(2, 5)}`,
         type: type,
-        content: content, 
-        generatedAt: Date.now(),
-        expireAt: Date.now() + (expireHours * 60 * 60 * 1000) 
+        content: content,
+        generatedAt: _genAt,
+        expireAt: _genAt + (expireHours * 60 * 60 * 1000)
     });
     
     console.log(`[赠品] ${chat.realName || chat.name} 更换了有概率的赠品内容，原赠品已销毁。`);
@@ -185,32 +242,7 @@ async function checkAndDeliverProactiveMessages() {
         night: 5, morning: 70, noon: 90, afternoon: 60, evening: 90     
     };
 
-    function getRecentSlotInterval(slotId, anchorTime) {
-        let startHour, duration;
-        switch(slotId.toLowerCase().split('_')[0]) {
-            case 'night': startHour = 22; duration = 8; break;
-            case 'morning': startHour = 6; duration = 4; break;
-            case 'noon': startHour = 10; duration = 4; break;
-            case 'afternoon': startHour = 14; duration = 4; break;
-            case 'evening': startHour = 18; duration = 4; break;
-            default: startHour = 10; duration = 4; break; 
-        }
-        
-        let anchor = new Date(anchorTime);
-        let start = new Date(anchor);
-        start.setHours(startHour, 0, 0, 0);
-        
-        let diff = start.getTime() - anchorTime;
-        if (diff > 12 * 3600 * 1000) {
-            start.setDate(start.getDate() - 1);
-        } else if (diff < -12 * 3600 * 1000) {
-            start.setDate(start.getDate() + 1);
-        }
-
-        let end = new Date(start.getTime());
-        end.setHours(end.getHours() + duration);
-        return { start: start.getTime(), end: end.getTime() };
-    }
+    // getRecentSlotInterval 已上移到模块作用域(与生成端 paFreezeScheduledAt 共用),此处不再重复定义。
 
     const checkQueue =[
         ...(db.characters || []).map(c => ({ chat: c, type: 'private' })),
@@ -395,20 +427,30 @@ async function checkAndDeliverProactiveMessages() {
                 
                 for (let i = 0; i < candidate.messages.length; i++) {
                     const msgInfo = candidate.messages[i];
-                    let msgFakeTimestamp = candidate.groupTargetTime;
-                    
-                    if (msgInfo.time) {
-                        const [hours, minutes] = msgInfo.time.split(':').map(Number);
-                        let tempDate = new Date(candidate.baseStart);
-                        tempDate.setHours(hours, minutes, 0, 0);
-                        msgFakeTimestamp = tempDate.getTime();
-                        
-                        if (msgFakeTimestamp < candidate.baseStart - 12 * 3600 * 1000) msgFakeTimestamp += 24 * 3600 * 1000;
-                        else if (msgFakeTimestamp > candidate.baseEnd + 12 * 3600 * 1000) msgFakeTimestamp -= 24 * 3600 * 1000;
+                    let msgFakeTimestamp;
+
+                    if (!isPeekSource && typeof msgInfo.scheduledAt === 'number') {
+                        // 【设计1】优先用“生成时冻结”的绝对时刻,配信时不再按当前时间重算——
+                        // 这样同一组消息的时间戳恒为连续,重开(按时间戳重排)也不会被拆散。
+                        msgFakeTimestamp = msgInfo.scheduledAt;
+                    } else {
+                        // 回退:peek 备用池 / 旧库数据无 scheduledAt,沿用按 time 相对 baseStart 的复原逻辑
+                        msgFakeTimestamp = candidate.groupTargetTime;
+                        if (msgInfo.time) {
+                            const [hours, minutes] = msgInfo.time.split(':').map(Number);
+                            let tempDate = new Date(candidate.baseStart);
+                            tempDate.setHours(hours, minutes, 0, 0);
+                            msgFakeTimestamp = tempDate.getTime();
+
+                            if (msgFakeTimestamp < candidate.baseStart - 12 * 3600 * 1000) msgFakeTimestamp += 24 * 3600 * 1000;
+                            else if (msgFakeTimestamp > candidate.baseEnd + 12 * 3600 * 1000) msgFakeTimestamp -= 24 * 3600 * 1000;
+                        }
                     }
 
-                    if (msgFakeTimestamp <= currentFakeTimestamp) msgFakeTimestamp = currentFakeTimestamp + 60 * 1000;
-                    if (msgFakeTimestamp > tNow) msgFakeTimestamp = tNow - 1000; 
+                    // 先“天花板”(不晚于当前,避免出现未来消息),再“地板”(严格晚于上一条,组内保持递增)。
+                    // 顺序很重要:先压未来再保序,能让同组连发始终连续、不互相错位或被拆散。
+                    if (msgFakeTimestamp > tNow) msgFakeTimestamp = tNow - 1000;
+                    if (msgFakeTimestamp <= currentFakeTimestamp) msgFakeTimestamp = currentFakeTimestamp + 1000;
                     
                     let timeGap = msgFakeTimestamp - currentFakeTimestamp;
                     currentFakeTimestamp = msgFakeTimestamp;
@@ -480,9 +522,18 @@ async function checkAndDeliverProactiveMessages() {
                 }
                 deliveredCount++;
 
-                // Step 2：后台主动消息投递时弹系统通知（内部已判权限/开关/可见性）
-                if (window.NotifyCenter) {
-                    NotifyCenter.notifyMessages(chat, type, msgsToPut);
+                // 【设计1·双模式】区分“到点即时送达”与“迟到补投”:
+                //   · 到点(保活生效,落地时刻≈现在)→ 弹系统通知(模式B)
+                //   · 迟到(被杀后打开才处理)→ 视作“过去已发送”补投,不打扰用户(模式A)
+                // 判据用本组“意图发送时刻” groupTargetTime 与现在的差值,而非被 clamp 过的落地时刻。
+                const _lateMs = tNow - candidate.groupTargetTime;
+                if (_lateMs <= ON_TIME_NOTIFY_WINDOW_MS) {
+                    // Step 2：后台主动消息投递时弹系统通知（内部已判权限/开关/可见性）
+                    if (window.NotifyCenter) {
+                        NotifyCenter.notifyMessages(chat, type, msgsToPut);
+                    }
+                } else {
+                    console.log(`[顺风车] ${chat.realName || chat.name} 迟到补投约 ${Math.round(_lateMs / 60000)} 分钟,按“过去已发送”处理,不弹通知。`);
                 }
 
                 // 【修复 2 续】发成功后销毁其余所有候选，只发一组
@@ -1157,11 +1208,14 @@ const memoryLength = chat.maxMemory || 15;
                 }
                 console.log(`[Peek顺风车] 成功收集${Object.keys(proactiveOptions).length}组，当前备用池容量: ${Object.keys(existingPeek.content).length}/10`);
             } else {
+                const _idleGenAt = Date.now();
+                // 【设计1】idle 池同样在生成时冻结 scheduledAt(peek 备用池除外,保留其“就近重定时”特性)
+                paFreezeScheduledAt(proactiveOptions, _idleGenAt);
                 const newProactiveData = {
-                    id: `promsg_idle_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                    id: `promsg_idle_${_idleGenAt}_${Math.random().toString(36).substr(2, 6)}`,
                     type: queueType,
-                    generatedAt: Date.now(),
-                    expireAt: Date.now() + 12 * 60 * 60 * 1000, 
+                    generatedAt: _idleGenAt,
+                    expireAt: _idleGenAt + 12 * 60 * 60 * 1000,
                     content: proactiveOptions
                 };
                 chat.proactiveMessageQueue = (chat.proactiveMessageQueue ||[]).filter(m => m.type !== queueType);
