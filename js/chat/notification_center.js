@@ -12,7 +12,7 @@
 
     // 读取全局通知设置（带默认值兜底，兼容旧库——旧库缺的新字段在这里补齐）
     function getSettings() {
-        const defaults = { enabled: false, keepAliveEnabled: true, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false };
+        const defaults = { enabled: false, keepAliveEnabled: true, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false, badgeEnabled: true };
         if (!window.db) return defaults;
         if (!db.globalNotifySettings || typeof db.globalNotifySettings !== 'object') {
             db.globalNotifySettings = { ...defaults };
@@ -24,6 +24,7 @@
         if (s.foldMessages === undefined) s.foldMessages = defaults.foldMessages;
         if (s.showSenderName === undefined) s.showSenderName = defaults.showSenderName;
         if (s.silent === undefined) s.silent = defaults.silent;
+        if (s.badgeEnabled === undefined) s.badgeEnabled = defaults.badgeEnabled; // 新增：桌面角标独立开关
         return s;
     }
 
@@ -371,6 +372,18 @@
         if (silentToggle) {
             silentToggle.checked = s.silent === true;
             silentToggle.onchange = async (e) => { getSettings().silent = e.target.checked; await persist(); };
+        }
+
+        const badgeToggle = document.getElementById('notify-badge-toggle');
+        if (badgeToggle) {
+            badgeToggle.checked = s.badgeEnabled !== false;
+            badgeToggle.onchange = async (e) => {
+                getSettings().badgeEnabled = e.target.checked;
+                await persist();
+                // 立即生效：开→刷新角标数字，关→清掉角标
+                if (typeof updateHomeChatBadge === 'function') updateHomeChatBadge();
+                else if (!e.target.checked) { try { if (navigator.clearAppBadge) await navigator.clearAppBadge(); } catch (_) {} }
+            };
         }
         
         const keepAliveToggle = document.getElementById('notify-keepalive-toggle');

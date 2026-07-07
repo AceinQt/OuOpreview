@@ -651,12 +651,18 @@ function handleUserInteractionForAudio() {
         bgAudioElement.preload = 'auto';
         bgAudioElement.src = keepAliveAudioSrc;
 
-        // 媒体控制中心适配
+        // 媒体控制中心适配（增强版“伪装成正规播放器”，提高安卓通知栏挂载媒体卡片的概率）
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'OuO后台服务',
-                artist: '保持后台以接收新消息',
-                album: '消息通知运行中'
+                title: 'OuO 后台运行中…',
+                artist: '正在等待新消息',
+                album: '消息通知运行中',
+                // 关键：提供封面图，安卓 Chrome 才更倾向于把它当“真正的音乐播放器”而非 UI 提示音，
+                //       从而在状态栏常驻媒体控制卡片、降低后台被杀概率。图标同 APP_ICON。
+                artwork: [
+                    { src: './icon/icon_cat.png', sizes: '192x192', type: 'image/png' },
+                    { src: './icon/icon_cat.png', sizes: '512x512', type: 'image/png' }
+                ]
             });
             navigator.mediaSession.setActionHandler('play', () => {
                 bgAudioElement.play().catch(() => {});
@@ -664,6 +670,12 @@ function handleUserInteractionForAudio() {
             navigator.mediaSession.setActionHandler('pause', () => {
                 bgAudioElement.pause();
             });
+            // 【关键破解点】注册上一首/下一首（内部留空即可）。安卓 Chrome 看到有这些标准
+            //   曲目操作，会更坚定地判定这是一个正规音乐播放器，进一步稳固后台媒体会话。
+            try { navigator.mediaSession.setActionHandler('previoustrack', () => {}); } catch (_) {}
+            try { navigator.mediaSession.setActionHandler('nexttrack', () => {}); } catch (_) {}
+            // 汇报播放状态，让系统认定处于“正在播放”，媒体卡片更稳定。
+            try { navigator.mediaSession.playbackState = 'playing'; } catch (_) {}
         }
     }
 
@@ -691,6 +703,8 @@ function handleUserInteractionForAudio() {
     bgTimeoutId = setTimeout(() => {
         console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
         if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        // 同步媒体会话状态，避免通知栏卡片停留在“正在播放”的假象
+        if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {} }
     }, keepAliveDuration);
 
     // ── 轨道2：雷打不动的 5 分钟生成倒计时 ──
