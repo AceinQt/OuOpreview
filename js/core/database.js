@@ -13,7 +13,9 @@ const globalSettingKeys =[
     // ★ 学习模块设置（绑定人设/API预设，存量小放 globalSettings）
     'studySettings',
     // ★ 系统消息通知设置（总开关 / 全局后台保活时长）
-    'globalNotifySettings'
+    'globalNotifySettings',
+    // ★ 进阶推送节点设置（CF Worker 地址 / VAPID 公钥 / 令牌 / 订阅凭证）
+    'globalPushSettings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源
@@ -51,6 +53,11 @@ window.db = {
     //   showSenderName: 通知里是否显示角色/群名
     //   silent: 静音通知（弹出但不响铃/不振动）
     globalNotifySettings: { enabled: false, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false },
+
+    // ★ 进阶推送节点（CF Worker）设置
+    //   enabled: 总开关；workerUrl: Worker 地址；vapidPublicKey/vapidPrivateKey: VAPID 密钥
+    //   clientToken: 与 Worker 的 CLIENT_TOKEN 对应；subscription: 浏览器推送订阅凭证
+    globalPushSettings: { enabled: false, workerUrl: '', vapidPublicKey: '', vapidPrivateKey: '', clientToken: '', subscription: null },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
