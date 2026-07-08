@@ -196,11 +196,15 @@
             const silent = s.silent === true;
             const data = { chatId: chat.id, chatType: chatType };
 
-            if (s.foldMessages !== false) {
+if (s.foldMessages !== false) {
                 // 折叠：同一会话只弹一条，tag 固定，后到的替换先到的
                 const last = notifiable[notifiable.length - 1];
                 let { title, body } = buildTitleBody(chat, chatType, last, showName);
-                if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
+                
+                // 【修改 1】：读取这个会话累积的总真实未读数，而不只是当前这几条
+                const totalChatUnread = chat.unreadCount || notifiable.length;
+                if (totalChatUnread > 1) body = `[${totalChatUnread}条] ` + body;
+                
                 console.log(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent}`);
                 const ok = await fire(title, body, { tag: 'chat-' + chat.id, renotify: true, silent, data });
                 console.log('[通知] fire 返回:', ok);
@@ -216,6 +220,11 @@
             }
         } catch (e) {
             console.warn('[通知] notifyMessages 异常:', e);
+        } finally {
+            // 【修改 2】：系统弹完通知会自作主张把角标算成1。我们延迟半秒，再强制刷一次正确的全局总数！
+            if (typeof updateHomeChatBadge === 'function') {
+                setTimeout(updateHomeChatBadge, 500);
+            }
         }
     }
 
