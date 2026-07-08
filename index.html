@@ -558,6 +558,66 @@
             </div>
         </div>
 
+        <!-- ── 进阶：自定义推送节点（CF Worker）──────────────────────── -->
+        <div class="settings-group-title">进阶：自定义推送节点（实验）</div>
+        <div class="settings-item-hint" style="padding: 6px 16px; font-size: 12px; color: #999; line-height: 1.5;">
+            部署一个专属 Cloudflare Worker，即可在 App 被杀后台时也<b>准点</b>收到消息，彻底解决安卓杀后台问题。仅 Android / 桌面有效，iOS 需先「添加到主屏幕」。小白无需理会，默认走本地保活即可。
+        </div>
+        <div class="settings-card">
+            <div class="settings-item toggle-setting" style="cursor: default;">
+                <div class="item-details">
+                    <span class="item-name">启用推送节点</span>
+                    <span class="item-desc" style="font-size: 12px; color: #999;">开：主动消息交给 Worker 准点推送；关：走本地音频保活。</span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <label class="switch">
+                        <input type="checkbox" id="push-node-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="settings-item" style="cursor: default; flex-direction: column; align-items: stretch;">
+                <div class="item-details" style="margin-bottom: 6px;">
+                    <span class="item-name">Worker 地址</span>
+                </div>
+                <input type="text" id="push-worker-url" class="form-control" placeholder="https://xxx.workers.dev"
+                    style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+            <div class="settings-item" style="cursor: default; flex-direction: column; align-items: stretch;">
+                <div class="item-details" style="margin-bottom: 6px;">
+                    <span class="item-name">VAPID 公钥</span>
+                    <span class="item-desc" style="font-size: 12px; color: #999;">点下方按钮生成后会自动填入。</span>
+                </div>
+                <input type="text" id="push-vapid-public" class="form-control" placeholder="生成或粘贴公钥"
+                    style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+            <div class="settings-item" style="cursor: default; flex-direction: column; align-items: stretch;">
+                <div class="item-details" style="margin-bottom: 6px;">
+                    <span class="item-name">客户端令牌（可选）</span>
+                    <span class="item-desc" style="font-size: 12px; color: #999;">若 Worker 设了 CLIENT_TOKEN，这里填相同值。</span>
+                </div>
+                <input type="text" id="push-client-token" class="form-control" placeholder="留空表示不校验"
+                    style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+            <div class="settings-item" style="cursor: default; flex-direction: column; align-items: stretch; display: none;">
+                <div class="item-details" style="margin-bottom: 6px;">
+                    <span class="item-name" style="color:#e67e22;">VAPID 私钥（复制到 Worker 后可清空）</span>
+                    <span class="item-desc" style="font-size: 12px; color: #999;">运行 wrangler secret put VAPID_PRIVATE_KEY 时粘贴它。</span>
+                </div>
+                <textarea id="push-vapid-private-display" readonly rows="2"
+                    class="form-control" style="width: 100%; padding: 8px; box-sizing: border-box; font-size: 12px; word-break: break-all;"></textarea>
+            </div>
+            <div class="settings-item" id="push-gen-vapid" style="cursor: pointer; justify-content: center;">
+                <span class="item-name" style="color: var(--accent-color, #07c160);">生成 VAPID 密钥对</span>
+            </div>
+        </div>
+        <div class="settings-item-hint" id="push-node-hint" style="padding: 6px 16px; font-size: 12px; color: #999; line-height: 1.5;"></div>
+        <div class="settings-card" style="margin-top: 12px;">
+            <div class="settings-item" id="push-test-task-btn" style="cursor: pointer; justify-content: center;">
+                <span class="item-name" style="color: var(--accent-color, #07c160);">发送测试任务（1 分钟后）</span>
+            </div>
+        </div>
+
     </main>
 </div>
 
@@ -6499,6 +6559,7 @@
     <script src="js/chat/chat_feature_offline.js"></script>
     <script src="js/chat/chat_feature_proactive.js"></script>
     <script src="js/chat/notification_center.js"></script>
+    <script src="js/chat/push_node.js"></script>
     <script src="js/chat/chat_feature_call.js"></script>
     <script src="js/chat/chat_ai_service.js"></script>
     <script src="js/chat/chat_bubble_factory.js"></script>
