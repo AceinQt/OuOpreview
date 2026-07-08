@@ -567,16 +567,30 @@ async function checkAndDeliverProactiveMessages() {
 // 全局闲置计时器与后台静默推演 (重构版 - 独立计时双轨制 & 兼容iOS)
 // ==========================================
 let bgAudioElement = null;
-let bgTimeoutId = null;        // 负责控制音频什么时候停
-let generationTimeoutId = null; // 负责严格的5分钟生成倒计时
-// 保活音频：近似静音(实测 mean -80dB / max -68dB，人耳完全听不见)但含真实波形的 MP3。
-// 循环播放让系统认定"正在播放媒体"，从而不冻结后台 JS。
-// 关键：用真实音频文件，而非纯静音 wav 或 WebAudio MediaStream——
-//   ① iOS Safari 不支持用 <audio>.srcObject 播放 MediaStream，play() 会抛 AbortError(“The operation was aborted”)；
-//   ② 安卓上 AudioContext 进后台会被 suspend，导致断流、媒体会话丢失、标签页被杀（“开了保活反而更容易被杀”的根因）；
-//   ③ 纯静音 wav 会被浏览器当作“无实际音频”优化掉，保活失效。
-// 建议使用实体文件，并且时长大于 10 秒
+let bgTimeoutId = null;        
+let generationTimeoutId = null; 
 const keepAliveAudioSrc = "./audio/keepalive.mp3";
+
+// ==========================================
+// 【新增修复】：彻底销毁音频和通知栏播放卡片
+// ==========================================
+function killKeepAliveAudio() {
+    if (bgAudioElement) {
+        bgAudioElement.pause();
+        bgAudioElement.src = ''; // 拔掉音频源
+        bgAudioElement.removeAttribute('src');
+        bgAudioElement.load();   // 强制浏览器卸载内存中的音频
+        bgAudioElement = null;   // 彻底丢弃对象
+    }
+    // 强制通知系统：当前没有任何媒体在播放了
+    if ('mediaSession' in navigator) {
+        try {
+            navigator.mediaSession.metadata = null;
+            navigator.mediaSession.playbackState = 'none';
+        } catch (_) {}
+    }
+    console.log('[保活精灵] 音频播放器已彻底销毁，通知栏卡片应已清除。');
+}
 
 // 评估保活时长，同时返回是否需要生成消息
 function evaluateKeepAliveNeeds() {
@@ -637,7 +651,7 @@ function handleUserInteractionForAudio() {
     const { keepAliveDuration, needsGeneration } = evaluateKeepAliveNeeds();
 
     if (keepAliveDuration <= 0) {
-        if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        if (bgAudioElement && !bgAudioElement.paused) killKeepAliveAudio();
         if (generationTimeoutId) clearTimeout(generationTimeoutId);
         return;
     }
@@ -703,7 +717,7 @@ function handleUserInteractionForAudio() {
     if (bgTimeoutId) clearTimeout(bgTimeoutId);
     bgTimeoutId = setTimeout(() => {
         console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
-        if (bgAudioElement && !bgAudioElement.paused) bgAudioElement.pause();
+        if (bgAudioElement && !bgAudioElement.paused) killKeepAliveAudio();
         // 同步媒体会话状态，避免通知栏卡片停留在“正在播放”的假象
         if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {} }
     }, keepAliveDuration);
