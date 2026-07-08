@@ -1,6 +1,6 @@
 // --- sw.js ---
 
-const CACHE_NAME = 'qchat-cache-Q1.8.2';
+const CACHE_NAME = 'qchat-cache-Q1.8.3';
 // 每次部署新版本时，把上面的 v1 改成 v2、v3...
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
@@ -71,6 +71,34 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
+// ── 接收来自「进阶推送中转（CF Worker）」的真实 Web Push ──────────────
+// App 可能已被系统彻底杀死，此时只有 Service Worker 被推送唤醒。
+// payload 里的 title/body/tag 是前端在移交时就用通知设置算好的最终文案，
+// 这里直接展示即可（SW 拿不到 db / NotifyCenter，不能再做业务判断）。
+// 注意：userVisibleOnly 约束下，每个到达的 push 都必须弹一条通知，
+//       所以「要不要发」的决定必须在 Worker 端就拦好，不能到这里再丢弃。
+self.addEventListener('push', (event) => {
+    let data = {};
+    try {
+        if (event.data) data = event.data.json();
+    } catch (e) {
+        try { data = { title: '新消息', body: event.data ? event.data.text() : '' }; } catch (_) { data = {}; }
+    }
+
+    const title = data.title || '新消息';
+    const options = {
+        body: data.body || '',
+        icon: './icon/icon_cat.png',
+        badge: './icon/icon_cat.png',
+        tag: data.tag || undefined,          // 与前台 NotifyCenter 同 tag，可折叠去重
+        renotify: data.tag ? (data.renotify !== false) : false,
+        silent: data.silent === true,
+        data: { chatId: data.chatId, chatType: data.chatType, fromPush: true }
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
 // 点击系统通知：聚焦已打开的窗口，没有就打开一个
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
@@ -109,16 +137,5 @@ self.addEventListener('periodicsync', (event) => {
                 }
             })
         );
-    }
-});
-
-// 【新增】：监听前端页面发来的消息
-self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'CLEAR_NOTIFICATIONS') {
-        // 获取所有当前弹出的通知，并把它们统统关掉
-        self.registration.getNotifications().then(notifications => {
-            notifications.forEach(notification => notification.close());
-            console.log('[SW] 已清除通知栏的所有消息残留');
-        });
     }
 });
