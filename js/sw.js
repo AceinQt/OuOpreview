@@ -1,6 +1,6 @@
 // --- sw.js ---
 
-const CACHE_NAME = 'qchat-cache-Q1.8.3';
+const CACHE_NAME = 'qchat-cache-Q1.8.4';
 // 每次部署新版本时，把上面的 v1 改成 v2、v3...
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
@@ -114,7 +114,9 @@ self.addEventListener('notificationclick', (event) => {
                 }
             }
             if (self.clients.openWindow) {
-                return self.clients.openWindow('./');
+                // SW 在 /js/ 作用域下，'./' 会解析到 /js/ 导致 404；
+                // 用 '../' 回到 App 根目录（同时兼容子路径部署）。
+                return self.clients.openWindow('../');
             }
         })
     );
