@@ -111,3 +111,14 @@ self.addEventListener('periodicsync', (event) => {
         );
     }
 });
+
+// 【新增】：监听前端页面发来的消息
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'CLEAR_NOTIFICATIONS') {
+        // 获取所有当前弹出的通知，并把它们统统关掉
+        self.registration.getNotifications().then(notifications => {
+            notifications.forEach(notification => notification.close());
+            console.log('[SW] 已清除通知栏的所有消息残留');
+        });
+    }
+});

@@ -551,10 +551,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // 生产环境建议注释掉 alert
                 await AppUI.alert("后台保存出错: " + e.message);
             }
- } else if (document.visibilityState === 'visible') {
+} else if (document.visibilityState === 'visible') {
             // 页面重新可见时,检查是否需要重新加载
             console.log('📱 页面重新可见,检查数据同步...');
             shouldSaveOnHide = true;
+            
+            // ==========================================
+            // 【新增修复】：通知 Service Worker 清空通知栏残留
+            // ==========================================
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
+            } else if (window.__swRegistration && window.__swRegistration.active) {
+                window.__swRegistration.active.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
+            }
+            // ==========================================
+
             if (typeof checkAndDeliverProactiveMessages === 'function') {
                 checkAndDeliverProactiveMessages();
             }

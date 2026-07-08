@@ -346,14 +346,15 @@ function updateHomeChatBadge() {
         totalUnread += db.groups.reduce((sum, g) => sum + (g.unreadCount || 0), 0);
     }
 
-    // ★ Step 4：同步 PWA 桌面图标角标（受通知总开关 + 角标独立开关 badgeEnabled 控制）
+// ★ Step 4：同步 PWA 桌面图标角标（受通知总开关 + 角标独立开关 badgeEnabled 控制）
     try {
         const gn = db && db.globalNotifySettings;
         const notifyOn = gn && gn.enabled;
         const badgeOn = !gn || gn.badgeEnabled !== false; // 缺省视为开，兼容旧库
         if (navigator.setAppBadge) {
             if (notifyOn && badgeOn && totalUnread > 0) {
-                navigator.setAppBadge(totalUnread).catch(() => {});
+                // 【修复】：强制转换为纯数字，防止某些浏览器解析出错导致只显示 1
+                navigator.setAppBadge(Number(totalUnread)).catch(() => {});
             } else if (navigator.clearAppBadge) {
                 navigator.clearAppBadge().catch(() => {});
             }
