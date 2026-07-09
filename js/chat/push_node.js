@@ -173,16 +173,42 @@
         }
     }
 
-    // ── 测试：安排一个 1 分钟后的测试推送 ─────────────────────────────
+    // ── 测试：立即推送一条，并把 Worker/FCM 的结果直接显示出来 ──────────
+    // 走 /add-task?now=1：Worker 当场发送并把 FCM 状态码原样返回，无需等 cron、无需 wrangler tail。
+    //   201 = 成功；403 = VAPID 密钥不匹配；404/410 = 订阅失效；0 = 发送异常。
     async function sendTestTask() {
         if (!isReady()) { uiToast('请先填好 Worker 地址和公钥并打开开关'); return; }
-        const deliverAt = Date.now() + 60 * 1000;
-        const ok = await addTask({
-            taskId: 'test_' + Date.now(),
-            deliverAt,
-            payload: { title: 'QChat 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
-        });
-        uiToast(ok ? '已安排 1 分钟后的测试推送，可切后台等待' : '安排失败，请检查 Worker 地址/令牌');
+        let sub;
+        try { sub = await ensureSubscription(); }
+        catch (e) { await uiAlert('订阅失败：' + (e && e.message ? e.message : e)); return; }
+
+        try {
+            const res = await fetch(apiUrl('/add-task?now=1'), {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({
+                    taskId: 'test_' + Date.now(),
+                    subscription: sub,
+                    payload: { title: 'QChat 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
+                })
+            });
+            let info;
+            try { info = await res.json(); } catch { info = {}; }
+            const st = info.status;
+            if (info.ok) {
+                uiToast('推送已发出（状态 ' + st + '）。切后台看是否弹出。');
+            } else if (st === 403) {
+                await uiAlert('❌ 状态 403：VAPID 密钥不匹配。请确认 App 公钥、Worker 公钥、私钥是同一对，改完关开关重开以重新订阅。');
+            } else if (st === 404 || st === 410) {
+                await uiAlert('❌ 状态 ' + st + '：推送订阅已失效。请关掉推送开关、刷新页面、再打开，以重新订阅。');
+            } else if (info.error === 'vapid_not_set') {
+                await uiAlert('❌ Worker 未设置 VAPID 密钥。请 wrangler secret put 三个 VAPID_* 后重新部署。');
+            } else {
+                await uiAlert('❌ 发送失败：状态 ' + (st === undefined ? '未知' : st) + (info.error ? '，' + info.error : '') + '。');
+            }
+        } catch (e) {
+            await uiAlert('请求 Worker 失败：' + (e && e.message ? e.message : e) + '\n检查 Worker 地址是否正确、令牌是否匹配。');
+        }
     }
 
     // ── 设置页 UI ─────────────────────────────────────────────────────
