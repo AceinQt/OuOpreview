@@ -64,7 +64,7 @@
 
     // ── 申请 / 复用 Web Push 订阅 ─────────────────────────────────────
     function getReg() {
-        // SW scope 为 /js/，serviceWorker.ready 会永久挂起，必须用已存下的 registration
+        // 优先用启动时存下的 registration（最稳）；根作用域下 ready 也可用作兜底
         return (window.__swRegistration && window.__swRegistration.active) ? window.__swRegistration : null;
     }
 

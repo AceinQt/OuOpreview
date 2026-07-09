@@ -40,9 +40,8 @@
     }
 
     // 拿到一个 active 的 ServiceWorkerRegistration。
-    // 注意：本项目 SW 注册在 ./js/sw.js，scope 是 /js/，不控制根页面，
-    //       所以 navigator.serviceWorker.ready 会永久挂起，绝不能用它。
-    //       这里改用已存下的 reg / getRegistration / getRegistrations，并加超时兜底。
+    // SW 现已注册在根目录（scope '/'，控制根页面），ready 正常可用；
+    // 但仍优先用已存下的 __swRegistration，并对 ready 加 3 秒超时兜底，最稳。
     async function getActiveReg() {
         if (window.__swRegistration && window.__swRegistration.active) {
             return window.__swRegistration;
