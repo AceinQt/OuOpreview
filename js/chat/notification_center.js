@@ -235,8 +235,21 @@
 
     // ── 设置页 UI ──────────────────────────────────────────────
 
-    function updateHint() {
+function updateHint() {
         const hint = document.getElementById('notify-permission-hint');
+        const toggle = document.getElementById('system-notification-toggle');
+        const advancedSettings = document.getElementById('advanced-notification-settings');
+
+        // 1. 同步更新下方高级设置区域的显示/隐藏状态
+        if (toggle && advancedSettings) {
+            if (toggle.checked) {
+                advancedSettings.classList.remove('d-none');
+            } else {
+                advancedSettings.classList.add('d-none');
+            }
+        }
+
+        // 2. 原有的提示文字更新逻辑
         if (!hint) return;
         if (!isSupported()) {
             hint.textContent = '当前环境不支持系统通知（需在支持的浏览器 / 已添加到主屏幕的 PWA 中使用）。';
@@ -411,6 +424,36 @@
             try { window.PushNode.initSettingsUI(); } catch (e) { console.warn('[推送节点] UI 初始化失败:', e); }
         }
     }
+
+// ── 设置页问号说明弹窗 ──────────────────────────────────────────────
+    window.showNotifyGroupInfo = function(key) {
+        const groupInfos = {
+            'system-notify': {
+                title: '系统通知说明',
+                content: '开启后，切到后台时如有新消息会弹出系统通知。\n\n⚠️ iOS 用户须在 Safari 中点击「分享」-「添加到主屏幕」，并在主屏幕打开应用方可接收。'
+            },
+            'notify-content': {
+                title: '通知内容说明',
+                content: '【折叠消息】\n开启：多条消息合并，避免霸屏。\n关闭：每条消息独立弹出通知。\n\n【显示角色/群名】\n关闭：统一显示"新消息"，隐藏对方身份。\n\n【静音通知】\n开启：仅亮屏弹出，无铃声震动。\n\n【桌面角标】\n开启：应用图标显示红点或数字（受系统限制可能仅显示红点）。'
+            },
+            'keepalive': {
+                title: '后台保活说明',
+                content: '【允许后台持续保活】\n开启：后台播放无声循环音频，防止系统杀后台，确保实时收信（略微增加耗电）。\n关闭：切后台后随时可能断连。\n\n【保活时长】\n切后台后保持存活的有效分钟数。该项取全局与各个单独聊天的最高值。'
+            },
+            'push-node': {
+                title: '自定义推送说明',
+                content: '🤖 此为进阶专属功能：\n\n可部署专属的 Cloudflare Worker 节点。即使您的应用被杀后台或深度休眠，服务器也会准点发起 Web Push 通知，完美根除安卓漏信痛点！\n\n需填入 Worker 地址与公钥。一般用户保持关闭即可。'
+            }
+        };
+
+        if (groupInfos[key]) {
+            if (typeof AppUI !== 'undefined' && typeof AppUI.alert === 'function') {
+                AppUI.alert(groupInfos[key].content, groupInfos[key].title, "我知道了");
+            } else {
+                alert(`【${groupInfos[key].title}】\n\n${groupInfos[key].content}`);
+            }
+        }
+    };
 
     window.NotifyCenter = {
         getSettings,
