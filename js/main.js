@@ -462,12 +462,25 @@ async function runDailyBackupCheck() {
 
 // A. Service Worker 注册与后台唤醒监听
 if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./js/sw.js')
+    window.addEventListener('load', async () => {
+        // ★ 迁移：注销旧的 /js/ 作用域 SW（历史版本注册在 ./js/sw.js，
+        //   作用域 /js/ 控制不了根页面、会导致 ready 永久挂起、点通知 404）。
+        //   sw.js 现已移到根目录（作用域 /），这里先清掉旧的，避免新旧并存。
+        try {
+            const olds = await navigator.serviceWorker.getRegistrations();
+            for (const r of olds) {
+                if (r.scope && r.scope.endsWith('/js/')) {
+                    await r.unregister();
+                    console.log('🧹 已注销旧的 /js/ 作用域 SW:', r.scope);
+                }
+            }
+        } catch (e) { console.log('清理旧 SW 时出错（忽略）:', e); }
+
+        navigator.serviceWorker.register('./sw.js')
             .then(async reg => {
                 console.log('✅ SW 注册成功:', reg.scope);
-                // 存下 registration，供通知模块直接使用（SW scope 为 /js/ 时不控制根页面，
-                // navigator.serviceWorker.ready 会永久挂起，必须用这个 reg 而非 ready）
+                // 存下 registration 供通知模块使用（虽然根作用域下 ready 可用，
+                // 但沿用这个引用最稳，避免时序问题）
                 window.__swRegistration = reg;
 
                 // 尝试注册周期性后台同步 (Periodic Background Sync)
@@ -551,21 +564,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // 生产环境建议注释掉 alert
                 await AppUI.alert("后台保存出错: " + e.message);
             }
-} else if (document.visibilityState === 'visible') {
+ } else if (document.visibilityState === 'visible') {
             // 页面重新可见时,检查是否需要重新加载
             console.log('📱 页面重新可见,检查数据同步...');
             shouldSaveOnHide = true;
-            
-            // ==========================================
-            // 【新增修复】：通知 Service Worker 清空通知栏残留
-            // ==========================================
-            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
-            } else if (window.__swRegistration && window.__swRegistration.active) {
-                window.__swRegistration.active.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
-            }
-            // ==========================================
-
             if (typeof checkAndDeliverProactiveMessages === 'function') {
                 checkAndDeliverProactiveMessages();
             }
