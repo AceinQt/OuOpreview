@@ -137,7 +137,12 @@ async function applyAwaySettings(chat, mode, dailyLimit, frequency, timerInterva
     // ─────────────────────────────────
 
     await saveSingleChat(chat.id, currentChatType);
-    
+
+    // 切到免打扰 / 固定模式：这两种不该有顺风车推送，撤销该会话在 CF 上的待发任务
+    if ((mode === 'dnd' || mode === 'timer') && window.PushNode && typeof window.PushNode.cancelChat === 'function') {
+        try { await window.PushNode.cancelChat(chat); } catch (_) {}
+    }
+
     const awayBtns = document.querySelectorAll('.expansion-item[data-action*="proactive"], .expansion-item[onclick*="openProactiveMessagingSettings"]');
     awayBtns.forEach(btn => {
         if (mode === 'fixed' || mode === 'timer') btn.classList.add('active');
@@ -767,6 +772,16 @@ window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
             console.log(`[保活精灵] App进入后台，当前保活状态: ${bgAudioElement && !bgAudioElement.paused ? '工作中' : '休眠中'}`);
+            // 进入后台：把到点该发的主动消息移交给 CF 推送节点（未启用则内部直接跳过）
+            if (window.PushNode && typeof window.PushNode.reconcile === 'function') {
+                window.PushNode.reconcile().catch(e => console.warn('[推送节点] reconcile 异常:', e));
+            }
+        } else if (document.visibilityState === 'visible') {
+            // 回到前台：本地投递接管，撤销 CF 上的待发任务，避免 App 开着时还弹推送通知。
+            // 下次进后台会重新移交。
+            if (window.PushNode && typeof window.PushNode.cancelAllDevice === 'function') {
+                window.PushNode.cancelAllDevice().catch(e => console.warn('[推送节点] 前台撤销异常:', e));
+            }
         }
     });
 })();
@@ -914,10 +929,15 @@ async function triggerIdleProactiveGeneration() {
 
             console.log(`[礼物] ${chat.name || chat.realName} 正在付费填充奖池...`);
             await generateBackgroundProactiveMessages(chat, maxCalls, type);
-            
+
             chat.dailyProactiveUsage.count++;
             await saveSingleChat(chat.id, type);
         }
+    }
+
+    // 后台生成了新的 idle 消息后，若此刻已在后台，补一次移交（否则要等下次进后台）
+    if (document.visibilityState === 'hidden' && window.PushNode && typeof window.PushNode.reconcile === 'function') {
+        window.PushNode.reconcile().catch(e => console.warn('[推送节点] idle 生成后 reconcile 异常:', e));
     }
 }
 
