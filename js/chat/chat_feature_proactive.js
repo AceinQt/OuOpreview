@@ -328,8 +328,13 @@ async function checkAndDeliverProactiveMessages() {
 
         for (const slotId of Object.keys(draft.content)) {
             const slotData = draft.content[slotId];
-            if (!slotData.messages || slotData.messages.length === 0) continue; 
-            
+            if (!slotData.messages || slotData.messages.length === 0) continue;
+            // 已移交给 CF 推送的 peek 话题：本地不再重复投递（仅在推送节点启用时；未启用则无视）
+            if (isPeekSource && slotData._cfHandedOff &&
+                window.PushNode && typeof window.PushNode.isReady === 'function' && window.PushNode.isReady()) {
+                continue;
+            }
+
             let firstMsgTimeStr = slotData.messages[0].time;
             let groupTargetTime;
             let baseStart, baseEnd;
@@ -777,10 +782,10 @@ window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
                 window.PushNode.reconcile().catch(e => console.warn('[推送节点] reconcile 异常:', e));
             }
         } else if (document.visibilityState === 'visible') {
-            // 回到前台：本地投递接管，撤销 CF 上的待发任务，避免 App 开着时还弹推送通知。
-            // 下次进后台会重新移交。
-            if (window.PushNode && typeof window.PushNode.cancelAllDevice === 'function') {
-                window.PushNode.cancelAllDevice().catch(e => console.warn('[推送节点] 前台撤销异常:', e));
+            // 回到前台：本地投递接管 summary/idle，撤销其 CF 任务，避免 App 开着还弹推送。
+            // peek 是长期(72h)、与上下文无关的，跨前后台保留、不在此撤销。下次进后台重新移交 si。
+            if (window.PushNode && typeof window.PushNode.cancelAllSiForeground === 'function') {
+                window.PushNode.cancelAllSiForeground().catch(e => console.warn('[推送节点] 前台撤销异常:', e));
             }
         }
     });
