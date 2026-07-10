@@ -1231,7 +1231,11 @@ const contextContent = `[系统情景通知：距离上一次互动已经过去$
                 const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
                 
                 if (chat && chat.proactiveMessageQueue) {
-        chat.proactiveMessageQueue = chat.proactiveMessageQueue.filter(m => 
+        // 用户发言：撤销该会话在 CF 上的待发推送（summary/idle 作废，peek 也一并撤，未启用则内部跳过）
+        if (window.PushNode && typeof window.PushNode.cancelChat === 'function') {
+            window.PushNode.cancelChat(chat).catch(() => {});
+        }
+        chat.proactiveMessageQueue = chat.proactiveMessageQueue.filter(m =>
             m.type !== 'time_window_summary' && m.type !== 'time_window_idle'
         );
     }

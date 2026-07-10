@@ -98,6 +98,18 @@
         return await subscribe();
     }
 
+    // 强制丢弃旧订阅并用当前公钥重新订阅（用于订阅失效 404/410、或换了公钥时自愈）
+    async function resubscribe() {
+        const reg = getReg();
+        if (!reg || !reg.pushManager) throw new Error('Service Worker 未就绪，稍后再试');
+        try {
+            const old = await reg.pushManager.getSubscription();
+            if (old) await old.unsubscribe();
+        } catch (_) {}
+        getSettings().subscription = null;
+        return await subscribe();
+    }
+
     // ── 与 Worker 通信 ────────────────────────────────────────────────
     function apiHeaders() {
         const s = getSettings();
@@ -124,6 +136,7 @@
             const res = await fetch(apiUrl('/add-task'), {
                 method: 'POST',
                 headers: apiHeaders(),
+                keepalive: true, // 进入后台 reconcile 时页面可能正被挂起，确保请求发完
                 body: JSON.stringify({
                     taskId: task.taskId,
                     deliverAt: task.deliverAt,
@@ -147,6 +160,7 @@
             const res = await fetch(apiUrl('/cancel'), {
                 method: 'POST',
                 headers: apiHeaders(),
+                keepalive: true,
                 body: JSON.stringify({ taskIds: taskIds || [], groupId: groupId || null })
             });
             return res.ok;
@@ -170,6 +184,171 @@
         } catch (e) {
             console.warn('[推送节点] cancel-all 失败:', e);
             return false;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 阶段二：真实主动消息的移交(reconcile)与撤销
+    //   设计核心见 plans/expressive-noodling-quail.md：
+    //   · CF 无状态；所有判定在“进入后台 reconcile”时算好；用户操作时即时撤销。
+    //   · 单一真相：summary/idle 预掷后锁定本地(只留赢家、锁100)，保证 CF 通知与本地历史一致。
+    //   · 所有逻辑用 isReady() + 通知总开关 守卫；CF 未启用时对现有系统零改动。
+    // ══════════════════════════════════════════════════════════════════
+
+    function notifyEnabled() {
+        const ns = window.NotifyCenter ? window.NotifyCenter.getSettings() : null;
+        return !!(ns && ns.enabled);
+    }
+
+    // 会话是否符合移交条件
+    function chatEligible(chat) {
+        if (!isReady() || !notifyEnabled()) return false;
+        if (chat.proactiveMode === 'dnd' || chat.proactiveMode === 'timer') return false;
+        return true;
+    }
+
+    function ensureCfTasks(chat) {
+        if (!chat._cfTasks || typeof chat._cfTasks !== 'object') chat._cfTasks = { taskIds: [], groupIds: [] };
+        if (!Array.isArray(chat._cfTasks.taskIds)) chat._cfTasks.taskIds = [];
+        if (!Array.isArray(chat._cfTasks.groupIds)) chat._cfTasks.groupIds = [];
+        return chat._cfTasks;
+    }
+
+    // 清除 peek 池上的 _cfHandedOff 标记（Wave B 用；Wave A 下 peek 池一般没有标记，无副作用）
+    function clearPeekHandoff(chat) {
+        const q = chat && chat.proactiveMessageQueue;
+        if (!Array.isArray(q)) return;
+        const peek = q.find(m => m.type === 'time_window_peek');
+        if (peek && peek.content) {
+            for (const k of Object.keys(peek.content)) {
+                if (peek.content[k] && peek.content[k]._cfHandedOff) delete peek.content[k]._cfHandedOff;
+            }
+        }
+    }
+
+    // 把 draft 里的原始主动消息(含 action/text)转成通知能识别的 content 文案，
+    // 与 checkAndDeliverProactiveMessages 落地时的 finalContent 保持一致。
+    function draftMsgToContent(chat, type, msgInfo) {
+        let actionStr = msgInfo.action || '的消息';
+        if (['的照片', '发来的照片', '的照片/视频'].includes(actionStr)) actionStr = '发来的照片/视频';
+        else if (actionStr === '发来的语音') actionStr = '的语音';
+        else if (actionStr === '发来的转账') actionStr = '的转账';
+        else if (actionStr === '的礼物') actionStr = '送来的礼物';
+        let finalContent = `[${msgInfo.sender}${actionStr}：${msgInfo.text}]`;
+        if (type === 'private' && chat.offlineModeEnabled) {
+            if (actionStr === '的动作') finalContent = `[system-narration:${msgInfo.text}]`;
+            else if (actionStr === '的语言') finalContent = `[${msgInfo.sender}的消息：${msgInfo.text}]`;
+            else if (actionStr === '更新状态为') finalContent = `[${msgInfo.sender}更新状态为：${msgInfo.text}]`;
+        }
+        return finalContent;
+    }
+
+    // 预掷 summary/idle 的 draft：按 scheduledAt 升序取“首个抽中”的赢家，
+    // 改写 draft(只留赢家、锁 probability=100，其余删掉)。
+    // 返回 { deliverAt, payload } 表示需要在未来时刻推送；返回 null 表示无需 CF
+    // (无可定点槽 / 睡过头 / 赢家在过去 → 交给本地投递)。
+    function preRollDraft(chat, type, draft) {
+        if (!draft || !draft.content) return null;
+        const now = Date.now();
+        const slots = [];
+        for (const slotId of Object.keys(draft.content)) {
+            const slot = draft.content[slotId];
+            if (!slot || !Array.isArray(slot.messages) || !slot.messages.length) continue;
+            const times = slot.messages.map(m => m.scheduledAt).filter(t => typeof t === 'number');
+            if (!times.length) continue; // 无 scheduledAt 的槽不参与预掷，留给本地兜底
+            let prob = slot.probability;
+            if (prob === null || prob === undefined || isNaN(prob)) prob = 90;
+            slots.push({ slotId, deliverAt: Math.min.apply(null, times), prob, slot });
+        }
+        if (!slots.length) return null; // 该 draft 没有可定点的槽，完全交给本地
+
+        slots.sort((a, b) => a.deliverAt - b.deliverAt);
+        let winner = null;
+        for (const s of slots) {
+            if (Math.random() * 100 <= s.prob) { winner = s; break; }
+        }
+
+        if (winner) {
+            // 只留赢家(锁100)，其余所有槽(含无 scheduledAt 的)一律删除 → 本地单一真相
+            for (const slotId of Object.keys(draft.content)) {
+                if (slotId === winner.slotId) draft.content[slotId].probability = 100;
+                else delete draft.content[slotId];
+            }
+        } else {
+            // 睡过头：删掉参与预掷的定时槽（无定时槽保留给本地）
+            for (const s of slots) delete draft.content[s.slotId];
+            return null;
+        }
+
+        if (winner.deliverAt <= now) return null; // 赢家已过点 → 本地迟到补投，无需 CF
+
+        const notifMsgs = winner.slot.messages.map(m => ({ role: 'assistant', content: draftMsgToContent(chat, type, m) }));
+        const payload = window.NotifyCenter ? window.NotifyCenter.buildPushPayload(chat, type, notifMsgs) : null;
+        if (!payload) return null;
+        payload.chatId = chat.id;
+        payload.chatType = type;
+        return { deliverAt: winner.deliverAt, payload };
+    }
+
+    // 撤销某会话在 CF 上的所有待发任务（用户操作即时调用）
+    async function cancelChat(chat) {
+        if (!chat) return;
+        clearPeekHandoff(chat);
+        const t = chat._cfTasks;
+        chat._cfTasks = { taskIds: [], groupIds: [] };
+        if (!t) return;
+        const hasAny = (t.taskIds && t.taskIds.length) || (t.groupIds && t.groupIds.length);
+        if (!hasAny || !getSettings().workerUrl) return;
+        try {
+            if (t.taskIds && t.taskIds.length) await cancelTasks(t.taskIds, null);
+            for (const gid of (t.groupIds || [])) await cancelTasks([], gid);
+        } catch (_) {}
+    }
+
+    // 清空本设备所有会话的 CF 任务（关通知总开关时用）
+    async function cancelAllDevice() {
+        const all = [...((window.db && db.characters) || []), ...((window.db && db.groups) || [])];
+        all.forEach(c => { c._cfTasks = { taskIds: [], groupIds: [] }; clearPeekHandoff(c); });
+        return await cancelAll();
+    }
+
+    // reconcile 单个会话：先撤旧任务，再(若符合条件)预掷 summary/idle 并移交
+    async function reconcileChat(chat, type) {
+        await cancelChat(chat);
+        if (!chatEligible(chat)) return;
+        const q = chat.proactiveMessageQueue;
+        if (!Array.isArray(q) || !q.length) return;
+
+        const draft = q.find(m => m.type === 'time_window_summary') || q.find(m => m.type === 'time_window_idle');
+        if (!draft) return; // Wave B 会在此后追加 peek 处理
+
+        const decision = preRollDraft(chat, type, draft);
+        if (decision) {
+            const taskId = 'cf_' + chat.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            const ok = await addTask({ taskId, deliverAt: decision.deliverAt, payload: decision.payload });
+            if (ok) ensureCfTasks(chat).taskIds.push(taskId);
+        }
+        // draft 已被预掷改写，落库保证本地投递与 CF 一致
+        if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
+    }
+
+    // reconcile 全部会话（进入后台时触发）
+    let _reconciling = false;
+    async function reconcile() {
+        if (!isReady() || !notifyEnabled()) return;
+        if (_reconciling) return; // 防重入
+        _reconciling = true;
+        try {
+            const list = [
+                ...(((window.db && db.characters) || []).map(c => ({ chat: c, type: 'private' }))),
+                ...(((window.db && db.groups) || []).map(g => ({ chat: g, type: 'group' })))
+            ];
+            for (const { chat, type } of list) {
+                try { await reconcileChat(chat, type); }
+                catch (e) { console.warn('[推送节点] reconcile 会话失败:', chat && chat.id, e); }
+            }
+        } finally {
+            _reconciling = false;
         }
     }
 
@@ -200,7 +379,24 @@
             } else if (st === 403) {
                 await uiAlert('❌ 状态 403：VAPID 密钥不匹配。请确认 App 公钥、Worker 公钥、私钥是同一对，改完关开关重开以重新订阅。');
             } else if (st === 404 || st === 410) {
-                await uiAlert('❌ 状态 ' + st + '：推送订阅已失效。请关掉推送开关、刷新页面、再打开，以重新订阅。');
+                // 订阅失效：自动退订+重订+重发一次，用户无感
+                uiToast('订阅已失效，正在自动重新订阅…');
+                try {
+                    const fresh = await resubscribe();
+                    const res2 = await fetch(apiUrl('/add-task?now=1'), {
+                        method: 'POST', headers: apiHeaders(),
+                        body: JSON.stringify({
+                            taskId: 'test_' + Date.now(),
+                            subscription: fresh,
+                            payload: { title: 'QChat 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
+                        })
+                    });
+                    let info2 = {}; try { info2 = await res2.json(); } catch {}
+                    uiToast(info2.ok ? '已重新订阅并推送（状态 ' + info2.status + '）。切后台查看。'
+                                     : '重新订阅后仍失败（状态 ' + info2.status + '）。');
+                } catch (e2) {
+                    await uiAlert('自动重新订阅失败：' + (e2 && e2.message ? e2.message : e2));
+                }
             } else if (info.error === 'vapid_not_set') {
                 await uiAlert('❌ Worker 未设置 VAPID 密钥。请 wrangler secret put 三个 VAPID_* 后重新部署。');
             } else {
@@ -321,10 +517,16 @@
         isReady,
         generateVapidKeys,
         subscribe,
+        resubscribe,
         addTask,
         cancelTasks,
         cancelAll,
         sendTestTask,
-        initSettingsUI
+        initSettingsUI,
+        // 阶段二：移交与撤销
+        reconcile,
+        reconcileChat,
+        cancelChat,
+        cancelAllDevice
     };
 })();

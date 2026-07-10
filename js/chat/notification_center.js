@@ -218,6 +218,24 @@
         }
     }
 
+    // 供「进阶推送节点」移交时复用：把一批消息按当前通知设置(折叠/显名/静音)
+    // 算成最终推送文案。返回 { title, body, tag, silent } 或 null(无可通知内容)。
+    // 与本地 notifyMessages 用同一 tag('chat-'+id)，保证 CF 推送与本地投递能折叠去重。
+    function buildPushPayload(chat, chatType, messages) {
+        const s = getSettings();
+        const notifiable = (Array.isArray(messages) ? messages : [])
+            .filter(m => m && m.role === 'assistant' && previewOf(m));
+        if (!chat || !notifiable.length) return null;
+
+        const showName = s.showSenderName !== false;
+        const last = notifiable[notifiable.length - 1];
+        let { title, body } = buildTitleBody(chat, chatType, last, showName);
+        if (s.foldMessages !== false && notifiable.length > 1) {
+            body = `[${notifiable.length}条] ` + body;
+        }
+        return { title, body, tag: 'chat-' + chat.id, silent: s.silent === true };
+    }
+
     // 请求通知权限（必须在用户手势内调用，例如点击开关）
     async function requestPermission() {
         if (!('Notification' in window)) return 'unsupported';
@@ -300,6 +318,10 @@ function updateHint() {
             s.enabled = false;
             updateHint();
             try { if (navigator.clearAppBadge) await navigator.clearAppBadge(); } catch (_) {}
+            // 关掉通知总开关：撤销 CF 上所有待发推送任务
+            if (window.PushNode && typeof window.PushNode.cancelAllDevice === 'function') {
+                try { await window.PushNode.cancelAllDevice(); } catch (_) {}
+            }
             await persist();
         }
     }
@@ -460,6 +482,7 @@ function updateHint() {
         permissionState,
         fire,
         notifyMessages,
+        buildPushPayload,
         requestPermission,
         initSettingsUI
     };
