@@ -1274,12 +1274,16 @@ const memoryLength = chat.maxMemory || 15;
                 };
                 chat.proactiveMessageQueue = (chat.proactiveMessageQueue ||[]).filter(m => m.type !== queueType);
                 chat.proactiveMessageQueue.push(newProactiveData);
-                console.log(`[奖池填充成功] 等待开奖！`);            
+                console.log(`[奖池填充成功] 等待开奖！`);
+            }
+            // 生成完(idle 或 peek)立即移交给 CF 推送节点（未启用则内部跳过）
+            if (window.PushNode && typeof window.PushNode.handoffChat === 'function') {
+                window.PushNode.handoffChat(chat.id).catch(() => {});
             }
         } else {
             console.warn(`[奖池填充失败] 解析失败或 AI 未按格式返回内容。`);
         }
     } catch (error) {
-        console.error("抽奖系统机器故障！", error);        
+        console.error("抽奖系统机器故障！", error);
     }
 }

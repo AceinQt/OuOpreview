@@ -428,7 +428,20 @@
         }
     }
 
-    // reconcile 全部会话（进入后台时触发）
+    // 生成完主动消息后【立即】移交单个会话（主路径：前台、网络稳、时间充裕）。
+    // 由 summary / peek / idle 的生成完成点调用。切后台的 reconcile 仅作兜底。
+    async function handoffChat(chatId) {
+        if (!isReady() || !notifyEnabled()) return;
+        if (!window.db) return;
+        let chat = (db.characters || []).find(c => c.id === chatId);
+        let type = 'private';
+        if (!chat) { chat = (db.groups || []).find(g => g.id === chatId); type = 'group'; }
+        if (!chat) return;
+        try { await reconcileChat(chat, type); }
+        catch (e) { console.warn('[推送节点] handoffChat 失败:', chatId, e); }
+    }
+
+    // reconcile 全部会话（进入后台时触发，作为生成后立即移交的兜底）
     let _reconciling = false;
     async function reconcile() {
         if (!isReady() || !notifyEnabled()) return;
@@ -668,6 +681,7 @@
         // 阶段二：移交与撤销
         reconcile,
         reconcileChat,
+        handoffChat,
         cancelChat,
         cancelAllSiForeground,
         cancelAllDevice,
