@@ -482,6 +482,10 @@ function parseAndSavePeekProactiveHitchhiker(char, textBlock) {
             existingPeek.content = newContent;
         }
         console.log(`[话题] 成功提取 ${Object.keys(proactiveOptions).length} 组话题，当前备用池容量: ${Object.keys(existingPeek.content).length}/10`);
+        // 生成完 peek 话题立即移交给 CF 推送节点（未启用则内部跳过）
+        if (window.PushNode && typeof window.PushNode.handoffChat === 'function') {
+            window.PushNode.handoffChat(char.id).catch(() => {});
+        }
     } else {
         console.warn(`[话题] 未抓取到符合格式的话题数据，AI原始文本：\n`, textBlock);
     }
