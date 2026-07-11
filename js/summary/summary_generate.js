@@ -603,6 +603,10 @@ const rawContent = await _fetchCompletion(url, key, {
         if (Object.keys(proactiveOptions).length > 0 && typeof pushProactiveMessage === 'function') {
             pushProactiveMessage(chat.id, 'time_window_summary', proactiveOptions, 24);
             console.log("[赠品] 已将赠品放入奖池，等待开奖！");
+            // 生成完立即移交给 CF 推送节点（前台、时间充裕；未启用则内部跳过）
+            if (window.PushNode && typeof window.PushNode.handoffChat === 'function') {
+                window.PushNode.handoffChat(chat.id).catch(() => {});
+            }
         }
     }
 
