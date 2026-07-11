@@ -448,6 +448,50 @@
         }
     }
 
+    // ── 诊断：强制跑一次移交，并报告“为什么没移交/移交了什么” ────────────
+    // 逐会话检查各道门槛，把结论汇总弹出，无需等进后台、无需看 CF。
+    async function diagnoseHandoff() {
+        const lines = [];
+        const s = getSettings();
+        lines.push('推送节点开关: ' + (s.enabled ? '开' : '关'));
+        lines.push('Worker地址: ' + (s.workerUrl ? '有' : '缺'));
+        lines.push('公钥: ' + (s.vapidPublicKey ? '有' : '缺'));
+        lines.push('订阅: ' + (s.subscription && s.subscription.endpoint ? '有' : '缺'));
+        lines.push('isReady(): ' + (isReady() ? '✅' : '❌'));
+        lines.push('通知主开关(必须开): ' + (notifyEnabled() ? '✅ 开' : '❌ 关 ← 真实消息不移交就因为这个'));
+
+        if (!isReady()) { await uiAlert('无法移交：\n' + lines.join('\n')); return; }
+        if (!notifyEnabled()) { await uiAlert('无法移交：\n' + lines.join('\n') + '\n\n请到本页最上方打开「允许系统通知」。'); return; }
+
+        const all = [
+            ...(((window.db && db.characters) || []).map(c => ({ chat: c, type: 'private' }))),
+            ...(((window.db && db.groups) || []).map(g => ({ chat: g, type: 'group' })))
+        ];
+        let eligible = 0, withDraft = 0, withPeek = 0, handed = 0;
+        for (const { chat } of all) {
+            if (!chatEligible(chat)) continue;
+            eligible++;
+            const q = chat.proactiveMessageQueue || [];
+            if (q.find(m => m.type === 'time_window_summary' || m.type === 'time_window_idle')) withDraft++;
+            if (q.find(m => m.type === 'time_window_peek')) withPeek++;
+        }
+
+        // 真正跑一次移交
+        await reconcile();
+
+        for (const { chat } of all) {
+            const t = chat._cfTasks;
+            if (t && ((t.si && t.si.length) || (t.peekTasks && t.peekTasks.length))) handed++;
+        }
+        lines.push('');
+        lines.push('符合条件会话: ' + eligible);
+        lines.push('含summary/idle: ' + withDraft + '，含peek池: ' + withPeek);
+        lines.push('本次移交出任务的会话: ' + handed);
+        lines.push('');
+        lines.push('移交完成。可打开 Worker 的 /list 查看具体任务。');
+        await uiAlert(lines.join('\n'));
+    }
+
     // ── 测试：立即推送一条，并把 Worker/FCM 的结果直接显示出来 ──────────
     // 走 /add-task?now=1：Worker 当场发送并把 FCM 状态码原样返回，无需等 cron、无需 wrangler tail。
     //   201 = 成功；403 = VAPID 密钥不匹配；404/410 = 订阅失效；0 = 发送异常。
@@ -602,6 +646,8 @@
         }
         const testBtn = document.getElementById('push-test-task-btn');
         if (testBtn) testBtn.onclick = sendTestTask;
+        const diagBtn = document.getElementById('push-diagnose-btn');
+        if (diagBtn) diagBtn.onclick = diagnoseHandoff;
 
         if (!s.workerUrl) setHint('可选功能：部署一个专属 Cloudflare Worker，即可在被杀后台时也准点收到消息。');
         else if (s.enabled) setHint('已开启。');
@@ -624,6 +670,7 @@
         reconcileChat,
         cancelChat,
         cancelAllSiForeground,
-        cancelAllDevice
+        cancelAllDevice,
+        diagnoseHandoff
     };
 })();
