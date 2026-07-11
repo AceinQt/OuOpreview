@@ -295,46 +295,51 @@
         return { deliverAt: winner.deliverAt, payload };
     }
 
-    // 只撤 summary/idle 任务（peek 保留）
-    async function cancelSiTasks(chat) {
-        const t = chat && chat._cfTasks;
-        if (!t || !Array.isArray(t.si) || !t.si.length) { if (t) t.si = []; return; }
-        const ids = t.si; t.si = [];
-        if (getSettings().workerUrl) { try { await cancelTasks(ids, null); } catch (_) {} }
-    }
-
-    // 撤 peek 任务，并清掉话题上的 _cfHandedOff 标记（该会话 peek 重新可用）
-    async function cancelPeekTasks(chat) {
-        clearPeekHandoff(chat);
-        const t = chat && chat._cfTasks;
-        if (!t) return;
-        const ids = Array.isArray(t.peekTasks) ? t.peekTasks : [];
-        const gids = Array.isArray(t.peekGroups) ? t.peekGroups : [];
-        t.peekTasks = []; t.peekGroups = [];
-        if (!getSettings().workerUrl) return;
+    // 按 chatId 在 CF 端撤销任务（不依赖前端内存，刷新后依然可靠）。
+    // kind: 'si' | 'peek' | null(全部)
+    async function cfCancelChat(chat, kind) {
+        const s = getSettings();
+        if (!s.workerUrl || !s.subscription || !s.subscription.endpoint) return;
         try {
-            if (ids.length) await cancelTasks(ids, null);
-            for (const g of gids) await cancelTasks([], g);
+            await fetch(apiUrl('/cancel-chat'), {
+                method: 'POST',
+                headers: apiHeaders(),
+                keepalive: true,
+                body: JSON.stringify({ chatId: chat.id, endpoint: s.subscription.endpoint, kind: kind || null })
+            });
         } catch (_) {}
     }
 
-    // 撤销某会话全部 CF 任务（用户发言 / 切离线 / 切 dnd·timer 时调用，含 peek + 清标记）
-    async function cancelChat(chat) {
-        if (!chat) return;
-        await cancelSiTasks(chat);
-        await cancelPeekTasks(chat);
+    // 清除 summary/idle draft 上的移交标记（撤销后允许重新移交）
+    function clearSiHandoff(chat) {
+        const q = chat && chat.proactiveMessageQueue;
+        if (!Array.isArray(q)) return;
+        for (const m of q) {
+            if (m && (m.type === 'time_window_summary' || m.type === 'time_window_idle')) {
+                delete m._cfHandedOff; delete m._cfTaskId;
+            }
+        }
     }
 
-    // 回前台：只撤所有会话的 summary/idle 任务（peek 长期保留，跨前后台不动）
-    async function cancelAllSiForeground() {
-        const all = [...((window.db && db.characters) || []), ...((window.db && db.groups) || [])];
-        for (const c of all) { try { await cancelSiTasks(c); } catch (_) {} }
+    // 只撤 summary/idle（peek 保留）——用于 summary/idle 重新生成前清旧任务
+    async function cancelSi(chat) {
+        clearSiHandoff(chat);
+        await cfCancelChat(chat, 'si');
+    }
+
+    // 撤该会话全部 CF 任务（用户发言 / 切离线 / 切 dnd·timer）——含 peek + 清所有标记
+    async function cancelChat(chat) {
+        if (!chat) return;
+        clearSiHandoff(chat);
+        clearPeekHandoff(chat);
+        if (chat._cfTasks) chat._cfTasks = { si: [], peekTasks: [], peekGroups: [] };
+        await cfCancelChat(chat, null);
     }
 
     // 关通知总开关：彻底清空本设备所有任务(含 peek)与标记
     async function cancelAllDevice() {
         const all = [...((window.db && db.characters) || []), ...((window.db && db.groups) || [])];
-        all.forEach(c => { c._cfTasks = { si: [], peekTasks: [], peekGroups: [] }; clearPeekHandoff(c); });
+        all.forEach(c => { c._cfTasks = { si: [], peekTasks: [], peekGroups: [] }; clearSiHandoff(c); clearPeekHandoff(c); });
         return await cancelAll();
     }
 
@@ -357,7 +362,7 @@
     }
 
     // 把一个 peek 话题排成未来 N 天的定点推送(同 groupId，首发即撤其余天)。
-    // 一次只推一组(该会话已有在飞 peek 则跳过)；离线不推 peek。
+    // 一次只推一组(池里已有 _cfHandedOff 的话题则跳过，用持久标记而非内存)；离线不推 peek。
     async function schedulePeek(chat, type) {
         if (type === 'private' && chat.offlineModeEnabled) return;
         const q = chat.proactiveMessageQueue;
@@ -365,10 +370,11 @@
         const peek = q.find(m => m.type === 'time_window_peek');
         if (!peek || !peek.content) return;
 
-        const t = ensureCfTasks(chat);
-        if (t.peekTasks.length) return; // 一次只保持一组 peek 在飞
+        const keys = Object.keys(peek.content);
+        // 已有在飞的话题（持久标记）→ 一次只保持一组
+        if (keys.some(k => peek.content[k] && peek.content[k]._cfHandedOff)) return;
 
-        const entries = Object.keys(peek.content)
+        const entries = keys
             .map(k => ({ k, topic: peek.content[k] }))
             .filter(e => e.topic && !e.topic._cfHandedOff && Array.isArray(e.topic.messages) && e.topic.messages.length);
         if (!entries.length) return;
@@ -386,23 +392,22 @@
         if (!payload) return;
         payload.chatId = chat.id;
         payload.chatType = type;
+        payload.kind = 'peek';
 
         const groupId = 'peekg_' + chat.id + '_' + now + '_' + Math.random().toString(36).slice(2, 6);
         let added = false;
         for (const ts of times) {
             const taskId = 'cfpeek_' + chat.id + '_' + ts + '_' + Math.random().toString(36).slice(2, 5);
             const ok = await addTask({ taskId, deliverAt: ts, payload, groupId });
-            if (ok) { t.peekTasks.push(taskId); added = true; }
+            if (ok) added = true;
         }
-        if (added) {
-            if (t.peekGroups.indexOf(groupId) === -1) t.peekGroups.push(groupId);
-            pick.topic._cfHandedOff = true;
-        }
+        if (added) pick.topic._cfHandedOff = true; // 持久标记：本地投递跳过它、也不再重复移交
     }
 
-    // reconcile 单个会话：撤旧 summary/idle 任务→预掷移交；无 summary/idle 占位时再排 peek
+    // 移交单个会话（幂等，靠持久标记去重）：
+    //   · summary/idle：没移交过(无 _cfHandedOff)才预掷+移交，标 _cfHandedOff；已移交则跳过，绝不重复。
+    //   · peek：无 summary/idle 占位时才排(与本地优先级一致)。
     async function reconcileChat(chat, type) {
-        await cancelSiTasks(chat); // 只撤 si，peek 保留
         if (!chatEligible(chat)) return;
         const q = chat.proactiveMessageQueue;
         if (!Array.isArray(q) || !q.length) return;
@@ -410,18 +415,23 @@
         const draft = q.find(m => m.type === 'time_window_summary') || q.find(m => m.type === 'time_window_idle');
         let siActive = false;
         if (draft) {
-            const decision = preRollDraft(chat, type, draft);
-            if (decision) {
-                const taskId = 'cf_' + chat.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-                const ok = await addTask({ taskId, deliverAt: decision.deliverAt, payload: decision.payload });
-                if (ok) ensureCfTasks(chat).si.push(taskId);
+            if (!draft._cfHandedOff) {
+                // 先清掉该会话可能残留的旧 si 任务(如重新生成场景)，再移交新的
+                await cfCancelChat(chat, 'si');
+                const decision = preRollDraft(chat, type, draft);
+                if (decision) {
+                    const taskId = 'cf_' + chat.id + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                    decision.payload.kind = 'si';
+                    const ok = await addTask({ taskId, deliverAt: decision.deliverAt, payload: decision.payload });
+                    if (ok) draft._cfTaskId = taskId;
+                }
+                draft._cfHandedOff = true; // 无论掷中与否都标记：已决策，不再重复预掷/移交
+                if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
             }
-            // draft 预掷后仍有内容(赢家或残留) → 视为 summary/idle 占位，peek 让位(复刻本地优先级)
             siActive = !!(draft.content && Object.keys(draft.content).length > 0);
-            if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
         }
 
-        // peek：仅在没有 summary/idle 占位时移交(与本地"peek 只在无 summary/idle 时轮到"一致)
+        // peek：仅在没有 summary/idle 占位时移交
         if (!siActive) {
             await schedulePeek(chat, type);
             if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
@@ -493,8 +503,11 @@
         await reconcile();
 
         for (const { chat } of all) {
-            const t = chat._cfTasks;
-            if (t && ((t.si && t.si.length) || (t.peekTasks && t.peekTasks.length))) handed++;
+            const q = chat.proactiveMessageQueue || [];
+            const siHanded = q.some(m => (m.type === 'time_window_summary' || m.type === 'time_window_idle') && m._cfHandedOff);
+            const peek = q.find(m => m.type === 'time_window_peek');
+            const peekHanded = peek && peek.content && Object.keys(peek.content).some(k => peek.content[k] && peek.content[k]._cfHandedOff);
+            if (siHanded || peekHanded) handed++;
         }
         lines.push('');
         lines.push('符合条件会话: ' + eligible);
@@ -683,7 +696,7 @@
         reconcileChat,
         handoffChat,
         cancelChat,
-        cancelAllSiForeground,
+        cancelSi,
         cancelAllDevice,
         diagnoseHandoff
     };

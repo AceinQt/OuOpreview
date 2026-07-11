@@ -782,11 +782,9 @@ window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
                 window.PushNode.reconcile().catch(e => console.warn('[推送节点] reconcile 异常:', e));
             }
         } else if (document.visibilityState === 'visible') {
-            // 回到前台：本地投递接管 summary/idle，撤销其 CF 任务，避免 App 开着还弹推送。
-            // peek 是长期(72h)、与上下文无关的，跨前后台保留、不在此撤销。下次进后台重新移交 si。
-            if (window.PushNode && typeof window.PushNode.cancelAllSiForeground === 'function') {
-                window.PushNode.cancelAllSiForeground().catch(e => console.warn('[推送节点] 前台撤销异常:', e));
-            }
+            // 回到前台：不动 CF 任务。已移交的照常到点推送；App 开着时本地投递也会触发，
+            // 两者用同一个通知 tag('chat-'+id) 折叠去重，用户只看到一条。
+            // (撤销只发生在用户真正让消息失效的操作：发消息 / 切模式 / 关总开关)
         }
     });
 })();
