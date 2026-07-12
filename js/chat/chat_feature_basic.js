@@ -427,13 +427,42 @@
                         return;
                     }
 
+                    // 🌟 先立刻弹出确认框并显示加载态，避免预览查询较慢时用户以为卡住/没点到
+                    messagesToDelete = null;
+                    previewBox.innerHTML = `<p style="text-align: center; color: #999; margin: 5px 0;">读取预览中…</p>`;
+                    confirmBtn.disabled = true;
+                    confirmBtn.style.opacity = '0.5';
+                    confirmBtn.style.cursor = 'not-allowed';
+                    deleteChunkModal.classList.remove('visible');
+                    confirmModal.classList.add('visible');
+
+                    // 记录本次加载对应的范围，用于防止用户快速重复操作时旧结果覆盖新结果
+                    const reqStart = startRange, reqEnd = endRange;
+
                     // 取要删除的消息：懒加载走 DB 全局序号（老范围可能不在内存窗口内），否则内存 slice
-                    if (window.LAZY_LOAD && typeof window.getMessagesByGlobalRange === 'function') {
-                        try { messagesToDelete = await window.getMessagesByGlobalRange(chat.id, startRange, endRange); }
-                        catch (err) { messagesToDelete = chat.history.slice(startRange - 1, endRange); }
-                    } else {
-                        messagesToDelete = chat.history.slice(startRange - 1, endRange);
+                    let loaded;
+                    try {
+                        if (window.LAZY_LOAD && typeof window.getMessagesByGlobalRange === 'function') {
+                            try { loaded = await window.getMessagesByGlobalRange(chat.id, startRange, endRange); }
+                            catch (err) { loaded = chat.history.slice(startRange - 1, endRange); }
+                        } else {
+                            loaded = chat.history.slice(startRange - 1, endRange);
+                        }
+                    } catch (err) {
+                        loaded = null;
                     }
+
+                    // 确认框已被关闭，或用户又发起了新的范围请求，则丢弃这次结果
+                    if (!confirmModal.classList.contains('visible') || reqStart !== startRange || reqEnd !== endRange) {
+                        return;
+                    }
+
+                    if (!loaded) {
+                        previewBox.innerHTML = `<p style="text-align: center; color: #e74c3c; margin: 5px 0;">预览加载失败，请关闭后重试</p>`;
+                        return;
+                    }
+
+                    messagesToDelete = loaded;
 
                     // --- NEW PREVIEW LOGIC ---
                     let previewHtml = '';
@@ -467,11 +496,15 @@
                     }
                     previewBox.innerHTML = previewHtml;
 
-                    deleteChunkModal.classList.remove('visible');
-                    confirmModal.classList.add('visible');
+                    // 预览就绪，恢复确认按钮
+                    confirmBtn.disabled = false;
+                    confirmBtn.style.opacity = '';
+                    confirmBtn.style.cursor = '';
                 });
 
                 confirmBtn.addEventListener('click', async () => {
+                    // 预览尚未加载完成（按钮理论上已置灰），保险起见直接忽略
+                    if (!messagesToDelete) return;
                     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
                     const idsToDelete = messagesToDelete.map(m => m.id);
                     const count = idsToDelete.length;
@@ -492,5 +525,9 @@
 
                 cancelBtn.addEventListener('click', () => {
                     confirmModal.classList.remove('visible');
+                    // 复位按钮状态，避免下次残留置灰
+                    confirmBtn.disabled = false;
+                    confirmBtn.style.opacity = '';
+                    confirmBtn.style.cursor = '';
                 });
             }                               
