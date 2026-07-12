@@ -367,6 +367,10 @@
                 });
             }          
             
+             // 🌟 缓存当前聊道的消息总数：openDeleteChunkModal 已查过并显示给用户，
+             // submit（点"下一步"）时直接复用，避免重复 await DB count 造成停顿
+             let cachedChunkTotal = null;
+
              async function openDeleteChunkModal() {
                 const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
                 if (!chat) {
@@ -392,6 +396,8 @@
                     showToast('当前没有聊天记录可删除');
                     return;
                 }
+                // 缓存供 submit 直接复用，避免点"下一步"时再查一次 DB count
+                cachedChunkTotal = { chatId: chat.id, total: totalMessages };
                 rangeInfo.textContent = `当前聊天总消息数: ${totalMessages}`;
             }
 
@@ -410,9 +416,11 @@
                     e.preventDefault();
                     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
 
-                    // 用真实总数校验（懒加载下 chat.history 只有内存窗口）
+                    // 🌟 复用打开输入框时已查好的总数，避免点"下一步"时重复 await DB count 造成停顿
                     let totalMessages;
-                    if (window.LAZY_LOAD && typeof window.getMessageCount === 'function') {
+                    if (cachedChunkTotal && cachedChunkTotal.chatId === chat.id) {
+                        totalMessages = cachedChunkTotal.total;
+                    } else if (window.LAZY_LOAD && typeof window.getMessageCount === 'function') {
                         try { totalMessages = await window.getMessageCount(chat.id); }
                         catch (err) { totalMessages = chat.history.length; }
                     } else {
@@ -517,6 +525,8 @@
                     await saveSingleChat(currentChatId, currentChatType);
 
                     confirmModal.classList.remove('visible');
+                    // 删除后总数已变，作废旧缓存，下次打开重新统计
+                    cachedChunkTotal = null;
                     showToast(`已成功删除 ${count} 条消息`);
                     currentPage = 1;
                     renderMessages(false, true);
