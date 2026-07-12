@@ -254,6 +254,76 @@ async function checkAndDeliverProactiveMessages() {
         ...(db.groups ||[]).map(g => ({ chat: g, type: 'group' }))
     ];
 
+    // ── 【CF 推送】把已移交给 CF、且到点的 peek 话题，静默写入历史 ──────────────
+    // CF 只负责弹通知，消息本体必须靠本地写进 chat.history，否则“收到通知、点开无消息”。
+    // 与 summary/idle 的“迟到补投”同理：不重复弹通知(CF 已弹)，只补齐历史。
+    // App 打开/切回前台时会跑本函数，从而把 App 被杀期间 CF 推过的 peek 补进历史。
+    if (window.PushNode && typeof window.PushNode.isReady === 'function' && window.PushNode.isReady()) {
+        for (const { chat, type } of checkQueue) {
+            if (!chat.proactiveMessageQueue) continue;
+            const peek = chat.proactiveMessageQueue.find(m => m.type === 'time_window_peek');
+            if (!peek || !peek.content) continue;
+            let materialized = false;
+            for (const key of Object.keys(peek.content)) {
+                const topic = peek.content[key];
+                if (!topic || !topic._cfHandedOff || topic._cfMaterialized) continue;
+                if (typeof topic._cfScheduledAt !== 'number' || topic._cfScheduledAt > tNow) continue;
+                if (!Array.isArray(topic.messages) || !topic.messages.length) { topic._cfMaterialized = true; continue; }
+
+                let baseTs = Math.min(topic._cfScheduledAt, tNow - topic.messages.length * 1000);
+                const putMsgs = [];
+                for (let i = 0; i < topic.messages.length; i++) {
+                    const msgInfo = topic.messages[i];
+                    let actionStr = msgInfo.action || '的消息';
+                    if (['的照片', '发来的照片', '的照片/视频'].includes(actionStr)) actionStr = '发来的照片/视频';
+                    else if (actionStr === '发来的语音') actionStr = '的语音';
+                    else if (actionStr === '发来的转账') actionStr = '的转账';
+                    else if (actionStr === '的礼物') actionStr = '送来的礼物';
+
+                    let finalContent = `[${msgInfo.sender}${actionStr}：${msgInfo.text}]`;
+                    if (type === 'private' && chat.offlineModeEnabled) {
+                        if (actionStr === '的动作') finalContent = `[system-narration:${msgInfo.text}]`;
+                        else if (actionStr === '的语言') finalContent = `[${msgInfo.sender}的消息：${msgInfo.text}]`;
+                        else if (actionStr === '更新状态为') finalContent = `[${msgInfo.sender}更新状态为：${msgInfo.text}]`;
+                    }
+
+                    const newMsg = {
+                        id: `msg_proactive_cfpeek_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
+                        role: 'assistant',
+                        content: finalContent,
+                        parts: [{ type: 'text', text: finalContent }],
+                        timestamp: baseTs + i * 1000
+                    };
+                    if (actionStr === '撤回了一条消息' || actionStr === '撤回了上一条消息') {
+                        newMsg.isWithdrawn = true; newMsg.originalContent = msgInfo.text;
+                    }
+                    if (type === 'group' && chat.members && chat.members.length > 0) {
+                        const sName = (msgInfo.sender || '').trim();
+                        const matched = chat.members.find(m => m.realName === sName || m.groupNickname === sName);
+                        newMsg.senderId = matched ? matched.id : chat.members[0].id;
+                    }
+                    chat.history.push(newMsg);
+                    putMsgs.push(newMsg);
+                    if (typeof currentChatId !== 'undefined' && currentChatId === chat.id && typeof addMessageBubble === 'function') {
+                        addMessageBubble(newMsg, chat.id, type);
+                    }
+                }
+                topic._cfMaterialized = true;
+                materialized = true;
+                if (putMsgs.length) {
+                    await saveMessagesToDB(putMsgs, chat.id, type);
+                    if (typeof currentChatId === 'undefined' || currentChatId !== chat.id) {
+                        chat.unreadCount = (chat.unreadCount || 0) + putMsgs.length;
+                    }
+                }
+            }
+            if (materialized) {
+                hasDelivered = true;
+                if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
+            }
+        }
+    }
+
     for (const { chat, type } of checkQueue) {
         // 【修复 3】：严格拦截免打扰和 Timer 固定模式，防止它偷吃 Peek 池子的盲盒消息
         if (chat.proactiveMode === 'dnd' || chat.proactiveMode === 'timer' || !chat.proactiveMessageQueue || chat.proactiveMessageQueue.length === 0) continue;

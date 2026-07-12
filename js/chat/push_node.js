@@ -226,7 +226,8 @@
         const peek = q.find(m => m.type === 'time_window_peek');
         if (peek && peek.content) {
             for (const k of Object.keys(peek.content)) {
-                if (peek.content[k] && peek.content[k]._cfHandedOff) delete peek.content[k]._cfHandedOff;
+                const topic = peek.content[k];
+                if (topic) { delete topic._cfHandedOff; delete topic._cfScheduledAt; delete topic._cfMaterialized; }
             }
         }
     }
@@ -401,7 +402,10 @@
             const ok = await addTask({ taskId, deliverAt: ts, payload, groupId });
             if (ok) added = true;
         }
-        if (added) pick.topic._cfHandedOff = true; // 持久标记：本地投递跳过它、也不再重复移交
+        if (added) {
+            pick.topic._cfHandedOff = true;   // 持久标记：本地动态 peek 路径跳过它、也不再重复移交
+            pick.topic._cfScheduledAt = times[0]; // 最近一次发送时刻：供本地“到点静默写入历史”用
+        }
     }
 
     // 移交单个会话（幂等，靠持久标记去重）：
