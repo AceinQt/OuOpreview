@@ -92,7 +92,6 @@ function setupHomeScreen() {
     if(typeof updateClock === 'function') updateClock();
     applyWallpaper(db.wallpaper);
     applyHomeScreenMode(db.homeScreenMode);
-    updateBatteryStatus();
 
     // 8. 绑定事件 (确保只绑定一次)
     bindHomeScreenEventsOnce();
@@ -216,33 +215,6 @@ async function applyHomeScreenMode(mode) {
     }
     db.homeScreenMode = mode;
     await saveGlobalKeys(['homeScreenMode']);
-}
-
-// 电池状态
-async function updateBatteryStatus() {
-    if ('getBattery' in navigator) {
-        try {
-            const battery = await navigator.getBattery();
-            const batteryLevelText = document.getElementById('battery-level');
-            const batteryFillRect = document.getElementById('battery-fill-rect');
-
-            const updateDisplay = () => {
-                if (!batteryLevelText || !batteryFillRect) return;
-                const level = Math.floor(battery.level * 100);
-                batteryLevelText.textContent = `${level}%`;
-                batteryFillRect.setAttribute('width', 18 * battery.level);
-                let fillColor = "currentColor";
-                if (battery.charging) fillColor = "#4CAF50"; 
-                else if (level <= 20) fillColor = "#f44336";
-                batteryFillRect.setAttribute('fill', fillColor);
-            };
-            updateDisplay();
-            battery.addEventListener('levelchange', updateDisplay);
-            battery.addEventListener('chargingchange', updateDisplay);
-        } catch (error) {
-            // 忽略错误
-        }
-    }
 }
 
 // 确保 setupInsWidgetAvatarModal 函数仍然存在
