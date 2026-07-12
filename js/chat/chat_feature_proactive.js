@@ -399,6 +399,11 @@ async function checkAndDeliverProactiveMessages() {
         for (const slotId of Object.keys(draft.content)) {
             const slotData = draft.content[slotId];
             if (!slotData.messages || slotData.messages.length === 0) continue;
+            // peek 话题 3 天过期(话题有时效性)：到期直接从池中清除，不再投递
+            if (isPeekSource) {
+                const slotExpire = slotData.expireAt || ((slotData.generatedAt || 0) + 72 * 60 * 60 * 1000);
+                if (slotExpire <= tNow) { delete draft.content[slotId]; continue; }
+            }
             // 已移交给 CF 推送的 peek 话题：本地不再重复投递（仅在推送节点启用时；未启用则无视）
             if (isPeekSource && slotData._cfHandedOff &&
                 window.PushNode && typeof window.PushNode.isReady === 'function' && window.PushNode.isReady()) {
@@ -485,7 +490,8 @@ async function checkAndDeliverProactiveMessages() {
         }
 
         if (isPeekSource) {
-            candidates.sort((a, b) => b.groupTargetTime - a.groupTargetTime);
+            // 候选均已 ≥ 上次聊天+1h(见上方门槛)，取送达时刻最小者 = 最贴“上次聊天+1h”的一组
+            candidates.sort((a, b) => a.groupTargetTime - b.groupTargetTime);
             candidates =[candidates[0]];
         } else {
             candidates.sort((a, b) => a.groupTargetTime - b.groupTargetTime);
@@ -1312,7 +1318,8 @@ const memoryLength = chat.maxMemory || 15;
                     let uniqueKey = `${k}_peek_${Date.now()}_${Math.floor(Math.random()*1000)}`;
                     existingPeek.content[uniqueKey] = {
                         ...proactiveOptions[k],
-                        generatedAt: Date.now() 
+                        generatedAt: Date.now(),
+                        expireAt: Date.now() + 72 * 60 * 60 * 1000 // 每组话题独立 3 天过期(话题有时效性)
                     };
                 }
                 

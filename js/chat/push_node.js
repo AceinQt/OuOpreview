@@ -344,20 +344,20 @@
         return await cancelAll();
     }
 
-    // 由钟点(HH:MM)推未来 N 天该时刻的绝对时间戳(升序)，限制在 until 之前
-    function futureDailyTimes(timeStr, now, until) {
+    // 由钟点(HH:MM)推未来 N 天该时刻的绝对时间戳(升序)，下限 from、上限 until
+    function futureDailyTimes(timeStr, from, until) {
         const out = [];
         if (!timeStr) return out;
         const parts = String(timeStr).split(':');
         const h = Number(parts[0]), m = Number(parts[1]);
         if (isNaN(h) || isNaN(m)) return out;
-        const d = new Date(now);
+        const d = new Date(from);
         d.setHours(h, m, 0, 0);
-        if (d.getTime() <= now) d.setDate(d.getDate() + 1); // 今天该点已过 → 从明天起
+        if (d.getTime() <= from) d.setDate(d.getDate() + 1); // 该点在 from 之前 → 从次日起
         for (let i = 0; i < 5; i++) {
             const ts = d.getTime() + i * 86400000;
             if (ts > until) break;
-            if (ts > now) out.push(ts);
+            if (ts > from) out.push(ts);
         }
         return out;
     }
@@ -375,18 +375,43 @@
         // 已有在飞的话题（持久标记）→ 一次只保持一组
         if (keys.some(k => peek.content[k] && peek.content[k]._cfHandedOff)) return;
 
+        const now = Date.now();
+
+        // 最近一条真实聊天(排除主动/视觉消息)——peek 送达至少晚于它 1 小时
+        let lastInteract = 0;
+        if (Array.isArray(chat.history)) {
+            for (let i = chat.history.length - 1; i >= 0; i--) {
+                const m = chat.history[i];
+                if (m && m.id && !m.id.includes('msg_proactive_') && !m.id.includes('msg_visual_')) {
+                    lastInteract = m.timestamp || 0; break;
+                }
+            }
+        }
+        const target = Math.max(now, lastInteract + 60 * 60 * 1000); // 送达下限:上次聊天+1h
+
+        // 候选:未移交、有消息、未过期(generatedAt+72h)的话题
         const entries = keys
             .map(k => ({ k, topic: peek.content[k] }))
-            .filter(e => e.topic && !e.topic._cfHandedOff && Array.isArray(e.topic.messages) && e.topic.messages.length);
+            .filter(e => e.topic && !e.topic._cfHandedOff && Array.isArray(e.topic.messages) && e.topic.messages.length)
+            .filter(e => {
+                const exp = e.topic.expireAt || ((e.topic.generatedAt || now) + 72 * 60 * 60 * 1000);
+                return exp > now;
+            });
         if (!entries.length) return;
-        entries.sort((a, b) => (b.topic.generatedAt || 0) - (a.topic.generatedAt || 0));
-        const pick = entries[0];
 
-        const now = Date.now();
-        const until = Math.min(peek.expireAt || (now + 3 * 86400000), now + 3 * 86400000);
-        const clock = pick.topic.messages[0] && pick.topic.messages[0].time;
-        const times = futureDailyTimes(clock, now, until);
-        if (!times.length) return;
+        // 每组按自己的钟点排未来定点(下限 target、上限 min(now+72h, 该组 generatedAt+72h))；
+        // 选“首个送达时刻”离 target 最近的一组，与本地选题标准一致。
+        for (const e of entries) {
+            const clk = e.topic.messages[0] && e.topic.messages[0].time;
+            const exp = e.topic.expireAt || ((e.topic.generatedAt || now) + 72 * 60 * 60 * 1000);
+            const until = Math.min(now + 72 * 60 * 60 * 1000, exp);
+            e.times = futureDailyTimes(clk, target, until);
+        }
+        const valid = entries.filter(e => e.times && e.times.length);
+        if (!valid.length) return;
+        valid.sort((a, b) => a.times[0] - b.times[0]);
+        const pick = valid[0];
+        const times = pick.times;
 
         const notifMsgs = pick.topic.messages.map(m => ({ role: 'assistant', content: draftMsgToContent(chat, type, m) }));
         const payload = window.NotifyCenter ? window.NotifyCenter.buildPushPayload(chat, type, notifMsgs) : null;
