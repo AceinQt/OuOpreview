@@ -572,9 +572,6 @@ function importApiPresets(type) {
 }
 
 // ============================================================
-// 拉取模型列表
-// ============================================================
-// ============================================================
 // 拉取模型列表 (已适配自定义 AppUI.prompt 手动输入机制)
 // ============================================================
 async function fetchModels(tabType) {
@@ -611,11 +608,9 @@ async function fetchModels(tabType) {
         }
         const json = await res.json();
         let models = [];
+        // [修复更新] 移除了正则截断逻辑，强制保留厂商前缀的完整模型名
         if (provider !== 'gemini' && json.data) {
-            const keepFullId = url.includes('nvidia');
-            models = json.data.map(e =>
-                keepFullId ? e.id : e.id.replace(/^[^/]+\//, '')
-            );
+            models = json.data.map(e => e.id);
         } else if (provider === 'gemini' && json.models) {
             models = json.models.map(e => e.name.replace('models/', ''));
         }
@@ -696,7 +691,7 @@ function _refreshChatTabUI() {
             const m = document.getElementById('api-chat-model');
             if (m) { m.innerHTML = `<option value="${s.model}">${s.model}</option>`; m.value = s.model; }
         }
-_setChecked('api-chat-stream', s.streamEnabled === true);
+        _setChecked('api-chat-stream', s.streamEnabled === true);
         _setChecked('api-chat-compat', !!s.compatibilityModeEnabled);
         _setVal('api-chat-temp', s.temperature !== undefined ? s.temperature : 0.8);
         _setPresetNameInput('chat', '未命名预设');
