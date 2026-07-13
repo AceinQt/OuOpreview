@@ -483,6 +483,21 @@ if ('serviceWorker' in navigator) {
                 // 但沿用这个引用最稳，避免时序问题）
                 window.__swRegistration = reg;
 
+                // 向 SW 询问版本号（唯一来源：sw.js 的 CACHE_NAME），拿到后打印到控制台
+                try {
+                    const sw = reg.active || navigator.serviceWorker.controller;
+                    if (sw) {
+                        const ch = new MessageChannel();
+                        ch.port1.onmessage = (e) => {
+                            if (e.data && e.data.type === 'VERSION') {
+                                window.__appVersion = e.data.version;
+                                console.log('%c🐱 QChat 版本: ' + e.data.version, 'color:#ff9800;font-weight:bold');
+                            }
+                        };
+                        sw.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+                    }
+                } catch (e) { console.log('获取版本号失败（忽略）:', e); }
+
                 // 尝试注册周期性后台同步 (Periodic Background Sync)
                 if ('periodicSync' in reg) {
                     try {
