@@ -411,19 +411,42 @@ function goBackToContacts() {
                     label: '删除聊天',
                     danger: true,
                     action: async () => {
-                        if (await AppUI.confirm(`确定要删除与“${itemName}”的聊天记录吗？此操作不可恢复。`, "系统提示", "确认", "取消")) {
-                            if (chatType === 'private') {
-                                await dexieDB.characters.delete(chatId);
-                                db.characters = db.characters.filter(c => c.id !== chatId);
-                            } else {
-                                await dexieDB.groups.delete(chatId);
-                                db.groups = db.groups.filter(g => g.id !== chatId);
-                            }
-
-                            
- await clearChatHistoryInDB(chatId);                           renderChatList();
-                            showToast('聊天已删除');
+                        // 两步验证确认机制（与 char_info 删除角色一致）
+                        const firstConfirm = await AppUI.prompt(
+                            `警告：此操作不可恢复！\n如果要删除与“${itemName}”的聊天记录，请在下方输入“确定删除”：`,
+                            "输入 确定删除",
+                            "删除确认 (1/2)",
+                            "下一步",
+                            "取消"
+                        );
+                        if (firstConfirm !== "确定删除") {
+                            if (firstConfirm !== null) showToast('输入错误，已取消删除');
+                            return;
                         }
+
+                        const secondConfirm = await AppUI.prompt(
+                            `最后警告：删除后将无法找回任何数据！\n请再次输入“确定删除”以彻底删除聊天：`,
+                            "输入 确定删除",
+                            "最终确认 (2/2)",
+                            "彻底删除",
+                            "取消"
+                        );
+                        if (secondConfirm !== "确定删除") {
+                            if (secondConfirm !== null) showToast('输入错误，已取消删除');
+                            return;
+                        }
+
+                        if (chatType === 'private') {
+                            await dexieDB.characters.delete(chatId);
+                            db.characters = db.characters.filter(c => c.id !== chatId);
+                        } else {
+                            await dexieDB.groups.delete(chatId);
+                            db.groups = db.groups.filter(g => g.id !== chatId);
+                        }
+
+                        await clearChatHistoryInDB(chatId);
+                        renderChatList();
+                        showToast('聊天已删除');
                     }
                 }];
                 createContextMenu(menuItems, x, y);

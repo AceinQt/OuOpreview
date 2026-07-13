@@ -563,7 +563,7 @@
                 body: JSON.stringify({
                     taskId: 'test_' + Date.now(),
                     subscription: sub,
-                    payload: { title: 'QChat 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
+                    payload: { title: 'OuO 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
                 })
             });
             let info;
@@ -583,7 +583,7 @@
                         body: JSON.stringify({
                             taskId: 'test_' + Date.now(),
                             subscription: fresh,
-                            payload: { title: 'QChat 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
+                            payload: { title: 'OuO 测试推送', body: '看到这条，说明推送节点打通了 🎉', tag: 'push-test', chatId: null }
                         })
                     });
                     let info2 = {}; try { info2 = await res2.json(); } catch {}
