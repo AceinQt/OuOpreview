@@ -217,6 +217,8 @@ async function applyHomeScreenMode(mode) {
     await saveGlobalKeys(['homeScreenMode']);
 }
 
+
+
 // 确保 setupInsWidgetAvatarModal 函数仍然存在
 function setupInsWidgetAvatarModal() {
     const modal = document.getElementById('ins-widget-avatar-modal');
