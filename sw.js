@@ -3,8 +3,8 @@
 //       从而能控制根页面（否则 navigator.serviceWorker.ready 会永久挂起），
 //       并让通知点击、图标等相对路径都从根目录解析。
 
-const CACHE_NAME = 'qchat-cache-Q1.9.0';
-// 每次部署新版本时，把上面的版本号往上加（Q1.9.1、Q1.9.2...）
+const CACHE_NAME = 'qchat-cache-Q1.8.5';
+// 每次部署新版本时，把上面的版本号修改
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
 self.addEventListener('install', (event) => {
