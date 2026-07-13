@@ -221,7 +221,7 @@ function pushProactiveMessage(chatId, type, content, expireHours = 24) {
     const _genAt = Date.now();
     // 【设计1】生成即冻结每条消息的绝对发送时刻 scheduledAt,配信时直接读取,不再按 time 重算
     paFreezeScheduledAt(content, _genAt);
-    chat.proactiveMessageQueue.push({
+chat.proactiveMessageQueue.push({
         id: `promsg_${_genAt}_${Math.random().toString(36).substr(2, 5)}`,
         type: type,
         content: content,
@@ -230,6 +230,11 @@ function pushProactiveMessage(chatId, type, content, expireHours = 24) {
     });
     
     console.log(`[赠品] ${chat.realName || chat.name} 更换了有概率的赠品内容，原赠品已销毁。`);
+
+    // 顺风车消息生成后，立即移交给 CF 推送节点
+    if (window.PushNode && typeof window.PushNode.handoffChat === 'function') {
+        window.PushNode.handoffChat(chat.id).catch(() => {});
+    }
 }
 
 // ==========================================
@@ -718,7 +723,7 @@ function evaluateKeepAliveNeeds() {
 
     // 基础 5 分钟保活（防止生成还没跑完就被杀）
     if (needsGeneration && keepAliveDuration < 5 * 60 * 1000) {
-        keepAliveDuration = 5 * 60 * 1000;
+        keepAliveDuration = 10 * 60 * 1000;
     }
 
     // 3. 全局通知保活叠加
