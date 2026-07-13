@@ -1,0 +1,21 @@
+# ── OuO 推送中转 Worker 配置 ─────────────────────────────
+name = "ouo-push-worker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# 每分钟触发一次，检查有没有到点该发的任务
+[triggers]
+crons = ["* * * * *"]
+
+# KV 命名空间：存放待发送的定时任务。
+# 部署前先运行： wrangler kv namespace create PUSH_TASKS
+# 把它打印出来的 id 填到下面的 id = "..." 里。
+[[kv_namespaces]]
+binding = "PUSH_TASKS"
+id = "在这里填入 wrangler 生成的 KV id"
+
+# ── 下面这些是“机密”，不写在这里，用命令单独设置（见 README）：
+#   VAPID_PUBLIC_KEY    VAPID 公钥
+#   VAPID_PRIVATE_KEY   VAPID 私钥
+#   VAPID_SUBJECT       联系方式，如 mailto:you@example.com
+#   CLIENT_TOKEN        （可选）客户端令牌，防止别人乱用你的中转

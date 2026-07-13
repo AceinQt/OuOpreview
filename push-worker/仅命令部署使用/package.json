@@ -1,0 +1,20 @@
+{
+  "name": "ouo-push-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OuO 进阶推送中转：接收前端算好的定时任务，到点用 Web Push 推给手机。",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=esm --target=es2022 --external:node:crypto --banner:js=\"// 自动生成，请勿手改；改逻辑请改 src/index.js 后重新 npm run build\" --outfile=worker.single.js",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "^1.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "wrangler": "^3.90.0"
+  }
+}
