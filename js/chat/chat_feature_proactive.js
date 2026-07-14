@@ -277,6 +277,31 @@ async function checkAndDeliverProactiveMessages() {
 
                 let baseTs = Math.min(topic._cfScheduledAt, tNow - topic.messages.length * 1000);
                 const putMsgs = [];
+
+                // 与本地投递路径(见下方 i===0 分支)一致：这批 peek 距上次真实互动超过 30 分钟，
+                // 先补一条 [time-divider]，否则 CF 静默写入的历史会缺时间戳。
+                let lastRealTs = 0;
+                for (let j = chat.history.length - 1; j >= 0; j--) {
+                    const hm = chat.history[j];
+                    if (hm && hm.id && !hm.id.includes('msg_proactive_') && !hm.id.includes('msg_visual_')) {
+                        lastRealTs = hm.timestamp || 0; break;
+                    }
+                }
+                if (lastRealTs && baseTs - lastRealTs > 30 * 60 * 1000) {
+                    const divider = {
+                        id: `msg_visual_timesense_cfpeek_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+                        role: 'system',
+                        content: '[time-divider]',
+                        parts: [{ type: 'text', text: '[time-divider]' }],
+                        timestamp: baseTs - 1
+                    };
+                    chat.history.push(divider);
+                    putMsgs.push(divider);
+                    if (typeof currentChatId !== 'undefined' && currentChatId === chat.id && typeof addMessageBubble === 'function') {
+                        addMessageBubble(divider, chat.id, type);
+                    }
+                }
+
                 for (let i = 0; i < topic.messages.length; i++) {
                     const msgInfo = topic.messages[i];
                     let actionStr = msgInfo.action || '的消息';
@@ -318,7 +343,8 @@ async function checkAndDeliverProactiveMessages() {
                 if (putMsgs.length) {
                     await saveMessagesToDB(putMsgs, chat.id, type);
                     if (typeof currentChatId === 'undefined' || currentChatId !== chat.id) {
-                        chat.unreadCount = (chat.unreadCount || 0) + putMsgs.length;
+                        // 未读只计真实消息，排除可能补插的 [time-divider] 视觉消息
+                        chat.unreadCount = (chat.unreadCount || 0) + topic.messages.length;
                     }
                 }
             }
@@ -405,9 +431,10 @@ async function checkAndDeliverProactiveMessages() {
             const slotData = draft.content[slotId];
             if (!slotData.messages || slotData.messages.length === 0) continue;
             // peek 话题 3 天过期(话题有时效性)：到期直接从池中清除，不再投递
+            // 例外：已移交 CF 但尚未物化的话题不清(否则标记随对象丢失→守卫失效→重复排期/推送与物化分叉)
             if (isPeekSource) {
                 const slotExpire = slotData.expireAt || ((slotData.generatedAt || 0) + 72 * 60 * 60 * 1000);
-                if (slotExpire <= tNow) { delete draft.content[slotId]; continue; }
+                if (slotExpire <= tNow && !(slotData._cfHandedOff && !slotData._cfMaterialized)) { delete draft.content[slotId]; continue; }
             }
             // 已移交给 CF 推送的 peek 话题：本地不再重复投递（仅在推送节点启用时；未启用则无视）
             if (isPeekSource && slotData._cfHandedOff &&
@@ -1330,14 +1357,17 @@ const memoryLength = chat.maxMemory || 15;
                 
                 let allKeys = Object.keys(existingPeek.content);
                 if (allKeys.length > 10) {
-                    allKeys.sort((a, b) => {
-                        let timeA = existingPeek.content[a].generatedAt || 0;
-                        let timeB = existingPeek.content[b].generatedAt || 0;
-                        return timeA - timeB;
-                    });
-                    let keysToKeep = allKeys.slice(-10);
+                    // 已移交 CF 但未物化的话题必须保留(标记随裁剪丢失会致守卫失效/推送与物化分叉)，
+                    // 其余按 generatedAt 由旧到新填满剩余名额。
+                    const c = existingPeek.content;
+                    const isPinned = k => c[k] && c[k]._cfHandedOff && !c[k]._cfMaterialized;
+                    const pinned = allKeys.filter(isPinned);
+                    const rest = allKeys.filter(k => !isPinned(k))
+                        .sort((a, b) => (c[a].generatedAt || 0) - (c[b].generatedAt || 0));
+                    const room = Math.max(0, 10 - pinned.length);
+                    const keysToKeep = pinned.concat(rest.slice(-room));
                     let newContent = {};
-                    keysToKeep.forEach(k => newContent[k] = existingPeek.content[k]);
+                    keysToKeep.forEach(k => newContent[k] = c[k]);
                     existingPeek.content = newContent;
                 }
                 console.log(`[Peek顺风车] 成功收集${Object.keys(proactiveOptions).length}组，当前备用池容量: ${Object.keys(existingPeek.content).length}/10`);

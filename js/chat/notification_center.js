@@ -122,9 +122,15 @@
         if (message && message.isWithdrawn) return '撤回了一条消息';
         let t = contentOf(message);
         if (!t) return '';
+        // 线下动作旁白(system-narration)是用户能看到的正文，应作为一条消息通知，取其内容预览
+        const narr = t.match(/\[system-narration:([\s\S]*)\]/);
+        if (narr) {
+            let nt = narr[1].trim();
+            if (nt.length > 80) nt = nt.slice(0, 80) + '…';
+            return nt;
+        }
         // 系统 / 视觉类不通知
-        if (t.includes('[time-divider]') || t.includes('system-narration')
-            || t.includes('system-display') || t.startsWith('[system')) return '';
+        if (t.includes('[time-divider]') || t.includes('system-display') || t.startsWith('[system')) return '';
         // 特殊消息类型 → 占位
         if (/(发来的?照片|照片\/视频|的照片)/.test(t)) return '[照片]';
         if (/(发来的?语音|的语音)/.test(t)) return '[语音]';

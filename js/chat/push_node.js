@@ -219,6 +219,25 @@
         return chat._cfTasks;
     }
 
+    // summary/idle 占位期间：撤掉「已移交但尚未物化」的在飞 peek，并把它们回炉(清标记)。
+    // 只动未物化的：已物化(_cfMaterialized)的话题保持原样，避免清标记后被重新挑中造成历史重复。
+    // 保证优先级 si > peek —— idle 在飞时不允许 peek 抢先送达。
+    async function cancelPendingPeek(chat) {
+        const q = chat && chat.proactiveMessageQueue;
+        if (!Array.isArray(q)) return;
+        const peek = q.find(m => m.type === 'time_window_peek');
+        if (!peek || !peek.content) return;
+        let any = false;
+        for (const k of Object.keys(peek.content)) {
+            const t = peek.content[k];
+            if (t && t._cfHandedOff && !t._cfMaterialized) {
+                delete t._cfHandedOff; delete t._cfScheduledAt; // 回炉：si 结束后可重新排期
+                any = true;
+            }
+        }
+        if (any) await cfCancelChat(chat, 'peek'); // 撤 CF 端在飞的 peek 任务
+    }
+
     // 清除 peek 池上的 _cfHandedOff 标记（Wave B 用；Wave A 下 peek 池一般没有标记，无副作用）
     function clearPeekHandoff(chat) {
         const q = chat && chat.proactiveMessageQueue;
@@ -460,8 +479,11 @@
             siActive = !!(draft.content && Object.keys(draft.content).length > 0);
         }
 
-        // peek：仅在没有 summary/idle 占位时移交
-        if (!siActive) {
+        // peek：仅在没有 summary/idle 占位时移交；有占位则撤掉在飞 peek(保证 si 优先)
+        if (siActive) {
+            await cancelPendingPeek(chat);
+            if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
+        } else {
             await schedulePeek(chat, type);
             if (typeof saveSingleChat === 'function') { try { await saveSingleChat(chat.id, type); } catch (_) {} }
         }
