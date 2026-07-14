@@ -178,17 +178,24 @@ window.refreshStorageScreen = async function() {
         window.setupBackupButtons();
     }
 
+    // 懒加载后统计需异步读 IndexedDB，就绪前用遮罩盖住正文，避免露出空图表/“Calculating...”
+    const screenEl = document.getElementById('storage-analysis-screen');
+    if (screenEl) screenEl.classList.add('is-loading');
+
     const chartContainer = document.getElementById('storage-chart-container');
     const detailsList = document.getElementById('storage-details-list');
     const totalSizeEl = document.getElementById('storage-total-size');
 
     const info = await dataStorage.getStorageInfo();
+    // 无论成功与否都要撤下遮罩，否则页面会永远卡在“加载中”
+    if (screenEl) screenEl.classList.remove('is-loading');
     if (!info) return;
 
     if (totalSizeEl) {
         totalSizeEl.textContent = formatBytes(info.totalSize);
     }
 
+    // 注意：必须先撤遮罩露出 .content，再 init echarts，否则图表在 display:none 容器里量到 0 尺寸
     renderStorageChart(chartContainer, info);
     renderStorageDetails(detailsList, info);
         if (typeof GitHubService !== 'undefined') {
