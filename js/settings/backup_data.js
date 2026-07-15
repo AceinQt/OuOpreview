@@ -181,24 +181,43 @@ async function handleImport(event) {
         // ★ 改用持续的 showLoadingToast，覆盖整个导入过程（解析+入库+保存），避免短暂提示后无反馈
         const hideLoading = (typeof showLoadingToast === 'function') ? showLoadingToast('正在解析文件...') : null;
         try {
-            const decompressionStream = new DecompressionStream('gzip');
-            const decompressedStream = file.stream().pipeThrough(decompressionStream);
-            const jsonString = await new Response(decompressedStream).text();
-
-            // ★ 工单 C：优先走惰性切分导入（避免一次性 JSON.parse 73MB 造出 200MB+ 对象树导致 OOM）
-            // 失败则 fallback 到原 JSON.parse + importBackupData 路径
+            // ★ V5：先只解压文件头部探测格式（几百字节，不占内存，也不动数据库）
+            const head = await sniffBackupHead(file);
             let importResult;
-            let usedLazy = false;
-            try {
-                importResult = await lazyImportBackupData(jsonString);
-                usedLazy = true;
-            } catch (lazyErr) {
-                console.warn('⚠️ 惰性切分导入失败，回退到原路径:', lazyErr.message);
-                // 清掉惰性路径可能已写入的半成品数据（清表重置，交给 importBackupData 重新走全量清表+导入）
-                let data = JSON.parse(jsonString);
-                importResult = await importBackupData(data);
+
+            if (head.trimStart().startsWith('{"_type":"meta"')) {
+                // ── 路径 1：V5 JSONL 流式导入（边解压边逐行入库，内存峰值几百 KB）──
+                importResult = await importJsonlStream(file, (n) => {
+                    // 进度提示（showLoadingToast 无法更新文字时静默）
+                });
+                console.log('[Import] 使用路径: v5-jsonl');
+            } else {
+                // ── 路径 2：V4 旧版单体 JSON ──
+                // 仍需把整个字符串解压进内存（这是 V4 格式的固有限制），
+                // 但走惰性切分避免整棵对象树。大文件在手机上仍可能崩 —— 给出明确提示。
+                const decompressedStream = file.stream().pipeThrough(new DecompressionStream('gzip'));
+                const jsonString = await new Response(decompressedStream).text();
+
+                try {
+                    importResult = await lazyImportBackupData(jsonString);
+                    console.log('[Import] 使用路径: v4-lazy');
+                } catch (lazyErr) {
+                    console.warn('⚠️ 惰性切分导入失败:', lazyErr.message);
+                    // ── 路径 3：整体 JSON.parse 回退 ──
+                    // ★ 只允许小文件走此路径。大文件 JSON.parse 会造出数倍于字符串的对象树，
+                    //   手机端必 OOM 崩溃 —— 与其崩溃丢数据，不如明确告知解决办法。
+                    const FALLBACK_LIMIT = 30 * 1024 * 1024; // 30MB（解压后）
+                    if (jsonString.length > FALLBACK_LIMIT) {
+                        throw new Error(
+                            `惰性解析失败(${lazyErr.message})，且文件过大(解压后${(jsonString.length / 1024 / 1024).toFixed(0)}MB)，` +
+                            `无法在手机端整体解析。请在电脑浏览器上导入此备份，再重新导出为新版(V5)格式后到手机导入。`
+                        );
+                    }
+                    let data = JSON.parse(jsonString);
+                    importResult = await importBackupData(data);
+                    console.log('[Import] 使用路径: v4-fallback');
+                }
             }
-            console.log('[Import] 使用路径:', usedLazy ? 'lazy' : 'fallback');
 
             // 导入完成，关闭持续提示
             if (hideLoading) hideLoading();
@@ -214,7 +233,7 @@ async function handleImport(event) {
             if (hideLoading) hideLoading(); // 异常时也要关闭
             await AppUI.alert(`文件解析错误: ${error.message}`);
         } finally {
-            event.target.value = null; 
+            event.target.value = null;
         }
     } else {
         event.target.value = null;
@@ -332,16 +351,19 @@ async function downloadDataStream(jsonChunkGenerator, filenameSuffix) {
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 }
 
-// ★ 新增：全量备份 JSON 流生成器（替换 createFullBackupData）
-// 核心：characters/groups 逐个序列化，任意时刻内存只持有一个角色的数据
+// ★ V5：全量备份改为 JSONL 流格式（每行一个独立的小 JSON 对象）
+// 关键设计：聊天记录不再挂在角色对象上整体序列化（旧版一个重度角色的 history
+// 单行就能到 20~40MB，导入时 JSON.parse 这一行照样 OOM），而是每 500 条消息一行，
+// 单行体积始终控制在几百 KB —— 导入端逐行 parse 入库，内存峰值极低。
+// 第一行固定是 meta（_type 必须是第一个 key，导入端靠文件头探测格式）。
 async function* createFullBackupStream() {
-    // ── 1. 所有小数据（设置、世界书、论坛等）一次性序列化 ──
-    const smallData = {
-        _exportVersion: '4.0',
+    // ── 1. meta 行：所有小数据（设置、世界书等）──
+    const meta = {
+        _type: 'meta',                       // ★ 必须是第一个 key（格式探测依据）
+        _exportVersion: '5.0',
         _exportTimestamp: Date.now(),
         worldBooks:             db.worldBooks             || [],
         rpgProfiles:            db.rpgProfiles            || [],
-        forumPosts:             db.forumPosts             || [],
         forumBindings:          db.forumBindings          || {},
         forumUserIdentity:      db.forumUserIdentity      || {},
         watchingPostIds:        db.watchingPostIds         || [],
@@ -375,78 +397,311 @@ async function* createFullBackupStream() {
         studyBooks:             db.studyBooks              || [],
         studyQuestions:         db.studyQuestions          || [],
         studyRecords:           db.studyRecords            || [],
-        peekData:               db.peekData                || {},
     };
-    // 去掉末尾的 }，后面继续拼 characters/groups
-    yield JSON.stringify(smallData).slice(0, -1);
+    yield JSON.stringify(meta) + '\n';
 
-    // ── 2. characters：逐个序列化，每次只有一个角色在内存里 ──
-    // ★ Step 5a：懒加载下，序列化前从 DB 读全量 history 临时挂上，序列化后立刻卸掉。
-    //   峰值内存 = 当前一个 char 的全量 history + 该 char 的 JSON 字符串（几十 MB 内），
-    //   比"一次性挂全"低得多，适合手机。
-    const chars = db.characters || [];
-    yield ',"characters":[';
-    for (let i = 0; i < chars.length; i++) {
-        const c = chars[i];
-        const origHist = c.history;
-        if (window.LAZY_LOAD) {
-            c.history = await window.dexieDB.messages
-                .where('[chatId+timestamp]')
-                .between([c.id, Number.NEGATIVE_INFINITY], [c.id, Number.POSITIVE_INFINITY], true, true)
-                .toArray();
+    // ── 2. 角色/群组元数据行：剥离 history/memoryChunks（它们独立成行）──
+    const chatLists = [
+        { list: db.characters || [], type: 'character', chatType: 'private' },
+        { list: db.groups     || [], type: 'group',     chatType: 'group'   },
+    ];
+    for (const { list, type } of chatLists) {
+        for (const c of list) {
+            const lite = { ...c };
+            delete lite.history;      // 消息独立成行（见下方第 3 步）
+            delete lite.memoryChunks; // 向量块独立成行（见下方第 4 步）
+            yield JSON.stringify({ _type: type, data: lite }) + '\n';
         }
-        try {
-            yield JSON.stringify(c);
-        } finally {
-            if (window.LAZY_LOAD) c.history = origHist; // 立即卸载全量，释放这几十 MB
-        }
-        if (i < chars.length - 1) yield ',';
-        // 每处理5个角色让出控制权，给 GC 和 UI 喘息
-        if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
     }
-    yield ']';
 
-    // ── 3. groups：同上 ──
-    const groups = db.groups || [];
-    yield ',"groups":[';
-    for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        const origHist = g.history;
-        if (window.LAZY_LOAD) {
-            g.history = await window.dexieDB.messages
-                .where('[chatId+timestamp]')
-                .between([g.id, Number.NEGATIVE_INFINITY], [g.id, Number.POSITIVE_INFINITY], true, true)
-                .toArray();
+    // ── 3. 消息：逐会话从 messages 表读取（基线 v7 起消息一律存独立表，
+    //    懒加载与否都以表为准），每 500 条一行。峰值内存 = 单个会话的消息数组 ──
+    const MSG_LINE_SIZE = 500;
+    for (const { list, chatType } of chatLists) {
+        for (const c of list) {
+            let msgs = await dexieDB.messages.where('chatId').equals(c.id).toArray();
+            msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            for (let i = 0; i < msgs.length; i += MSG_LINE_SIZE) {
+                yield JSON.stringify({ _type: 'messages', chatId: c.id, chatType, items: msgs.slice(i, i + MSG_LINE_SIZE) }) + '\n';
+            }
+            msgs = null; // 释放当前会话的消息数组
+            await new Promise(r => setTimeout(r, 0)); // 让出主线程给 GC/UI
         }
-        try {
-            yield JSON.stringify(g);
-        } finally {
-            if (window.LAZY_LOAD) g.history = origHist;
-        }
-        if (i < groups.length - 1) yield ',';
-        if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
     }
-    yield ']';
 
-    // ── 4. studyBookContents / studyCoreadMessages / studyBookSummaries（从 Dexie 读，可能较大）──
+    // ── 4. 向量块：逐会话从 memoryChunks 表读取，每 100 条一行（含向量，单条较大）──
+    const CHUNK_LINE_SIZE = 100;
+    for (const { list } of chatLists) {
+        for (const c of list) {
+            let chunks = await dexieDB.memoryChunks.where('chatId').equals(c.id).toArray();
+            for (let i = 0; i < chunks.length; i += CHUNK_LINE_SIZE) {
+                yield JSON.stringify({ _type: 'memoryChunks', chatId: c.id, items: chunks.slice(i, i + CHUNK_LINE_SIZE) }) + '\n';
+            }
+            chunks = null;
+        }
+    }
+
+    // ── 5. peekData：每个角色一行 ──
+    for (const [charId, data] of Object.entries(db.peekData || {})) {
+        yield JSON.stringify({ _type: 'peek', charId, data }) + '\n';
+    }
+
+    // ── 6. 论坛帖子：每 50 条一行（帖子含楼层可能较大）──
+    const posts = db.forumPosts || [];
+    for (let i = 0; i < posts.length; i += 50) {
+        yield JSON.stringify({ _type: 'forumPosts', items: posts.slice(i, i + 50) }) + '\n';
+    }
+
+    // ── 7. 学习模块大表 ──
     try {
-        const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
-            dexieDB.studyBookContents.toArray(),
-            dexieDB.studyCoreadMessages.toArray(),
-            dexieDB.studyBookSummaries.toArray(),
-        ]);
-        yield ',"studyBookContents":' + JSON.stringify(studyBookContents);
-        yield ',"studyCoreadMessages":' + JSON.stringify(studyCoreadMessages);
-        yield ',"studyBookSummaries":' + JSON.stringify(studyBookSummaries);
+        // 书籍正文：单本正文可达数 MB，先取主键再逐本读取，避免全量正文同时驻留内存
+        const bookKeys = await dexieDB.studyBookContents.toCollection().primaryKeys();
+        for (const key of bookKeys) {
+            const item = await dexieDB.studyBookContents.get(key);
+            if (item) yield JSON.stringify({ _type: 'studyBookContents', items: [item] }) + '\n';
+        }
+        const coread = await dexieDB.studyCoreadMessages.toArray();
+        for (let i = 0; i < coread.length; i += 500) {
+            yield JSON.stringify({ _type: 'studyCoreadMessages', items: coread.slice(i, i + 500) }) + '\n';
+        }
+        const bookSums = await dexieDB.studyBookSummaries.toArray();
+        for (let i = 0; i < bookSums.length; i += 500) {
+            yield JSON.stringify({ _type: 'studyBookSummaries', items: bookSums.slice(i, i + 500) }) + '\n';
+        }
     } catch (e) {
         console.error('❌ [Backup] 读取书籍正文/共读消息/书本总结失败:', e);
-        yield ',"studyBookContents":[],"studyCoreadMessages":[],"studyBookSummaries":[]';
     }
-
-    yield '}'; // JSON 对象结束
 }
 
 // --- 7. 数据合并/恢复核心逻辑 ---
+
+// =========================================================
+// --- 6.9 V5 JSONL 流式导入 ---
+// 边解压边按行解析边入库，内存峰值 = 一个 chunk + 一行 JSON（几百 KB），
+// 手机端可导入任意大小的 V5 备份。
+// =========================================================
+
+/**
+ * 只解压文件头部若干字节用于格式探测（不会把整个文件读进内存）。
+ * V5 JSONL 的第一行固定以 {"_type":"meta" 开头。
+ */
+async function sniffBackupHead(file) {
+    const stream = file.stream().pipeThrough(new DecompressionStream('gzip'));
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let head = '';
+    try {
+        while (head.length < 256) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            head += decoder.decode(value, { stream: true });
+        }
+    } finally {
+        try { await reader.cancel(); } catch (e) { /* 已取消/已结束均可忽略 */ }
+    }
+    return head;
+}
+
+/**
+ * V5 JSONL 流式导入主函数。
+ * 安全顺序：先解析第一行 meta 并校验版本，校验通过才清空数据库 ——
+ * 避免"清完库才发现文件格式不对"导致现有数据丢失。
+ */
+async function importJsonlStream(file, onProgress) {
+    const startTime = Date.now();
+    const stream = file.stream()
+        .pipeThrough(new DecompressionStream('gzip'))
+        .pipeThrough(new TextDecoderStream());
+    const reader = stream.getReader();
+
+    let buffer = '';
+    let metaProcessed = false;
+    let lineCount = 0;
+
+    // ── 入库批次缓冲 ──
+    const BATCH_SIZE = 500;
+    let msgBatch = [];
+    let msgSeq = 0;
+    const flushMsgBatch = async () => {
+        if (!msgBatch.length) return;
+        for (let i = 0; i < msgBatch.length; i += BATCH_SIZE) {
+            await dexieDB.messages.bulkPut(msgBatch.slice(i, i + BATCH_SIZE));
+        }
+        msgBatch = [];
+    };
+    let memBatch = [];
+    const flushMemBatch = async () => {
+        if (!memBatch.length) return;
+        await dexieDB.memories.bulkPut(memBatch);
+        memBatch = [];
+    };
+    let hasMessages = false;
+
+    // ── meta 行处理：校验 → 清库 → 小数据进内存 db ──
+    const processMeta = async (meta) => {
+        if (meta._type !== 'meta' || !meta._exportVersion) {
+            throw new Error('备份文件第一行不是有效的 meta 记录');
+        }
+        // 校验通过，现在才清空所有表（与 lazyImportBackupData 的清表清单一致）
+        await Promise.all([
+            dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
+            dexieDB.myStickers.clear(), dexieDB.userPersonas.clear(), dexieDB.globalSettings.clear(),
+            dexieDB.forumPosts.clear(), dexieDB.peekData.clear(), dexieDB.rpgProfiles.clear(),
+            dexieDB.forumMetadata.clear(),
+            dexieDB.messages.clear(),
+            dexieDB.memories.clear(),
+            dexieDB.memoryChunks.clear(),
+            dexieDB.studyBooks.clear(),
+            dexieDB.studyBookContents.clear(),
+            dexieDB.studyCoreadMessages.clear(),
+            dexieDB.studyPageCache.clear(),
+            dexieDB.studyQuestions.clear(),
+            dexieDB.studyRecords.clear(),
+            dexieDB.studyBanks.clear(),
+            dexieDB.studyExams.clear(),
+            dexieDB.studyExamRecords.clear(),
+            dexieDB.studyBookSummaries.clear(),
+        ]);
+        // 小数据整体进内存 db
+        Object.keys(meta).forEach(key => {
+            if (!key.startsWith('_')) db[key] = meta[key];
+        });
+        // characters/groups/peekData 由后续行逐条填充
+        db.characters = [];
+        db.groups = [];
+        db.peekData = {};
+        db.forumPosts = [];
+        metaProcessed = true;
+    };
+
+    // ── 逐行分发 ──
+    const processLine = async (line) => {
+        const item = JSON.parse(line);
+        lineCount++;
+
+        if (!metaProcessed) {
+            // 第一行必须是 meta，否则立即中止（此时还没清库，现有数据无损）
+            await processMeta(item);
+            return;
+        }
+
+        switch (item._type) {
+            case 'character':
+            case 'group': {
+                const obj = item.data;
+                // 记忆字段抽取到 memories 独立表（与 lazyImportBackupData 一致）
+                const pushMem = (arr, memType) => (arr || []).forEach(m => {
+                    if (!m.id) m.id = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    memBatch.push({ ...m, chatId: obj.id, memType });
+                });
+                pushMem(obj.memorySummaries, 'short');
+                pushMem(obj.memoryJournals, 'journal');
+                pushMem(obj.longTermSummaries, 'long');
+                if (memBatch.length >= BATCH_SIZE) await flushMemBatch();
+                if (item._type === 'character') db.characters.push(obj);
+                else db.groups.push(obj);
+                break;
+            }
+            case 'messages': {
+                hasMessages = true;
+                for (const m of (item.items || [])) {
+                    if (!m.id) m.id = `msg_${Date.now()}_${msgSeq++}`;
+                    m.chatId = item.chatId;
+                    m.chatType = item.chatType;
+                    msgBatch.push(m);
+                }
+                if (msgBatch.length >= BATCH_SIZE) {
+                    await flushMsgBatch();
+                    await new Promise(r => setTimeout(r, 0)); // 让出主线程
+                }
+                break;
+            }
+            case 'memoryChunks': {
+                const chunks = (item.items || []).map(chunk => {
+                    if (!chunk.id) chunk.id = `chunk_${item.chatId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                    return { ...chunk, chatId: item.chatId };
+                });
+                if (chunks.length) await dexieDB.memoryChunks.bulkPut(chunks);
+                break;
+            }
+            case 'peek': {
+                if (item.charId) db.peekData[item.charId] = item.data;
+                break;
+            }
+            case 'forumPosts': {
+                const posts = item.items || [];
+                db.forumPosts.push(...posts);
+                if (posts.length) await dexieDB.forumPosts.bulkPut(posts);
+                break;
+            }
+            case 'studyBookContents':
+            case 'studyCoreadMessages':
+            case 'studyBookSummaries': {
+                const items = item.items || [];
+                if (items.length) await dexieDB[item._type].bulkPut(items);
+                break;
+            }
+            default:
+                console.warn('[ImportV5] 未知行类型，已跳过:', item._type);
+        }
+    };
+
+    // ── 主循环：读流 → 拆行 → 逐行处理 ──
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 最后一段可能不完整，留到下一轮
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            await processLine(line);
+            if (onProgress && lineCount % 50 === 0) onProgress(lineCount);
+        }
+    }
+    if (buffer.trim()) await processLine(buffer); // 收尾：最后一行没有换行符
+
+    if (!metaProcessed) throw new Error('文件为空或缺少 meta 记录');
+
+    // ── 收尾 flush + 标记 ──
+    await flushMsgBatch();
+    await flushMemBatch();
+    if (hasMessages) window.isMessageMigrated = true;
+    window.isChunkMigrated = true; // V5 备份中 chunk 已独立成行，char 对象上没有 memoryChunks
+
+    // 论坛帖按时间倒序（与 loadData 一致）
+    db.forumPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // studyBanks/studyExams/studyExamRecords 在 meta 里进了内存 db，需显式写表
+    // （否则 loadData 会用 Dexie 空表覆盖内存，导致恢复后丢失）
+    const batchBulkPut = async (table, items) => {
+        for (let i = 0; i < items.length; i += BATCH_SIZE) {
+            await table.bulkPut(items.slice(i, i + BATCH_SIZE));
+        }
+    };
+    if (Array.isArray(db.studyBanks) && db.studyBanks.length)             await batchBulkPut(dexieDB.studyBanks,       db.studyBanks);
+    if (Array.isArray(db.studyExams) && db.studyExams.length)             await batchBulkPut(dexieDB.studyExams,       db.studyExams);
+    if (Array.isArray(db.studyExamRecords) && db.studyExamRecords.length) await batchBulkPut(dexieDB.studyExamRecords, db.studyExamRecords);
+
+    // 兜底补全（与 lazyImportBackupData 一致）
+    if (!db.pomodoroTasks) db.pomodoroTasks = [];
+    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+    if (typeof defaultWidgetSettings !== 'undefined') {
+        if (!db.homeWidgetSettings) {
+            db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
+        } else if (!db.homeWidgetSettings.centralCircleImage) {
+            db.homeWidgetSettings.centralCircleImage = defaultWidgetSettings.centralCircleImage;
+        }
+    }
+
+    // 保存 + 应用设置
+    if (typeof saveData === 'function') await saveData(db);
+    if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
+    if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
+
+    const duration = Date.now() - startTime;
+    return { success: true, message: `全量数据已恢复 (${lineCount} 行, 耗时${duration}ms, V5流式)` };
+}
 
 // =========================================================
 // --- 6.8 惰性切分解析器（工单 C）---
