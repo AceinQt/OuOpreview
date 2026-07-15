@@ -27,6 +27,45 @@ async function compressDataToEeBase64(dataObj) {
 }
 
 /**
+ * ★ V5：把 JSONL 生成器流式压缩为 Gzip Base64（用于云端上传）。
+ * 与 compressDataToEeBase64 的区别：不需要先把整个数据 JSON.stringify 成巨串，
+ * 任意时刻内存只持有生成器 yield 的当前一行 + 压缩器缓冲。
+ * 注：最终的 base64 字符串本身仍需驻留内存（GitHub Contents API 的要求），
+ * 26MB 备份 → ~35MB base64，这在可接受范围；巨串风险在"解压后的 JSON"，不在这里。
+ */
+async function compressStreamToEeBase64(jsonChunkGenerator) {
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+
+    const writePromise = (async () => {
+        try {
+            for await (const chunk of jsonChunkGenerator) {
+                await writer.write(encoder.encode(chunk));
+            }
+        } catch (e) {
+            await writer.abort(e);
+            throw e;
+        } finally {
+            await writer.close().catch(() => {});
+        }
+    })();
+
+    const gzipStream = readable.pipeThrough(new CompressionStream('gzip'));
+    const [compressedBlob] = await Promise.all([
+        new Response(gzipStream).blob(),
+        writePromise,
+    ]);
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(compressedBlob);
+    });
+}
+
+/**
  * 从 GitHub 下载并解压 .ee 文件 (用于恢复)
  */
 async function fetchAndDecompressGitHubFile(config, fileName) {
@@ -187,9 +226,7 @@ async function handleImport(event) {
 
             if (head.trimStart().startsWith('{"_type":"meta"')) {
                 // ── 路径 1：V5 JSONL 流式导入（边解压边逐行入库，内存峰值几百 KB）──
-                importResult = await importJsonlStream(file, (n) => {
-                    // 进度提示（showLoadingToast 无法更新文字时静默）
-                });
+                importResult = await importJsonlStream(file.stream());
                 console.log('[Import] 使用路径: v5-jsonl');
             } else {
                 // ── 路径 2：V4 旧版单体 JSON ──
@@ -240,57 +277,9 @@ async function handleImport(event) {
     }
 }
 
-// --- 5. 核心数据构造函数 (全量备份) ---
-async function createFullBackupData() {
-    // ★ Step 5a：懒加载下 db.characters[i].history 只有 1500 条，会漏老消息。
-    //   临时从 DB 全量读 messages 挂回 characters/groups 的 history，
-    //   完成后（backupData 已生成，与内存 db 无引用关联）即可释放。
-    const histMap = window.LAZY_LOAD ? await window.buildFullHistoryMap() : null;
-    const originalHists = { chars: new Map(), groups: new Map() };
-    if (histMap) {
-        (db.characters || []).forEach(c => {
-            originalHists.chars.set(c.id, c.history);
-            c.history = histMap[c.id] || [];
-        });
-        (db.groups || []).forEach(g => {
-            originalHists.groups.set(g.id, g.history);
-            g.history = histMap[g.id] || [];
-        });
-    }
-
-    let backupData;
-    try {
-        backupData = JSON.parse(JSON.stringify(db));
-        backupData._exportVersion = '4.0';
-        backupData._exportTimestamp = Date.now();
-    } finally {
-        // ★ 无论成功与否，都把内存中的 history 恢复回懒加载窗口（1500 条），避免把全量留在内存
-        if (histMap) {
-            (db.characters || []).forEach(c => { c.history = originalHists.chars.get(c.id) || c.history; });
-            (db.groups     || []).forEach(g => { g.history = originalHists.groups.get(g.id) || g.history; });
-        }
-    }
-
-    // ★ V8：书籍正文和共读消息不在 db 内存中，需单独从 Dexie 读取
-    // ★ V12：studyBookSummaries 同样独立存表，需一并读取
-    try {
-        const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
-            dexieDB.studyBookContents.toArray(),
-            dexieDB.studyCoreadMessages.toArray(),
-            dexieDB.studyBookSummaries.toArray(),
-        ]);
-        backupData.studyBookContents   = studyBookContents   || [];
-        backupData.studyCoreadMessages = studyCoreadMessages || [];
-        backupData.studyBookSummaries  = studyBookSummaries  || [];
-    } catch (e) {
-        console.error('❌ [Backup] 读取书籍正文/共读消息/书本总结失败:', e);
-        backupData.studyBookContents   = [];
-        backupData.studyCoreadMessages = [];
-        backupData.studyBookSummaries  = [];
-    }
-
-    return backupData;
-}
+// --- 5. （已移除）createFullBackupData ---
+// ★ V5：全量备份统一走 createFullBackupStream（JSONL 流式），
+//   旧的"整棵 db 深拷贝 + 全量 history 挂载"路径是 OOM 源头，已删除。
 
 // --- 6. 下载辅助函数（保留给小数据用） ---
 async function downloadData(dataObj, filenameSuffix) {
@@ -504,12 +493,13 @@ async function sniffBackupHead(file) {
 
 /**
  * V5 JSONL 流式导入主函数。
+ * @param byteStream gzip 压缩的字节流（本地文件传 file.stream()，云端下载传 response.body）
  * 安全顺序：先解析第一行 meta 并校验版本，校验通过才清空数据库 ——
  * 避免"清完库才发现文件格式不对"导致现有数据丢失。
  */
-async function importJsonlStream(file, onProgress) {
+async function importJsonlStream(byteStream, onProgress) {
     const startTime = Date.now();
-    const stream = file.stream()
+    const stream = byteStream
         .pipeThrough(new DecompressionStream('gzip'))
         .pipeThrough(new TextDecoderStream());
     const reader = stream.getReader();
@@ -1415,8 +1405,9 @@ if (typeof dexieDB !== 'undefined') {
 // =========================================================
 
 const GH_CONFIG_KEY = 'qchat_github_config';
-const FILE_NAME_SYSTEM = 'qchat_backup_system.ee';
-const FILE_NAME_CHATS = 'qchat_backup_chats.ee';
+const FILE_NAME_V5 = 'qchat_backup_v5.ee';   // ★ V5：单文件 JSONL 全量备份
+const FILE_NAME_SYSTEM = 'qchat_backup_system.ee'; // 旧版分片（仅恢复回退用）
+const FILE_NAME_CHATS = 'qchat_backup_chats.ee';   // 旧版分片（仅恢复回退用）
 const FILE_NAME_LEGACY = 'qchat_auto_backup.json'; // ★ 新增:旧版备份文件名
 
 const GitHubService = {
@@ -1611,148 +1602,57 @@ const GitHubService = {
 // =========================================================
 
 /**
- * ★★★ 修复版:执行优化后的云端备份 ★★★
- * 确保数据完整性和原子性
+ * ★ V5：执行云端备份（单文件 JSONL 流式）
+ * 复用本地备份的 createFullBackupStream 生成器：消息/向量块等分批成行，
+ * 不再走 buildFullHistoryMap 把全量消息挂回内存（旧版这一步在手机上就可能 OOM）。
  */
 async function performOptimizedCloudBackup() {
     if (!window.db) throw new Error("数据库未加载");
-    const timestamp = Date.now();
-    
-    // 1. 系统数据 (包含设置、个性化、论坛、RPG等)
-    const systemData = {
-        _exportVersion: '4.0',
-        _exportTimestamp: timestamp,
-        _partialType: 'system_core',
-        
-        // 世界书
-        worldBooks: db.worldBooks || [],
-        
-        // RPG
-        rpgProfiles: db.rpgProfiles || [],
-        
-        // 论坛
-        forumPosts: db.forumPosts || [],
-        forumBindings: db.forumBindings || {},
-        forumUserIdentity: db.forumUserIdentity || {},
-        watchingPostIds: db.watchingPostIds || [],
-        favoritePostIds: db.favoritePostIds || [],
 
-        // 个性化
-        myStickers: db.myStickers || [],
-        userPersonas: db.userPersonas || [],
-        wallpaper: db.wallpaper,
-        customIcons: db.customIcons,
-        bubbleCssPresets: db.bubbleCssPresets,
-        globalCss: db.globalCss,
-        globalCssPresets: db.globalCssPresets,
-        homeSignature: db.homeSignature,
-        insWidgetSettings: db.insWidgetSettings,
-        homeWidgetSettings: db.homeWidgetSettings,
+    showToast("正在流式打包全量数据...");
+    const base64 = await compressStreamToEeBase64(createFullBackupStream());
 
-        // 系统设置
-        apiSettings: db.apiSettings,
-        apiPresets: db.apiPresets,
-        pomodoroSettings: db.pomodoroSettings,
-        pomodoroTasks: db.pomodoroTasks || [],
-        homeScreenMode: db.homeScreenMode,
-        fontUrl: db.fontUrl,
-        homeStatusBarColor: db.homeStatusBarColor,
-        homeNavigationBarColor: db.homeNavigationBarColor,
-    enableTopSafeArea: db.enableTopSafeArea,
-    enableBottomSafeArea: db.enableBottomSafeArea,
-    enableScreenAdaptation: db.enableScreenAdaptation,
-    enableSwipeBack: db.enableSwipeBack,
+    showToast(`正在上传备份 (${(base64.length / 1024 / 1024).toFixed(1)}MB)...`);
+    await GitHubService.uploadBlob(base64, FILE_NAME_V5);
+    console.log('[Backup] V5 云端备份上传成功');
 
-        // ★ 学习模块设置（量小，放 systemData）
-        studySettings: db.studySettings,
-        // ★ V9~V11：题库/考卷/考试记录量小，随 systemData 一起备份
-        studyBanks:       db.studyBanks       || [],
-        studyExams:       db.studyExams       || [],
-        studyExamRecords: db.studyExamRecords || [],
-    };
-
-// ★ V8：书籍正文和共读消息已独立存表，需从 DB 读取
-// ★ V12：studyBookSummaries 同样独立存表，一并读取
-const [studyBookContents, studyCoreadMessages, studyBookSummaries] = await Promise.all([
-    dexieDB.studyBookContents.toArray(),
-    dexieDB.studyCoreadMessages.toArray(),
-    dexieDB.studyBookSummaries.toArray(),
-]);
-
-// ★ Step 5a：懒加载下 characters[i].history 只有 1500 条。临时挂全量 history 用于备份。
-// 备份完成会在 finally 里卸载（在下方 try 结构里）。
-const _histMap5a = window.LAZY_LOAD ? await window.buildFullHistoryMap() : null;
-const _origHists5a = { chars: new Map(), groups: new Map() };
-if (_histMap5a) {
-    (db.characters || []).forEach(c => { _origHists5a.chars.set(c.id, c.history); c.history = _histMap5a[c.id] || []; });
-    (db.groups     || []).forEach(g => { _origHists5a.groups.set(g.id, g.history); g.history = _histMap5a[g.id] || []; });
-}
-
-const chatData = {
-    _exportVersion: '4.0',
-    _exportTimestamp: timestamp,
-    _partialType: 'chats_only',
-
-    characters: db.characters || [],
-    groups: db.groups || [],
-    peekData: db.peekData || {},
-
-    // ★ 学习模块大表（数据量可能很大，随聊天数据一起备份）
-    studyBooks:          db.studyBooks          || [],
-    studyQuestions:      db.studyQuestions      || [],
-    studyRecords:        db.studyRecords        || [],
-    studyBookContents:   studyBookContents      || [], // ★ V8：书籍正文（量大，按需读取）
-    studyCoreadMessages: studyCoreadMessages    || [], // ★ V8：共读消息
-    studyBookSummaries:  studyBookSummaries     || [], // ★ V12：书本章节总结
-};
-
-    // ★★★ 修复:增加备份验证 ★★★
-    console.log('[Backup] 系统数据字段数:', Object.keys(systemData).length);
-    console.log('[Backup] 聊天数据 - 角色数:', chatData.characters.length, '群组数:', chatData.groups.length);
-
-    try {
-        // 3. 压缩并上传系统数据
-        showToast("正在处理系统数据...");
-        const systemBase64 = await compressDataToEeBase64(systemData);
-        await GitHubService.uploadBlob(systemBase64, FILE_NAME_SYSTEM);
-        console.log('[Backup] 系统数据上传成功');
-
-        // 4. 压缩并上传聊天数据
-        showToast("正在压缩聊天记录 (请耐心等待)...");
-        const chatBase64 = await compressDataToEeBase64(chatData);
-        showToast(`正在上传聊天记录 (${(chatBase64.length/1024/1024).toFixed(1)}MB)...`);
-        await GitHubService.uploadBlob(chatBase64, FILE_NAME_CHATS);
-        console.log('[Backup] 聊天数据上传成功');
-
-        // 5. 更新状态
-        GitHubService.updateUIState(true, new Date());
-        
-    } catch (error) {
-        // ★★★ 修复:上传失败时回滚 ★★★
-        console.error('[Backup] 上传失败,需要人工检查备份完整性:', error);
-        throw error;
-    } finally {
-        // ★ Step 5a：恢复内存中的 history（无论备份成功或失败），避免全量常驻内存
-        if (_histMap5a) {
-            (db.characters || []).forEach(c => { c.history = _origHists5a.chars.get(c.id) || c.history; });
-            (db.groups     || []).forEach(g => { g.history = _origHists5a.groups.get(g.id) || g.history; });
-        }
-    }
+    GitHubService.updateUIState(true, new Date());
 }
 
 /**
- * ★★★ 完全重写:执行优化后的云端恢复 ★★★
- * 修复数据残留和不完整更新问题
+ * ★ V5：执行云端恢复
+ * 优先找 V5 单文件备份：response.body 直接接上流式导入管道，
+ * 边下载边解压边逐行入库，全程不在内存落地大字符串（手机端安全）。
+ * 找不到 V5 时回退旧版分片备份 / 旧版全量备份（兼容历史数据）。
  */
 async function performOptimizedCloudRestore() {
     const config = GitHubService.getConfig();
     if (!config) throw new Error("GitHub 未配置");
 
+    // ★★★ 步骤0: 优先尝试 V5 流式备份 ★★★
+    let v5Info = null;
+    try {
+        v5Info = await GitHubService.getFileInfo(config, FILE_NAME_V5);
+    } catch (e) {
+        console.warn('[Restore] V5 备份检查失败，回退旧版:', e.message);
+    }
+    if (v5Info && v5Info.download_url) {
+        // 找到 V5 就只走 V5：导入中途失败不回退旧分片（importJsonlStream 校验
+        // meta 后才清库，清库后再失败时旧分片是更早的数据，静默回退反而危险）
+        showToast("发现 V5 备份，正在流式恢复 (边下载边入库)...");
+        const response = await fetch(v5Info.download_url);
+        if (!response.ok) throw new Error(`下载 V5 备份失败: ${response.status}`);
+        const result = await importJsonlStream(response.body);
+        if (!result.success) throw new Error(result.error || 'V5 流式恢复失败');
+        console.log('[Restore] V5 流式恢复完成:', result.message);
+        return;
+    }
+    console.log('[Restore] 云端无 V5 备份，尝试旧版分片...');
+
     let systemData = null;
     let chatData = null;
-    let usingLegacyBackup = false;
 
-    // ★★★ 步骤1: 尝试下载分片备份 ★★★
+    // ★★★ 步骤1: 尝试下载旧版分片备份 ★★★
     try {
         showToast("正在拉取系统配置...");
         systemData = await fetchAndDecompressGitHubFile(config, FILE_NAME_SYSTEM);
