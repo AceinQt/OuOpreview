@@ -68,19 +68,31 @@
         return (window.__swRegistration && window.__swRegistration.active) ? window.__swRegistration : null;
     }
 
-    async function subscribe() {
+async function subscribe() {
         const s = getSettings();
         if (!s.vapidPublicKey) throw new Error('缺少 VAPID 公钥');
         const reg = getReg();
         if (!reg || !reg.pushManager) throw new Error('Service Worker 未就绪，稍后再试');
 
-        // 已有订阅先复用；若公钥变了则退订重订
         let sub = await reg.pushManager.getSubscription();
         if (sub) {
             const existing = sub.options && sub.options.applicationServerKey;
-            // 简单起见：只要已有订阅就复用（换公钥的情况极少，需要时可先在设置里“重新订阅”）
-            if (!existing) { try { await sub.unsubscribe(); } catch (_) {} sub = null; }
+            let isMatch = false;
+            
+            // ★ 新增逻辑：将浏览器底层存的公钥，和当前设置里的公钥进行对比
+            if (existing) {
+                // applicationServerKey 是 ArrayBuffer，转成 Uint8Array 后再转为 Base64URL
+                const existingB64 = bytesToUrlB64(new Uint8Array(existing));
+                isMatch = (existingB64 === s.vapidPublicKey);
+            }
+            
+            // 如果没有已有公钥，或者公钥变了，就退订重来
+            if (!isMatch) { 
+                try { await sub.unsubscribe(); console.log('[推送节点] 公钥变更，已清理旧订阅'); } catch (_) {} 
+                sub = null; 
+            }
         }
+        
         if (!sub) {
             sub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -668,10 +680,24 @@
         }
     }
 
-    async function onGenVapid() {
+async function onGenVapid() {
+        // ★ 新增：拦截并警告，防止误触
+        const s = getSettings();
+        // 如果已经有公钥了，说明大概率是在使用中，给予强警告
+        if (s.vapidPublicKey) {
+            const warningMsg = "重新生成密钥后，之前部署的 Worker 和本机的推送订阅将会立刻失效！\n\n你必须将新的公钥和私钥重新填入 Cloudflare Worker 并重新部署，然后在本页关闭并重新打开推送开关以重新订阅。\n\n确定要重新生成吗？";
+            
+            if (typeof AppUI !== 'undefined' && AppUI.confirm) {
+                const confirmed = await AppUI.confirm(warningMsg, "⚠️ 危险操作确认", "确定重置", "取消");
+                if (!confirmed) return; // 用户点击取消，直接中断
+            } else {
+                // 兜底防御：万一 AppUI 还没加载好
+                if (!confirm(warningMsg)) return;
+            }
+        }
+
         try {
             const keys = await generateVapidKeys();
-            const s = getSettings();
             s.vapidPublicKey = keys.publicKey;
             s.vapidPrivateKey = keys.privateKey; // 仅供本次复制到 Worker
             await persist();
@@ -683,7 +709,7 @@
                 privBox.value = keys.privateKey;
                 privBox.parentElement.style.display = 'block';
             }
-            await uiAlert('已生成密钥。公钥已自动填好；请把「私钥」复制到 Worker（wrangler secret put VAPID_PRIVATE_KEY），公钥同样也要 put 一份。');
+            await uiAlert('已生成新密钥。公钥已自动填好；请把「私钥」复制到 Worker（wrangler secret put VAPID_PRIVATE_KEY），公钥同样也要 put 一份。\n\n⚠️ 别忘了重启上方的推送开关以重新订阅！');
         } catch (e) {
             await uiAlert('生成失败：' + (e && e.message ? e.message : e));
         }
