@@ -143,10 +143,9 @@
             </button>
             <!-- 设置按钮：呼出侧边栏 -->
             <button class="action-btn" id="chat-list-settings-btn" title="设置">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                </svg>
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
             </button>
         </div>
     </header>    
@@ -425,7 +424,7 @@
     </main>
 </div>
 
-<!-- 消息通知设置页面 -->
+
 <!-- 消息通知设置页面 -->
 <div id="notification-settings-screen" class="screen">
     <header class="app-header">
@@ -486,6 +485,18 @@
             </div>
             
             <div class="settings-card">
+                <div class="settings-item toggle-setting">
+                    <div class="setting-icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    </div>
+                    <div class="item-details">
+                        <span class="item-name">发送一条测试消息</span>
+                    </div>
+                    <div class="settings-item-action">
+                        <botton class="btn-test" id="notify-test-btn">发送</botton>
+                    </div>
+                </div>
+
                 <div class="settings-item toggle-setting">
                     <div class="setting-icon-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 12 12 17 22 12"></polyline><polyline points="2 17 12 22 22 17"></polyline></svg>
@@ -585,15 +596,11 @@
                 </div>
             </div>
 
-            <div class="settings-card">
-                <div class="settings-item center-action" id="notify-test-btn">
-                    <span class="item-name">发送一条测试通知</span>
-                </div>
-            </div>
+
 
             <!-- 进阶：自定义推送节点 -->
             <div class="settings-group-title">
-                <span>进阶：自定义推送节点（实验）</span>
+                <span>离线推送（实验）</span>
                 <svg class="settings-group-info-icon" onclick="showNotifyGroupInfo('push-node')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
                     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -626,6 +633,17 @@
                     </div>
                     <input type="text" id="push-worker-url" class="form-control settings-input-text" placeholder="https://xxx.workers.dev">
                 </div>
+                <div class="settings-item toggle-setting">
+                    <div class="setting-icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                    </div>
+                    <div class="item-details">
+                        <span class="item-name">生成 VAPID 密钥对</span>
+                    </div>
+                    <div class="settings-item-action">
+                        <botton class="btn-test" id="push-gen-vapid">生成</botton>
+                    </div>
+                </div>               
 
                 <div class="settings-item column-layout">
                     <div class="item-header">
@@ -657,19 +675,22 @@
                     </div>
                     <textarea id="push-vapid-private-display" readonly rows="2" class="form-control settings-textarea"></textarea>
                 </div>
-
-                <div class="settings-item center-action" id="push-gen-vapid">
-                    <span class="item-name">生成 VAPID 密钥对</span>
+                <div class="settings-item toggle-setting">
+                    <div class="setting-icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </div>
+                    <div class="item-details">
+                        <span class="item-name">发送推送测试消息</span>
+                    </div>
+                    <div class="settings-item-action">
+                        <botton class="btn-test" id="push-test-task-btn">发送</botton>
+                    </div>
                 </div>
+
             </div>
 
             <div class="settings-item-hint compact" id="push-node-hint"></div>
-            
-            <div class="settings-card mt-6-mb-20">
-                <div class="settings-item center-action" id="push-test-task-btn">
-                    <span class="item-name">发送测试任务（1 分钟后）</span>
-                </div>
-            </div>
+
 
         </div> <!-- /#advanced-notification-settings -->
     </main>
@@ -2025,8 +2046,6 @@
         </div>
         <div class="placeholder"></div>
     </header>
-    <!-- 懒加载后数据异步统计，就绪前用此遮罩替代正文，避免露出半成品页面 -->
-    <div class="storage-loading-mask">数据加载中，请稍后……</div>
     <main class="content">
         <!-- Card 1: 概览与全量备份 -->
         <div class="storage-card overview-card">
