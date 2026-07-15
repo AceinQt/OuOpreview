@@ -174,34 +174,55 @@ if (typeof dexieDB !== 'undefined') {
 };
 
 window.refreshStorageScreen = async function() {
-    if (window.setupBackupButtons) {
-        window.setupBackupButtons();
+    const contentEl = document.querySelector('#storage-analysis-screen .content');
+    
+    // 1. 开始计算前：立即隐藏内容并禁用点击
+    if (contentEl) {
+        contentEl.style.transition = 'none';
+        contentEl.style.opacity = '0';
+        contentEl.style.pointerEvents = 'none'; // <--- 新增：加载时禁用点击
+        void contentEl.offsetWidth; 
+        contentEl.style.transition = 'opacity 0.3s ease';
     }
 
-    // 懒加载后统计需异步读 IndexedDB，就绪前用遮罩盖住正文，避免露出空图表/“Calculating...”
-    const screenEl = document.getElementById('storage-analysis-screen');
-    if (screenEl) screenEl.classList.add('is-loading');
-
-    const chartContainer = document.getElementById('storage-chart-container');
-    const detailsList = document.getElementById('storage-details-list');
-    const totalSizeEl = document.getElementById('storage-total-size');
-
-    const info = await dataStorage.getStorageInfo();
-    // 无论成功与否都要撤下遮罩，否则页面会永远卡在“加载中”
-    if (screenEl) screenEl.classList.remove('is-loading');
-    if (!info) return;
-
-    if (totalSizeEl) {
-        totalSizeEl.textContent = formatBytes(info.totalSize);
+    let hideLoading = () => {};
+    if (typeof showLoadingToast === 'function') {
+        hideLoading = showLoadingToast("数据统计中，请稍候……");
     }
 
-    // 注意：必须先撤遮罩露出 .content，再 init echarts，否则图表在 display:none 容器里量到 0 尺寸
-    renderStorageChart(chartContainer, info);
-    renderStorageDetails(detailsList, info);
+    try {
+        if (window.setupBackupButtons) {
+            window.setupBackupButtons();
+        }
+
+        const chartContainer = document.getElementById('storage-chart-container');
+        const detailsList = document.getElementById('storage-details-list');
+        const totalSizeEl = document.getElementById('storage-total-size');
+
+        const info = await dataStorage.getStorageInfo();
+        if (!info) return;
+
+        if (totalSizeEl) {
+            totalSizeEl.textContent = formatBytes(info.totalSize);
+        }
+
+        renderStorageChart(chartContainer, info);
+        renderStorageDetails(detailsList, info);
+        
         if (typeof GitHubService !== 'undefined') {
-        GitHubService.initUI();
-    }
+            GitHubService.initUI();
+        }
 
+    } catch (e) {
+        console.error("加载存储分析数据异常:", e);
+    } finally {
+        // 3. 计算完成：隐藏 Toast，内容淡入，恢复点击
+        hideLoading();
+        if (contentEl) {
+            contentEl.style.opacity = '1';
+            contentEl.style.pointerEvents = 'auto'; // <--- 新增：显示后恢复正常点击
+        }
+    }
 };
 
 function formatBytes(bytes, decimals = 2) {
