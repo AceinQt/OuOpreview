@@ -428,7 +428,9 @@ const splash = document.getElementById('app-splash-screen');
 
 // --- 7. 每日自动备份逻辑 ---
 async function runDailyBackupCheck() {
-    if (typeof GitHubService === 'undefined' || typeof createFullBackupData === 'undefined') return;
+    // ★ V5 修复：原代码调用不存在的 createFullBackupData/GitHubService.upload，自动备份从未生效。
+    //   现在直接复用手动"上传云端"的 V5 流式备份路径。
+    if (typeof GitHubService === 'undefined' || typeof performOptimizedCloudBackup !== 'function') return;
 
     const config = GitHubService.getConfig();
     if (!config || !config.autoBackup) return;
@@ -445,8 +447,7 @@ async function runDailyBackupCheck() {
     console.log("检测到今日首次启动，准备自动备份...");
     setTimeout(async () => {
         try {
-            const data = await createFullBackupData();
-            await GitHubService.upload(data);
+            await performOptimizedCloudBackup();
             localStorage.setItem(LAST_BACKUP_KEY, today);
             if (typeof showToast === 'function') showToast("每日自动备份完成");
             console.log("每日自动备份成功");
@@ -491,7 +492,7 @@ if ('serviceWorker' in navigator) {
                         ch.port1.onmessage = (e) => {
                             if (e.data && e.data.type === 'VERSION') {
                                 window.__appVersion = e.data.version;
-                                console.log('%c🐱 QChat 版本: ' + e.data.version, 'color:#ff9800;font-weight:bold');
+                                console.log('OuO 版本: ' + e.data.version);
                             }
                         };
                         sw.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
