@@ -416,29 +416,63 @@ function setupStorageAnalysisScreen() {
 
             hideLoading();
 
+            // 3.5 扫描短期总结旧快照：正文已由片段块实时拼接（getShortSummaryContent），
+            //     有"带正文的存活块"的总结，其 item.content 只是生成时的冗余快照，可安全清空。
+            //     无块的旧式整篇总结仍依赖 content 兜底，跳过不动。
+            const snapshotTargets = [];
+            let snapshotBytes = 0;
+            const allChats = [...(db.characters || []), ...(db.groups || [])];
+            for (const chat of allChats) {
+                for (const s of (chat.memorySummaries || [])) {
+                    if (!s.content || !s.blockIds || s.blockIds.length === 0) continue;
+                    const idSet = new Set(s.blockIds);
+                    const hasLiveBlock = (chat.memoryChunks || []).some(c => idSet.has(c.blockId) && c.detailedContent);
+                    if (hasLiveBlock) {
+                        snapshotTargets.push({ item: s, chatId: chat.id });
+                        snapshotBytes += s.content.length * 2; // UTF-16 估算
+                    }
+                }
+            }
+
             // 4. 结果汇报与清理
-            if (toDelete.length > 0) {
+            if (toDelete.length > 0 || snapshotTargets.length > 0) {
+                const foundParts = [];
+                if (toDelete.length > 0) foundParts.push(`${toDelete.length} 条重复消息`);
+                if (snapshotTargets.length > 0) foundParts.push(`${snapshotTargets.length} 篇短期总结的冗余正文快照（约 ${formatBytes(snapshotBytes)}，正文已由片段块实时提供，清理不影响任何功能）`);
+
                 const confirmed = await AppUI.confirm(
-                    `扫描完成！发现了 ${toDelete.length} 条由于系统异常产生的重复消息。\n\n是否立刻清理以释放存储空间？`,
-                    "发现垃圾数据", 
-                    "一键清理", 
+                    `扫描完成！发现：\n· ${foundParts.join('\n· ')}\n\n是否立刻清理以释放存储空间？`,
+                    "发现垃圾数据",
+                    "一键清理",
                     "取消"
                 );
-                
+
                 if (confirmed) {
                     const hideDeleting = typeof showLoadingToast === 'function' ? showLoadingToast("正在执行清理...") : () => {};
-                    await dexieDB.messages.bulkDelete(toDelete); // 从数据库抹除
+                    if (toDelete.length > 0) {
+                        await dexieDB.messages.bulkDelete(toDelete); // 从数据库抹除
+                    }
+                    if (snapshotTargets.length > 0) {
+                        // 同步清空内存对象与 memories 表（挂载对象与表记录是两份，须都更新）
+                        snapshotTargets.forEach(t => { t.item.content = ''; });
+                        await dexieDB.memories.bulkPut(
+                            snapshotTargets.map(t => ({ ...t.item, chatId: t.chatId, memType: 'short' }))
+                        );
+                    }
                     hideDeleting();
-                    
-                    await AppUI.alert(`✅ 清理成功！共删除了 ${toDelete.length} 条重复消息。\n您的设备空间已得到释放。`, "瘦身完成");
-                    
+
+                    const doneParts = [];
+                    if (toDelete.length > 0) doneParts.push(`删除了 ${toDelete.length} 条重复消息`);
+                    if (snapshotTargets.length > 0) doneParts.push(`清空了 ${snapshotTargets.length} 篇总结快照（约 ${formatBytes(snapshotBytes)}）`);
+                    await AppUI.alert(`✅ 清理成功！共${doneParts.join('，')}。\n您的设备空间已得到释放。`, "瘦身完成");
+
                     // 清理完立刻刷新图表和容量统计
                     if (typeof refreshStorageScreen === 'function') {
                         refreshStorageScreen();
                     }
                 }
             } else {
-                await AppUI.alert("🎉 您的数据库非常健康，没有发现重复的垃圾消息。", "扫描完成");
+                await AppUI.alert("🎉 您的数据库非常健康，没有发现可清理的垃圾数据。", "扫描完成");
             }
 
         } catch (err) {
