@@ -692,8 +692,12 @@ function _renderSummaryBlocks(item, container, chat) {
                     delete block.lastAccessTime;
                 }
 
-                // E. 写入存储并刷新
+// E. 写入存储并刷新
                 await saveChunksToDB([block]);
+
+                // 有块总结的正文以 memoryChunks 为唯一数据源（getShortSummaryContent 实时拼接），
+                // 无需再把拼接结果写回 item.content
+
                 renderVectorStats();
                 showToast(needClearEmbedding
                     ? '已保存，向量已清除，请重新向量化'
