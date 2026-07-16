@@ -26,7 +26,7 @@ function generateGroupSystemPrompt(group, retrievedContext = '') {
         
         .map(s => {
             const dateStr = s.occurredAt ? s.occurredAt.split(' ')[0] : '未知日期';
-            return `[短期剧情 ${dateStr}] ${s.title}\n${s.content}`;
+            return `[短期剧情 ${dateStr}] ${s.title}\n${getShortSummaryContent(s, group)}`;
         })
         .join('\n\n');
         

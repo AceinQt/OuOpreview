@@ -33,7 +33,7 @@
             const dateStr = s.occurredAt ? s.occurredAt.split(' ')[0] : '未知日期';
             const daysAgo = getDaysAgo(s.occurredAt);
             // 【关键修改】显式标注“昨天/几天前”，强制 AI 理解这是过去式
-            return `[回忆：${dateStr} ${daysAgo}] ${s.title}\n${s.content}`;
+            return `[回忆：${dateStr} ${daysAgo}] ${s.title}\n${getShortSummaryContent(s, character)}`;
         });
 
     // 2. 获取收藏的长期总结

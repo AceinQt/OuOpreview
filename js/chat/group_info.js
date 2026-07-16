@@ -320,7 +320,7 @@ async function _renderGroupTokenStatsInner(group, statsPanel, _hideLoading) {
 
     // ── 记忆 Memory（收藏的长期 + 短期总结，对应 prompt 的"已总结剧情"块）
     const longFavs  = (group.longTermSummaries  || []).filter(s => s.isFavorited).map(s => s.content).join('');
-    const shortFavs = (group.memorySummaries || []).filter(s => s.isFavorited).map(s => s.content).join('');
+    const shortFavs = (group.memorySummaries || []).filter(s => s.isFavorited).map(s => getShortSummaryContent(s, group)).join('');
     const memoryTokens = _gEst(longFavs + shortFavs);
 
     // ── 论坛 Forum（getWatchingPostsContext，与 char_info 相同调用）──

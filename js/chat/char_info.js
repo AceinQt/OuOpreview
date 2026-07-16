@@ -259,7 +259,7 @@ async function renderTokenStats(charId) {
     const wbTokens = estimateTokens(wbBefore + wbAfter + wbWriting);
 
     // 【记忆 Memory】
-    const shortFavs = (char.memorySummaries || []).filter(s => s.isFavorited).map(s => s.content).join('');
+    const shortFavs = (char.memorySummaries || []).filter(s => s.isFavorited).map(s => getShortSummaryContent(s, char)).join('');
     const longFavs  = (char.longTermSummaries || []).filter(s => s.isFavorited).map(s => s.content).join('');
     const memoryTokens = estimateTokens(shortFavs + longFavs);
 

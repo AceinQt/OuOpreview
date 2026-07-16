@@ -28,7 +28,7 @@ function generateProactivePrivatePrompt(character) {
     // 注入回忆
     let allFavs = "";
     if (character.memorySummaries || character.longTermSummaries) {
-        const shortFavs = (character.memorySummaries ||[]).filter(s => s.isFavorited).map(s => `[回忆] ${s.title}\n${s.content}`);
+        const shortFavs = (character.memorySummaries ||[]).filter(s => s.isFavorited).map(s => `[回忆] ${s.title}\n${getShortSummaryContent(s, character)}`);
         const longFavs = (character.longTermSummaries || []).filter(s => s.isFavorited).map(s => `[长期历史] ${s.title}\n${s.content}`);
         allFavs =[...longFavs, ...shortFavs].join('\n\n');
     }
