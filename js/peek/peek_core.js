@@ -334,7 +334,7 @@ function getPeekBasePromptContext(char, mainChatContext) {
 
     let allFavs = "";
     if (char.memorySummaries || char.longTermSummaries) {
-        const shortFavs = (char.memorySummaries || []).filter(s => s.isFavorited).map(s => `[回忆] ${s.title}\n${s.content}`);
+        const shortFavs = (char.memorySummaries || []).filter(s => s.isFavorited).map(s => `[回忆] ${s.title}\n${getShortSummaryContent(s, char)}`);
         const longFavs = (char.longTermSummaries || []).filter(s => s.isFavorited).map(s => `[长期历史] ${s.title}\n${s.content}`);
         allFavs = [...longFavs, ...shortFavs].join('\n\n');
     }
