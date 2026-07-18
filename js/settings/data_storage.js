@@ -111,7 +111,17 @@ const dataStorage = {
             }
 
             // 4. 论坛
-            categorizedSizes.forum += stringify(db.forumPosts);
+            // ★ [论坛懒加载 F6] 懒加载下内存 db.forumPosts 只有窗口，直接 stringify 会严重低估。
+            //   改从 DB 流式累加每帖体积（与上面消息的做法一致）。关掉懒加载时走原路径。
+            if (window.LAZY_FORUM && typeof dexieDB !== 'undefined') {
+                try {
+                    await dexieDB.forumPosts.toCollection().each(post => {
+                        try { categorizedSizes.forum += JSON.stringify(post).length; } catch (e) {}
+                    });
+                } catch (e) { console.warn('[storage] 论坛体积统计失败:', e); }
+            } else {
+                categorizedSizes.forum += stringify(db.forumPosts);
+            }
             categorizedSizes.forum += stringify(db.forumBindings);
             categorizedSizes.forum += stringify(db.forumUserIdentity);
             categorizedSizes.forum += stringify(db.watchingPostIds);
