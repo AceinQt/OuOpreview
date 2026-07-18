@@ -6,6 +6,7 @@ const dataStorage = {
         worldBooks:      '#05519F',
         characters:      '#0462C2',
         memory:          '#1080E6',
+        peek:            '#2590EE',
         study:           '#3A9EF6',
         forum:           '#7EBEFB',
         rpg:             '#BADBFC',
@@ -16,6 +17,7 @@ const dataStorage = {
         characters:      '角色与聊天',
         worldBooks:      '世界书',
         memory:          '记忆与向量',
+        peek:            '偷看手机',
         study:           '学习',
         forum:           '喵坛',
         rpg:             '游戏',
@@ -42,6 +44,7 @@ const dataStorage = {
             characters: 0,
             worldBooks: 0,
             memory: 0,
+            peek: 0,
             study: 0,
             forum: 0,
             rpg: 0,
@@ -64,7 +67,7 @@ const dataStorage = {
                 } catch (e) { console.warn('[storage] 消息体积统计失败:', e); }
             }
 
-            // 1. 角色与聊天 (包含 PeekData，不含已剥离的记忆/向量字段)
+            // 1. 角色与聊天 (不含 PeekData 与已剥离的记忆/向量字段，PeekData 单独统计)
             (db.characters || []).forEach(char => {
                 const safeChar = { ...char };
                 delete safeChar.memorySummaries;
@@ -93,7 +96,8 @@ const dataStorage = {
                     categorizedSizes.characters += stringify(safeGroup);
                 }
             });
-            categorizedSizes.characters += stringify(db.peekData);
+            // ★ 1.5 偷看手机数据（单独统计，随角色导出，不提供独立导出）
+            categorizedSizes.peek += stringify(db.peekData);
 
             // 2. 世界书
             categorizedSizes.worldBooks += stringify(db.worldBooks);
@@ -323,7 +327,7 @@ function renderStorageDetails(container, info) {
     container.classList.add('storage-details-container');
 
     // 定义类别的显示顺序（与顶部定义的顺序一致）
-    const categoryOrder = ['settings', 'worldBooks', 'characters', 'memory', 'study', 'forum', 'rpg', 'personalization'];
+    const categoryOrder = ['settings', 'worldBooks', 'characters', 'memory', 'peek', 'study', 'forum', 'rpg', 'personalization'];
 
     // 按照预定义的顺序排序
     const sortedData = categoryOrder
@@ -347,7 +351,7 @@ function renderStorageDetails(container, info) {
             </div>
             <div class="storage-item-right">
                 <span class="storage-detail-size">${formatBytes(item.value)}</span>
-                ${item.key !== 'memory' ? `<button class="btn-export-sm">导出</button>` : '<span style="font-size:11px;color:#aaa;">随角色导出</span>'}
+                ${(item.key !== 'memory' && item.key !== 'peek') ? `<button class="btn-export-sm">导出</button>` : '<span style="font-size:11px;color:#aaa;">随角色导出</span>'}
             </div>
         `;
 
