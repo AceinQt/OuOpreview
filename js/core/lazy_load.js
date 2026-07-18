@@ -1,16 +1,16 @@
 // ==========================================
-// lazy_load.js — 懒加载改造专用文件（Step 0 + 1 + 2）
+// lazy_load.js — 懒加载专用文件
 // ------------------------------------------
-// Step 2 起，loadData 会读取下面的开关。开关默认【关】，应用行为与改造前完全一致。
-// 要启用懒加载：控制台跑 window.LAZY_LOAD = true 然后刷新；或在下面这行直接改成 true。
-// 要回滚：改回 false 刷新即可，数据无损。
+// 【已转正】聊天消息懒加载（LAZY_LOAD）与论坛懒加载（LAZY_FORUM）均默认开启。
+// 紧急刹车（遇到问题时的临时回滚，数据无损）：
+//   关闭聊天懒加载：localStorage.setItem('LAZY_LOAD','0')    然后刷新
+//   关闭论坛懒加载：localStorage.setItem('LAZY_FORUM','0')   然后刷新
+//   恢复默认（开）：localStorage.removeItem('LAZY_LOAD') / removeItem('LAZY_FORUM') 然后刷新
 // ==========================================
 
 // ★★★ 总开关 + 窗口大小。窗口必须 > maxMemory 上限（已定 maxMemory 上限 1000、窗口 1500）。
-//   开关从 localStorage 读，方便控制台切换：
-//     开启：localStorage.setItem('LAZY_LOAD','1')   然后刷新
-//     关闭：localStorage.setItem('LAZY_LOAD','0')   然后刷新
-window.LAZY_LOAD = true;
+//   【转正】默认开；只有显式设 '0' 才关（紧急刹车）。
+window.LAZY_LOAD = localStorage.getItem('LAZY_LOAD') !== '0';
 window.LAZY_LOAD_LIMIT = 1500;
 
 // ★★★ 铁律：本文件内任何从 DB 取消息的函数，排序只能用下面这一行（原样抄自 database.js:235），
@@ -346,14 +346,14 @@ window.getMessagesByGlobalRange = async function (chatId, start, end) {
 // ==========================================
 // 论坛懒加载（F 系列步骤）
 // ------------------------------------------
-// 独立开关，与上面聊天消息的 LAZY_LOAD 互不影响，默认【关】：
-//   开启：localStorage.setItem('LAZY_FORUM','1')   然后刷新
-//   关闭：localStorage.setItem('LAZY_FORUM','0')   然后刷新
+// 【已转正】默认开，独立于聊天的 LAZY_LOAD。紧急刹车：
+//   关闭：localStorage.setItem('LAZY_FORUM','0')   然后刷新（数据无损）
+//   恢复：localStorage.removeItem('LAZY_FORUM')    然后刷新
 // 内存窗口 = 最新 LAZY_FORUM_LIMIT 条 + 全部收藏帖 + 全部在看帖。
 // 在看帖必须整帖进内存：getWatchingPostsContext() 是同步函数，被聊天 prompt
 // 拼装（private_prompt/group_prompt/char_info）直接调用，没法现查 DB。
 // ==========================================
-window.LAZY_FORUM = localStorage.getItem('LAZY_FORUM') === '1';
+window.LAZY_FORUM = localStorage.getItem('LAZY_FORUM') !== '0';
 window.LAZY_FORUM_LIMIT = 100;
 
 // ★★★ 帖子排序铁律：只按这一行排（原样抄自 database.js loadData，倒序=最新在前），
