@@ -4,6 +4,17 @@ const FORUM_PAGE_SIZE = 15; // 每次加载15条
 let isForumLoadingMore = false; // 防止滚动时重复触发
 // --- 论坛滚动位置记忆 ---
 let savedForumScrollY = 0;
+
+// ★ [论坛懒加载 F5] 连续前缀长度：窗口数组倒序排列，前缀（timestamp >= 游标）与 DB 最新一段
+//   完全一致、无缝隙；比游标更旧的只有收藏/在看散点，中间有缝。翻页绝不能直接翻进散点区，
+//   否则会跳帖；必须先 fetchOlderForumPosts 把缝补齐（见下方滚动监听）。
+function _forumContiguousCount() {
+    const posts = db.forumPosts || [];
+    const boundary = window._forumOldestContiguousTs;
+    if (boundary === undefined || boundary === Number.NEGATIVE_INFINITY) return posts.length;
+    const idx = posts.findIndex(p => (p.timestamp || 0) < boundary);
+    return idx === -1 ? posts.length : idx;
+}
             
                                     // --- 新增：获取匿名名字 (喵叽+4位代号) ---
             function getAnonymousName() {
@@ -120,8 +131,21 @@ function setupMePageFeature() {
         if (personaInput) personaInput.value = identity.persona || '';
         if (customCssInput) customCssInput.value = identity.customDetailCss || '';
         
+    // ★ [论坛懒加载 F5] 懒加载下内存只有窗口，发帖数走 DB 流式统计（先显示…再异步回填）
+    if (window.LAZY_FORUM && window.countMyForumPosts) {
+        if (statPostCount) {
+            statPostCount.textContent = '…';
+            window.countMyForumPosts(identity.nickname)
+                .then(n => { if (statPostCount) statPostCount.textContent = n; })
+                .catch(e => {
+                    console.error('❌ 发帖数统计失败，回退内存窗口:', e);
+                    if (statPostCount) statPostCount.textContent = (db.forumPosts || []).filter(p => p.isUser || p.username === identity.nickname).length;
+                });
+        }
+    } else {
             const myPosts = (db.forumPosts || []).filter(p => p.isUser || p.username === identity.nickname).length;
     if (statPostCount) statPostCount.textContent = myPosts;
+    }
     
     const favCount = (db.favoritePostIds || []).length;
     if (statFavCount) statFavCount.textContent = favCount;
@@ -1143,7 +1167,7 @@ showToast(`已${actionName}`);
 const scrollableArea = document.querySelector('#forum-screen .forum-content-area');
     
     if (scrollableArea) {
-        scrollableArea.addEventListener('scroll', () => {
+        scrollableArea.addEventListener('scroll', async () => {
             // 简单的防抖锁
             if (isForumLoadingMore) return;
 
@@ -1152,15 +1176,44 @@ const scrollableArea = document.querySelector('#forum-screen .forum-content-area
             const distanceToBottom = scrollableArea.scrollHeight - (scrollableArea.scrollTop + scrollableArea.clientHeight);
 
             if (distanceToBottom < threshold) {
-                const totalPosts = db.forumPosts ? db.forumPosts.length : 0;
-                // 如果还有未加载的数据
-                if (totalPosts > currentForumPage * FORUM_PAGE_SIZE) {
-                    isForumLoadingMore = true;
-                    
-                    // 模拟一点延迟，或直接加载
-                    currentForumPage++; // 页码+1
-                    renderForumPosts(db.forumPosts, true); // true = 追加模式
-                    
+                isForumLoadingMore = true;
+                try {
+                    // ★ [论坛懒加载 F5] 下一页若会越过"连续前缀"（更旧的只有收藏/在看散点，中间有缝），
+                    //   先查 DB 把缝补齐再翻页，防止跳帖/重复渲染。开关关闭时游标为 undefined，
+                    //   _forumContiguousCount() 返回全长，这段 while 不会进入，行为与原来完全一致。
+                    if (window.LAZY_FORUM) {
+                        const nextEnd = (currentForumPage + 1) * FORUM_PAGE_SIZE;
+                        let guard = 0;
+                        while (window._forumOldestContiguousTs !== Number.NEGATIVE_INFINITY
+                               && _forumContiguousCount() < nextEnd && guard++ < 10) {
+                            const inMemoryIds = new Set((db.forumPosts || []).map(p => p.id));
+                            const older = await window.fetchOlderForumPosts(
+                                window._forumOldestContiguousTs, inMemoryIds, FORUM_PAGE_SIZE * 2);
+                            if (older.length === 0) {
+                                window._forumOldestContiguousTs = Number.NEGATIVE_INFINITY; // DB 到底
+                                break;
+                            }
+                            // 洗掉过期的 [New!] 标记：清标记的循环只扫得到内存窗口，
+                            // 窗口外的老帖可能还带着（只是没被重新保存过），别让老帖顶着 New! 徽章出现
+                            older.forEach(p => {
+                                if (p.title) p.title = p.title.replace(/^\[New!\]\s*/, '').replace(/^【新】/, '');
+                            });
+                            db.forumPosts.push(...older);
+                            // 帖子排序铁律：只按 timestamp 倒序（散点老帖会落到正确位置）
+                            db.forumPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                            window._forumOldestContiguousTs = older[older.length - 1].timestamp || 0;
+                        }
+                    }
+
+                    const totalPosts = db.forumPosts ? db.forumPosts.length : 0;
+                    // 如果还有未加载的数据
+                    if (totalPosts > currentForumPage * FORUM_PAGE_SIZE) {
+                        currentForumPage++; // 页码+1
+                        renderForumPosts(db.forumPosts, true); // true = 追加模式
+                    }
+                } catch (err) {
+                    console.error('❌ [论坛加载更多] 失败:', err);
+                } finally {
                     // 解锁
                     setTimeout(() => { isForumLoadingMore = false; }, 200);
                 }
