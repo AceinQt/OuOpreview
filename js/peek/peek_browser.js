@@ -3,24 +3,46 @@
 // 浏览器历史渲染、浏览器历史生成
 // ==========================================
 
-function renderPeekBrowser(historyItems) {
+// 单条浏览记录的 HTML（分页渲染复用）
+function _buildBrowserItemHtml(item, isEdit) {
+    if (!item.id) item.id = 'browser_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    const isSelected = isEdit && PeekDeleteManager.selectedIds.has(item.id);
+    return `
+        <li class="browser-history-item ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}" data-id="${item.id}">
+            <h3 class="history-item-title">${item.isNew ? '<span class="new-badge">new!</span>' : ''}${item.title}</h3>
+            <p class="history-item-url">${item.url}</p>
+            <div class="history-item-annotation">${item.annotation}</div>
+        </li>
+    `;
+}
+
+function renderPeekBrowser(historyItems, isAppend = false, resetPage = false) {
+    if (resetPage) PeekPager.reset('browser');
+
     const screen = document.getElementById('peek-browser-screen');
-    let itemsHtml = '';
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'browser';
+
+    // ── 追加模式：只往现有列表尾部补一页，不重建整个屏幕 ──
+    if (isAppend) {
+        const listEl = screen.querySelector('.browser-history-list');
+        if (!listEl || !historyItems) return;
+        let html = '';
+        PeekPager.slice('browser', historyItems, true).forEach(item => {
+            html += _buildBrowserItemHtml(item, isEdit);
+        });
+        listEl.insertAdjacentHTML('beforeend', html);
+        PeekPager.updateTip(screen.querySelector('main.content'), 'browser', historyItems.length, 'browser-loading-tip');
+        return;
+    }
+
+    let itemsHtml = '';
 
     if (!historyItems || historyItems.length === 0) {
         itemsHtml = '<p class="placeholder-text">正在生成浏览记录...</p>';
     } else {
-        historyItems.forEach(item => {
-            if (!item.id) item.id = 'browser_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-            const isSelected = isEdit && PeekDeleteManager.selectedIds.has(item.id);
-            itemsHtml += `
-                <li class="browser-history-item ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}" data-id="${item.id}">
-                    <h3 class="history-item-title">${item.isNew ? '<span class="new-badge">new!</span>' : ''}${item.title}</h3>
-                    <p class="history-item-url">${item.url}</p>
-                    <div class="history-item-annotation">${item.annotation}</div>
-                </li>
-            `;
+        // 分页：只渲染第0页到当前页
+        PeekPager.slice('browser', historyItems, false).forEach(item => {
+            itemsHtml += _buildBrowserItemHtml(item, isEdit);
         });
     }
 
@@ -36,6 +58,18 @@ function renderPeekBrowser(historyItems) {
     `;
 
     screen.querySelector('.action-btn').addEventListener('click', () => generateAndRenderPeekBrowser({ forceRefresh: true }));
+
+    // 滚动分页：屏幕被 innerHTML 重建，滚动容器是新的，需重新绑定
+    const scrollContainer = screen.querySelector('main.content');
+    PeekPager.bindScroll(
+        scrollContainer,
+        'browser',
+        () => (peekContentCache?.browser?.history || []).length,
+        () => renderPeekBrowser(peekContentCache.browser.history, true)
+    );
+    if (historyItems && historyItems.length > 0) {
+        PeekPager.updateTip(scrollContainer, 'browser', historyItems.length, 'browser-loading-tip');
+    }
 
     let hasNewBrowser = false;
     if (historyItems) {
@@ -53,7 +87,7 @@ async function generateAndRenderPeekBrowser(options = {}) {
     if (generatingPeekApps.has(appType)) { showToast('浏览器内容正在生成中，请稍候...'); return; }
 
     if (!forceRefresh && peekContentCache[appType]) {
-        renderPeekBrowser(peekContentCache[appType].history);
+        renderPeekBrowser(peekContentCache[appType].history, false, true);
         switchScreen('peek-browser-screen');
         return;
     }
@@ -138,7 +172,7 @@ www.example.com/tech-review-2026
             if (!peekContentCache['browser']) peekContentCache['browser'] = { history: [] };
             peekContentCache['browser'].history = [...parsedHistory, ...peekContentCache['browser'].history];
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
-            renderPeekBrowser(peekContentCache['browser'].history);
+            renderPeekBrowser(peekContentCache['browser'].history, false, true);
         } else {
             throw new Error("解析浏览器内容失败，未找到对应标签。");
         }
@@ -152,7 +186,7 @@ www.example.com/tech-review-2026
         console.error(error);
         showApiError(error);
         if (peekContentCache['browser']?.history?.length > 0) {
-            renderPeekBrowser(peekContentCache['browser'].history);
+            renderPeekBrowser(peekContentCache['browser'].history, false, true);
             if (typeof showToast === 'function') showToast('刷新失败: ' + error.message);
         } else {
             document.querySelector('#peek-browser-screen .browser-history-list').innerHTML = `<li class="browser-history-item"><p class="placeholder-text" style="text-align:center;">内容生成失败，请重试。<br><span style="font-size:12px;color:#999;">${error.message}</span></p></li>`;

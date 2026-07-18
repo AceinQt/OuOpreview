@@ -3,10 +3,66 @@
 // 相册渲染、相册生成
 // ==========================================
 
-function renderPeekAlbum(photos) {
+// 构建单张照片的 DOM（分页渲染复用）
+function _buildAlbumPhotoEl(photo, isEdit) {
+    if (!photo.id) photo.id = 'album_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    const isSelected = isEdit && PeekDeleteManager.selectedIds.has(photo.id);
+    const photoEl = document.createElement('div');
+    photoEl.className = `album-photo ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}`;
+    photoEl.dataset.id = photo.id;
+    photoEl.dataset.imageDescription = photo.imageDescription;
+    photoEl.dataset.description = photo.description;
+
+    const img = document.createElement('img');
+    img.src = 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg';
+    img.alt = "相册照片";
+    photoEl.appendChild(img);
+
+    if (photo.type === 'video') {
+        const videoIndicator = document.createElement('div');
+        videoIndicator.className = 'video-indicator';
+        videoIndicator.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>`;
+        photoEl.appendChild(videoIndicator);
+    }
+
+    if (photo.isNew) {
+        const badge = document.createElement('span');
+        badge.className = 'new-badge';
+        badge.textContent = 'new!';
+        badge.style.position = 'absolute';
+        badge.style.top = '5px';
+        badge.style.right = '5px';
+        badge.style.zIndex = '10';
+        badge.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+        badge.style.borderRadius = '4px';
+        photoEl.appendChild(badge);
+    }
+
+    photoEl.addEventListener('click', () => {
+        if (PeekDeleteManager.isEditMode) return;
+        if (photo.isNew) {
+            photo.isNew = false;
+            savePeekData(window.activePeekCharId);
+            const badge = photoEl.querySelector('.new-badge');
+            if (badge) badge.remove();
+        }
+        const modal = document.getElementById('peek-photo-modal');
+        const imgContainer = document.getElementById('peek-photo-image-container');
+        const descriptionEl = document.getElementById('peek-photo-description');
+        imgContainer.innerHTML = `<div style="padding: 20px; text-align: left; color: #555; font-size: 16px; line-height: 1.6; height: 100%; overflow-y: auto;">${photo.imageDescription}</div>`;
+        descriptionEl.textContent = `批注：${photo.description}`;
+        modal.classList.add('visible');
+    });
+
+    return photoEl;
+}
+
+function renderPeekAlbum(photos, isAppend = false, resetPage = false) {
+    if (resetPage) PeekPager.reset('album');
+
     const screen = document.getElementById('peek-album-screen');
     const grid = screen.querySelector('.album-grid');
-    grid.innerHTML = '';
+    if (!isAppend) grid.innerHTML = '';
 
     if (!photos || photos.length === 0) {
         grid.innerHTML = '<p class="placeholder-text">正在生成相册内容...</p>';
@@ -15,58 +71,21 @@ function renderPeekAlbum(photos) {
 
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'album';
 
-    photos.forEach(photo => {
-        if (!photo.id) photo.id = 'album_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-        const isSelected = isEdit && PeekDeleteManager.selectedIds.has(photo.id);
-        const photoEl = document.createElement('div');
-        photoEl.className = `album-photo ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}`;
-        photoEl.dataset.id = photo.id;
-        photoEl.dataset.imageDescription = photo.imageDescription;
-        photoEl.dataset.description = photo.description;
-
-        const img = document.createElement('img');
-        img.src = 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg';
-        img.alt = "相册照片";
-        photoEl.appendChild(img);
-
-        if (photo.type === 'video') {
-            const videoIndicator = document.createElement('div');
-            videoIndicator.className = 'video-indicator';
-            videoIndicator.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>`;
-            photoEl.appendChild(videoIndicator);
-        }
-
-        if (photo.isNew) {
-            const badge = document.createElement('span');
-            badge.className = 'new-badge';
-            badge.textContent = 'new!';
-            badge.style.position = 'absolute';
-            badge.style.top = '5px';
-            badge.style.right = '5px';
-            badge.style.zIndex = '10';
-            badge.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-            badge.style.borderRadius = '4px';
-            photoEl.appendChild(badge);
-        }
-
-        photoEl.addEventListener('click', () => {
-            if (PeekDeleteManager.isEditMode) return;
-            if (photo.isNew) {
-                photo.isNew = false;
-                savePeekData(window.activePeekCharId);
-                const badge = photoEl.querySelector('.new-badge');
-                if (badge) badge.remove();
-            }
-            const modal = document.getElementById('peek-photo-modal');
-            const imgContainer = document.getElementById('peek-photo-image-container');
-            const descriptionEl = document.getElementById('peek-photo-description');
-            imgContainer.innerHTML = `<div style="padding: 20px; text-align: left; color: #555; font-size: 16px; line-height: 1.6; height: 100%; overflow-y: auto;">${photo.imageDescription}</div>`;
-            descriptionEl.textContent = `批注：${photo.description}`;
-            modal.classList.add('visible');
-        });
-
-        grid.appendChild(photoEl);
+    // 分页：追加时只渲染当前页，全量重绘渲染第0页到当前页
+    PeekPager.slice('album', photos, isAppend).forEach(photo => {
+        grid.appendChild(_buildAlbumPhotoEl(photo, isEdit));
     });
+
+    // 底部"上滑加载更多"提示（挂在 grid 外层的 .content 中）
+    PeekPager.updateTip(screen.querySelector('main.content'), 'album', photos.length, 'album-loading-tip');
+
+    // 绑定滚动分页（.content 是稳定节点，dataset 标记防重复绑定）
+    PeekPager.bindScroll(
+        screen.querySelector('main.content'),
+        'album',
+        () => (peekContentCache?.album?.photos || []).length,
+        () => renderPeekAlbum(peekContentCache.album.photos, true)
+    );
 }
 
 async function generateAndRenderPeekAlbum(options = {}) {
@@ -76,7 +95,7 @@ async function generateAndRenderPeekAlbum(options = {}) {
     if (generatingPeekApps.has(appType)) { showToast('相册内容正在生成中，请稍候...'); return; }
 
     if (!forceRefresh && peekContentCache[appType]) {
-        renderPeekAlbum(peekContentCache[appType].photos);
+        renderPeekAlbum(peekContentCache[appType].photos, false, true);
         switchScreen('peek-album-screen');
         return;
     }
@@ -161,7 +180,7 @@ video
             if (!peekContentCache['album']) peekContentCache['album'] = { photos: [] };
             peekContentCache['album'].photos = [...parsedPhotos, ...peekContentCache['album'].photos];
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
-            renderPeekAlbum(peekContentCache['album'].photos);
+            renderPeekAlbum(peekContentCache['album'].photos, false, true);
         } else {
             throw new Error("解析相册内容失败，未找到对应标签。");
         }
@@ -175,7 +194,7 @@ video
         console.error(error);
         showApiError(error);
         if (peekContentCache['album']?.photos?.length > 0) {
-            renderPeekAlbum(peekContentCache['album'].photos);
+            renderPeekAlbum(peekContentCache['album'].photos, false, true);
             if (typeof showToast === 'function') showToast('刷新失败: ' + error.message);
         } else {
             document.querySelector('#peek-album-screen .album-grid').innerHTML = `<p class="placeholder-text">内容生成失败，请重试。<br><span style="font-size:12px;color:#999;">${error.message}</span></p>`;

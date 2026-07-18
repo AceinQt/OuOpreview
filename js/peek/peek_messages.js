@@ -3,15 +3,20 @@
 // 私信列表、对话详情、消息生成
 // ==========================================
 
-function renderPeekChatList(conversations =[]) {
+function renderPeekChatList(conversations =[], isAppend = false, resetPage = false) {
+    if (resetPage) PeekPager.reset('messages');
+
     const container = document.getElementById('peek-chat-list-container');
-    container.innerHTML = '';
+    if (!isAppend) container.innerHTML = '';
 
     if (!conversations || conversations.length === 0) return;
 
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'messages';
 
-    conversations.forEach((convo) => {
+    // 分页：追加时只渲染当前页，全量重绘渲染第0页到当前页
+    const dataToRender = PeekPager.slice('messages', conversations, isAppend);
+
+    dataToRender.forEach((convo) => {
         if (!convo.id) convo.id = 'msg_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
         const isSelected = isEdit && PeekDeleteManager.selectedIds.has(convo.id);
 
@@ -53,6 +58,106 @@ function renderPeekChatList(conversations =[]) {
             </div>`;
         container.appendChild(li);
     });
+
+    // 底部"上滑加载更多"提示
+    PeekPager.updateTip(container.parentElement, 'messages', conversations.length, 'peek-msglist-loading-tip');
+}
+
+// ==========================================
+// 对话详情：向上翻页加载（聊天式）
+// 默认只渲染最近 CONVO_PAGE_SIZE 条，滚动到顶部时向上补一页历史
+// ==========================================
+const PEEK_CONVO_PAGE_SIZE = 30;
+let _peekConvoRenderedStart = 0;   // 当前已渲染区间的起始下标
+let _peekConvoPartnerName = null;  // 当前详情页对应的联系人（防旧监听误触发）
+
+function _buildPeekMessageEl(msg, isEdit) {
+    if (!msg.id) msg.id = 'msg_item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    const isSelected = isEdit && PeekDeleteManager.selectedIds.has(msg.id);
+    const editClasses = `message-item-wrapper ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}`;
+
+    // ── 时间分隔符 ────────────────────────────────────────────────
+    if (msg.content === '[time-divider]') {
+        const dividerWrapper = document.createElement('div');
+        dividerWrapper.className = `message-wrapper time-divider-wrapper ${editClasses}`;
+        dividerWrapper.dataset.id = msg.id;
+        const label = (typeof formatSmartTime === 'function' && msg.timestamp)
+            ? formatSmartTime(msg.timestamp) : (msg.label || '');
+        dividerWrapper.innerHTML = `<div class="chat-time-divider">${label}</div>`;
+        return dividerWrapper;
+    }
+
+    // ── 普通消息气泡 ─────────────────────────────────────────────────
+    const isSentByChar = msg.sender === 'char';
+    const wrapper = document.createElement('div');
+    wrapper.className = `message-wrapper ${isSentByChar ? 'sent' : 'received'} ${editClasses}`;
+    wrapper.dataset.id = msg.id;
+
+    const bubbleRow = document.createElement('div');
+    bubbleRow.className = 'message-bubble-row';
+
+    const bubble = document.createElement('div');
+    bubble.className = `message-bubble ${isSentByChar ? 'sent' : 'received'}`;
+    bubble.textContent = msg.content;
+
+    if (isSentByChar) {
+        bubbleRow.appendChild(bubble);
+    } else {
+        const avatar = document.createElement('img');
+        avatar.className = 'message-avatar';
+        avatar.src = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+        bubbleRow.appendChild(avatar);
+        bubbleRow.appendChild(bubble);
+    }
+    wrapper.appendChild(bubbleRow);
+    return wrapper;
+}
+
+// 向上补一页更早的历史消息（保持滚动位置不跳动）
+function _loadOlderPeekMessages() {
+    if (_peekConvoRenderedStart <= 0 || !_peekConvoPartnerName) return;
+    const convo = peekContentCache?.messages?.conversations?.find(c => c.partnerName === _peekConvoPartnerName);
+    if (!convo) return;
+
+    const messageAreaEl = document.getElementById('peek-message-area');
+    const contentContainer = messageAreaEl.closest('.content');
+    const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'conversation';
+
+    const newStart = Math.max(0, _peekConvoRenderedStart - PEEK_CONVO_PAGE_SIZE);
+    const olderChunk = convo.history.slice(newStart, _peekConvoRenderedStart);
+    _peekConvoRenderedStart = newStart;
+
+    // 记录补页前高度，插入后原地回补 scrollTop，视觉上不跳动
+    // （实际滚动容器可能是 .content 或 .message-area，两个都补偿）
+    const prevAreaHeight = messageAreaEl.scrollHeight;
+    const prevContentHeight = contentContainer ? contentContainer.scrollHeight : 0;
+    const frag = document.createDocumentFragment();
+    olderChunk.forEach(msg => frag.appendChild(_buildPeekMessageEl(msg, isEdit)));
+    messageAreaEl.insertBefore(frag, messageAreaEl.firstChild);
+    messageAreaEl.scrollTop += (messageAreaEl.scrollHeight - prevAreaHeight);
+    if (contentContainer) {
+        contentContainer.scrollTop += (contentContainer.scrollHeight - prevContentHeight);
+    }
+
+    _updatePeekConvoTopTip();
+}
+
+function _updatePeekConvoTopTip() {
+    const messageAreaEl = document.getElementById('peek-message-area');
+    if (!messageAreaEl) return;
+    let tip = document.getElementById('peek-convo-history-tip');
+    if (_peekConvoRenderedStart > 0) {
+        if (!tip || !messageAreaEl.contains(tip)) {
+            tip = document.createElement('div');
+            tip.id = 'peek-convo-history-tip';
+            tip.className = 'memo-loading-tip';
+            tip.textContent = '下拉加载更早的消息...';
+        }
+        messageAreaEl.insertBefore(tip, messageAreaEl.firstChild);
+        tip.style.display = 'block';
+    } else if (tip) {
+        tip.style.display = 'none';
+    }
 }
 
 function renderPeekConversation(history, partnerName, wasNew = false) {
@@ -94,60 +199,43 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
     }
 
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'conversation';
-    
+
     // 用于记录我们需要滚动到的“未读边界”DOM节点
     let unreadBoundaryEl = null;
 
-    history.forEach(msg => {
-        if (!msg.id) msg.id = 'msg_item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-        const isSelected = isEdit && PeekDeleteManager.selectedIds.has(msg.id);
-        const editClasses = `message-item-wrapper ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}`;
+    // ── 分页：默认只渲染最近一页，更早的历史滚动到顶部时再补 ──
+    const prevPartnerName = _peekConvoPartnerName;
+    _peekConvoPartnerName = partnerName;
+    let startIndex = Math.max(0, history.length - PEEK_CONVO_PAGE_SIZE);
 
-        let currentWrapper = null;
+    // 编辑模式进入/退出触发的同会话重绘要保持已渲染区间不变，
+    // 避免丢失已向上加载的历史（exitMode 重绘时 isEditMode 已复位，故用 currentAppType 判断）
+    const isEditRerender = isEdit || PeekDeleteManager.currentAppType === 'conversation';
+    if (isEditRerender && prevPartnerName === partnerName && _peekConvoRenderedStart < startIndex) {
+        startIndex = _peekConvoRenderedStart;
+    }
 
-        // ── 时间分隔符 ────────────────────────────────────────────────
-        if (msg.content === '[time-divider]') {
-            const dividerWrapper = document.createElement('div');
-            dividerWrapper.className = `message-wrapper time-divider-wrapper ${editClasses}`;
-            dividerWrapper.dataset.id = msg.id;
-            const label = (typeof formatSmartTime === 'function' && msg.timestamp)
-                ? formatSmartTime(msg.timestamp) : (msg.label || '');
-            dividerWrapper.innerHTML = `<div class="chat-time-divider">${label}</div>`;
-            messageAreaEl.appendChild(dividerWrapper);
-            currentWrapper = dividerWrapper;
-        } else {
-            // ── 普通消息气泡 ─────────────────────────────────────────────────
-            const isSentByChar = msg.sender === 'char';
-            const wrapper = document.createElement('div');
-            wrapper.className = `message-wrapper ${isSentByChar ? 'sent' : 'received'} ${editClasses}`;
-            wrapper.dataset.id = msg.id;
-
-            const bubbleRow = document.createElement('div');
-            bubbleRow.className = 'message-bubble-row';
-
-            const bubble = document.createElement('div');
-            bubble.className = `message-bubble ${isSentByChar ? 'sent' : 'received'}`;
-            bubble.textContent = msg.content;
-
-            if (isSentByChar) {
-                bubbleRow.appendChild(bubble);
-            } else {
-                const avatar = document.createElement('img');
-                avatar.className = 'message-avatar';
-                avatar.src = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
-                bubbleRow.appendChild(avatar);
-                bubbleRow.appendChild(bubble);
-            }
-            wrapper.appendChild(bubbleRow);
-            messageAreaEl.appendChild(wrapper);
-            currentWrapper = wrapper;
+    // 如果存在未读边界且落在首屏之外，扩展渲染区间以包含它（保证能定位到未读处）
+    if (wasNew) {
+        const boundaryIdx = history.findIndex(m => m.isUnreadBoundary);
+        if (boundaryIdx !== -1 && boundaryIdx < startIndex) {
+            startIndex = boundaryIdx;
         }
+    }
+    _peekConvoRenderedStart = startIndex;
+
+    history.slice(startIndex).forEach(msg => {
+        const currentWrapper = _buildPeekMessageEl(msg, isEdit);
+        messageAreaEl.appendChild(currentWrapper);
 
         // 寻找第一个未读边界标记
         if (msg.isUnreadBoundary && wasNew && !unreadBoundaryEl) {
             unreadBoundaryEl = currentWrapper;
         }
     });
+
+    // 顶部"加载更早消息"提示
+    _updatePeekConvoTopTip();
 
     // 抽离滚动逻辑，进行精准定位
     const scrollToTarget = () => {
@@ -192,7 +280,7 @@ async function generateAndRenderPeekMessages(options = {}) {
     if (generatingPeekApps.has(appType)) { showToast('消息内容正在生成中，请稍候...'); return; }
 
     if (!forceRefresh && peekContentCache[appType]) {
-        renderPeekChatList(peekContentCache[appType].conversations);
+        renderPeekChatList(peekContentCache[appType].conversations, false, true);
         switchScreen('peek-messages-screen');
         return;
     }
@@ -311,7 +399,7 @@ async function generateAndRenderPeekMessages(options = {}) {
             });
 
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
-            renderPeekChatList(peekContentCache['messages'].conversations);
+            renderPeekChatList(peekContentCache['messages'].conversations, false, true);
         } else {
             throw new Error("解析消息内容失败，未找到对应标签。");
         }
@@ -325,7 +413,7 @@ async function generateAndRenderPeekMessages(options = {}) {
         console.error(error);
         if (typeof showApiError === 'function') showApiError(error);
         if (peekContentCache['messages']?.conversations?.length > 0) {
-            renderPeekChatList(peekContentCache['messages'].conversations);
+            renderPeekChatList(peekContentCache['messages'].conversations, false, true);
             if (typeof showToast === 'function') showToast('刷新失败: ' + error.message);
         } else {
             if (targetContainer) {
@@ -364,4 +452,37 @@ async function addPeekContact() {
     savePeekData(window.activePeekCharId).catch(e => console.error('Peek保存失败:', e));
     renderPeekChatList(peekContentCache['messages'].conversations);
     showToast(`已添加"${trimmedName}"✓`);
+}
+
+// ==========================================
+// 初始化消息模块事件（供 peek_core.js 调用）
+// ==========================================
+function initPeekMessagesEvents() {
+    // 消息列表：滚动触底加载下一页
+    const listScrollContainer = document.querySelector('#peek-messages-screen .content');
+    PeekPager.bindScroll(
+        listScrollContainer,
+        'messages',
+        () => (peekContentCache?.messages?.conversations || []).length,
+        () => renderPeekChatList(peekContentCache.messages.conversations, true)
+    );
+
+    // 对话详情：滚动到顶部加载更早的历史消息
+    // 实际滚动容器可能是 .content 或 .message-area（视内容高度而定），两个都绑
+    const convoScreen = document.getElementById('peek-conversation-screen');
+    [convoScreen?.querySelector('.content'), document.getElementById('peek-message-area')]
+        .filter(Boolean)
+        .forEach(el => {
+            el.addEventListener('scroll', () => {
+                if (_peekConvoRenderedStart <= 0) return;
+                if (el.scrollTop <= 50) {
+                    _loadOlderPeekMessages();
+                }
+            });
+        });
+
+    // 兜底：点击顶部提示也可加载（内容不足一屏无法滚动时）
+    document.getElementById('peek-message-area')?.addEventListener('click', (e) => {
+        if (e.target.id === 'peek-convo-history-tip') _loadOlderPeekMessages();
+    });
 }
