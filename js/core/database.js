@@ -36,7 +36,7 @@ window.db = {
 
     // --- 论坛元数据 ---
     forumUserIdentity: { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' },
-    forumBindings: { worldBookIds:[], charIds: [], userPersonaIds:[], useChatHistory: false, historyLimit: 50 },
+    forumBindings: { worldBookIds:[], charIds: [], groupIds: [], userPersonaIds:[], useChatHistory: false, historyLimit: 50 },
     watchingPostIds: [],
     favoritePostIds:[],
     currentViewingPostId: null, // 当前查看的帖子ID (从globals合并)
