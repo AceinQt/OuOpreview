@@ -6344,8 +6344,17 @@
                     style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
 
+            <!-- 新增：私聊/群聊 tab 栏 -->
+            <div class="char-info-tab-bar" id="share-target-tab-bar" style="padding: 0; margin-bottom: 10px;">
+                <button type="button" class="char-info-tab-btn active" data-share-tab="private">私聊</button>
+                <button type="button" class="char-info-tab-btn" data-share-tab="group">群聊</button>
+            </div>
+
             <div style="max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; margin-bottom: 15px;">
                 <ul id="share-char-list" class="binding-list">
+                    <!-- JS 填充 -->
+                </ul>
+                <ul id="share-group-list" class="binding-list" style="display: none;">
                     <!-- JS 填充 -->
                 </ul>
             </div>
