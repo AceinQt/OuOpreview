@@ -2964,7 +2964,7 @@
                         <div class="setting-row" style="padding-top:0;">
                             <div style="display:flex; flex-direction:column;">
                                 <span style="font-size:14px; font-weight:600; color:#333;">关联聊天记忆</span>
-                                <span style="font-size:11px; color:#999;">开启后 AI 将读取选中角色的聊天记录</span>
+                                <span style="font-size:11px; color:#999;">开启后 AI 将读取选中角色/群聊的聊天记录</span>
                             </div>
                             <div style="display: flex; align-items: center;">
                                 <!-- 修改：开关在前，输入框在后 -->
@@ -2978,8 +2978,8 @@
                                     style="opacity: 0; pointer-events: none; transition: opacity 0.2s; width: 45px;">
                             </div>
                         </div>
-                        <div class="world-section-title">活跃的角色 (Char)</div>
-                        <!-- 列表容器将由 JS 填充 -->
+                        <div class="world-section-title">活跃的角色 & 群聊</div>
+                        <!-- 列表容器将由 JS 填充（私聊角色 + 群聊混合列表） -->
                         <div class="world-list-container">
                             <ul id="forum-char-list" class="binding-list"></ul>
                         </div>
