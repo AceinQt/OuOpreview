@@ -4,15 +4,33 @@
                 const modal = document.getElementById('share-post-modal');
                 const confirmBtn = document.getElementById('confirm-share-btn');
                 const charList = document.getElementById('share-char-list');
+                const groupList = document.getElementById('share-group-list');
                 const countInput = document.getElementById('share-comment-count-input'); // 获取输入框
+                const tabBar = document.getElementById('share-target-tab-bar');
+
+                // --- tab 切换：私聊 / 群聊 ---
+                if (tabBar) {
+                    tabBar.querySelectorAll('.char-info-tab-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            tabBar.querySelectorAll('.char-info-tab-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            const isPrivate = btn.dataset.shareTab === 'private';
+                            charList.style.display = isPrivate ? '' : 'none';
+                            if (groupList) groupList.style.display = isPrivate ? 'none' : '';
+                        });
+                    });
+                }
 
                 const newBtn = confirmBtn.cloneNode(true);
                 confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
 
                 newBtn.addEventListener('click', async () => {
                     const selectedCharIds = Array.from(charList.querySelectorAll('input:checked')).map(input => input.value);
+                    const selectedGroupIds = groupList
+                        ? Array.from(groupList.querySelectorAll('input:checked')).map(input => input.value)
+                        : [];
 
-                    if (selectedCharIds.length === 0) {
+                    if (selectedCharIds.length === 0 && selectedGroupIds.length === 0) {
                         showToast('请至少选择一个分享对象。');
                         return;
                     }
@@ -65,21 +83,36 @@
                         richContext = modal.dataset.postRichContext || "";
                     }
 
+                    const buildShareMessage = () => {
+                        const messageContent = `[喵坛分享]标题：${postTitle}\n内容：${visibleSnippet}<span style="display:none;">${richContext}</span>`;
+                        return {
+                            id: `msg_${Date.now()}_${Math.random()}`,
+                            role: 'user',
+                            content: messageContent,
+                            parts: [{ type: 'text', text: messageContent }],
+                            timestamp: Date.now()
+                        };
+                    };
+
                     selectedCharIds.forEach(charId => {
                         const character = db.characters.find(c => c.id === charId);
                         if (character) {
-                            const messageContent = `[喵坛分享]标题：${postTitle}\n内容：${visibleSnippet}<span style="display:none;">${richContext}</span>`;
-
-                            const message = {
-                                id: `msg_${Date.now()}_${Math.random()}`,
-                                role: 'user',
-                                content: messageContent,
-                                parts: [{ type: 'text', text: messageContent }],
-                                timestamp: Date.now()
-                            };
+                            const message = buildShareMessage();
                             character.history.push(message);
-                            saveSingleChat(charId, 'private'); 
+                            saveSingleChat(charId, 'private');
                             saveMessageToDB(message, charId, 'private');
+                        }
+                    });
+
+                    selectedGroupIds.forEach(groupId => {
+                        const group = db.groups.find(g => g.id === groupId);
+                        if (group) {
+                            const message = buildShareMessage();
+                            message.senderId = 'user_me'; // 群聊消息需要标记发送者
+                            if (!group.history) group.history = [];
+                            group.history.push(message);
+                            saveSingleChat(groupId, 'group');
+                            saveMessageToDB(message, groupId, 'group');
                         }
                     });
 
@@ -87,7 +120,8 @@
                     try { if (typeof renderChatList === 'function') renderChatList(); } catch (e) { }
 
                     modal.classList.remove('visible');
-                    showToast(`成功分享给 ${selectedCharIds.length} 位联系人！`);
+                    const totalCount = selectedCharIds.length + selectedGroupIds.length;
+                    showToast(`成功分享给 ${totalCount} 个聊天！`);
                 });
             }
 
@@ -101,6 +135,7 @@
 
                 const modal = document.getElementById('share-post-modal');
                 const charList = document.getElementById('share-char-list');
+                const groupList = document.getElementById('share-group-list');
                 const detailsElement = modal.querySelector('details');
 
                 // --- 1. 清理标题中的 [New!] 标记 ---
@@ -134,7 +169,7 @@
 
                 modal.dataset.postRichContext = richContext;
 
-                // --- 4. 渲染分享对象列表 (保持不变) ---
+                // --- 4. 渲染分享对象列表 ---
                 charList.innerHTML = '';
                 if (db.characters.length > 0) {
                     db.characters.forEach(char => {
@@ -153,7 +188,27 @@
                     charList.innerHTML = '<li style="color: #888;">暂无可以分享的角色。</li>';
                 }
 
+                // --- 4.5 渲染群聊列表（与私聊同样式） ---
+                if (groupList) {
+                    groupList.innerHTML = '';
+                    if (db.groups && db.groups.length > 0) {
+                        db.groups.forEach(group => {
+                            const li = document.createElement('li');
+                            li.className = 'binding-list-item';
+                            li.innerHTML = `
+                <input type="checkbox" id="share-to-group-${group.id}" value="${group.id}">
+                <label for="share-to-group-${group.id}" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${group.avatar}" alt="${group.name}" style="width: 32px; height: 32px; border-radius: 50%;">
+                    ${group.name}
+                </label>
+            `;
+                            groupList.appendChild(li);
+                        });
+                    } else {
+                        groupList.innerHTML = '<li style="color: #888;">暂无可以分享的群聊。</li>';
+                    }
+                }
+
                 if (detailsElement) detailsElement.open = false;
                 modal.classList.add('visible');
             }
-
