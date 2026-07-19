@@ -75,7 +75,7 @@
                     if (!worldBookList || !charList) return;
 
                     // 获取当前数据
-                    const currentBindings = db.forumBindings || { worldBookIds: [], charIds: [], useChatHistory: false, historyLimit: 50 };
+                    const currentBindings = db.forumBindings || { worldBookIds: [], charIds: [], groupIds: [], useChatHistory: false, historyLimit: 50 };
 
                     // --- 设置开关状态及输入框显隐 ---
                     if (historyToggle) {
@@ -111,9 +111,10 @@ if (forumApiSel && typeof window.populateChatApiPresetSelect === 'function') {
                         });
                     }
 
-                    // --- 填充角色列表 ---
+                    // --- 填充角色 & 群聊混合列表 ---
                     charList.innerHTML = '';
-                    if (db.characters.length > 0) {
+                    const groups = db.groups || [];
+                    if (db.characters.length > 0 || groups.length > 0) {
                         db.characters.forEach(char => {
                             const isChecked = currentBindings.charIds.includes(char.id);
                             const li = document.createElement('li');
@@ -123,6 +124,21 @@ if (forumApiSel && typeof window.populateChatApiPresetSelect === 'function') {
                     <label for="char-bind-${char.id}" style="display: flex; align-items: center;">
                         <img src="${char.avatar}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; object-fit:cover;">
                         ${char.remarkName}
+                    </label>
+                `;
+                            charList.appendChild(li);
+                        });
+
+                        const boundGroupIds = currentBindings.groupIds || [];
+                        groups.forEach(group => {
+                            const isChecked = boundGroupIds.includes(group.id);
+                            const li = document.createElement('li');
+                            li.className = 'binding-list-item';
+                            li.innerHTML = `
+                    <input type="checkbox" class="group-checkbox" id="group-bind-${group.id}" value="${group.id}" ${isChecked ? 'checked' : ''}>
+                    <label for="group-bind-${group.id}" style="display: flex; align-items: center;">
+                        <img src="${group.avatar}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; object-fit:cover;">
+                        ${group.name}<span style="font-size:11px; color:#999; margin-left:5px;">[群聊]</span>
                     </label>
                 `;
                             charList.appendChild(li);
@@ -143,6 +159,7 @@ if (forumApiSel && typeof window.populateChatApiPresetSelect === 'function') {
 
                         const selectedWorldBookIds = Array.from(worldBookList.querySelectorAll('.item-checkbox:checked')).map(input => input.value);
                         const selectedCharIds = Array.from(charList.querySelectorAll('.char-checkbox:checked')).map(input => input.value);
+                        const selectedGroupIds = Array.from(charList.querySelectorAll('.group-checkbox:checked')).map(input => input.value);
 
                         const useHistory = currentToggle ? currentToggle.checked : false;
 
@@ -160,6 +177,7 @@ if (forumApiSel && typeof window.populateChatApiPresetSelect === 'function') {
                         db.forumBindings = {
     worldBookIds: selectedWorldBookIds,
     charIds: selectedCharIds,
+    groupIds: selectedGroupIds,
     userPersonaIds: db.forumBindings ? db.forumBindings.userPersonaIds : [],
     useChatHistory: useHistory,
     historyLimit: limit,

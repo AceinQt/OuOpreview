@@ -36,7 +36,7 @@ function getForumGenerationContext() {
 
     // 获取绑定信息
     // 1. 读取 historyLimit，如果没有则默认为 50
-    const bindings = db.forumBindings || { worldBookIds: [], charIds: [], useChatHistory: false, historyLimit: 50 };
+    const bindings = db.forumBindings || { worldBookIds: [], charIds: [], groupIds: [], useChatHistory: false, historyLimit: 50 };
     
     // 确保它是数字，防止读取出错（兜底逻辑）
     const historyLimit = Number(bindings.historyLimit) || 50; // <--- 新增：获取保存的条数
@@ -98,6 +98,44 @@ function getForumGenerationContext() {
                     }
                 } else {
                     context += `[近期私聊记录]: (已关闭记忆关联)\n`;
+                }
+                context += "\n";
+            }
+        });
+    }
+
+    // (C2) 群聊人设 & 近期动态 (Groups)
+    if (bindings.groupIds && bindings.groupIds.length > 0) {
+        context += "===== 关联群聊 & 近期动态 =====\n";
+
+        bindings.groupIds.forEach(id => {
+            const group = (db.groups || []).find(g => g.id === id);
+            if (group) {
+                context += `--- 群聊: ${group.name} ---\n`;
+                const memberNames = (group.members || []).map(m => m.realName || m.groupNickname).filter(Boolean).join('、');
+                if (memberNames) context += `群成员: ${memberNames}\n`;
+
+                if (bindings.useChatHistory) {
+                    if (group.history && group.history.length > 0) {
+                        const recentHistory = group.history.slice(-historyLimit);
+                        const historyStr = recentHistory.map(msg => {
+                            let name;
+                            if (msg.role === 'user') {
+                                name = group.me?.realName || 'User';
+                            } else {
+                                const sender = (group.members || []).find(mem => mem.id === msg.senderId);
+                                name = sender ? sender.realName : '未知成员';
+                            }
+                            let cleanContent = msg.content;
+                            if (typeof cleanContent !== 'string') cleanContent = "[非文本消息]";
+                            return `${name}: ${cleanContent}`;
+                        }).join('\n');
+                        context += `[近期群聊记录]:\n${historyStr}\n`;
+                    } else {
+                        context += `[近期群聊记录]: 暂无\n`;
+                    }
+                } else {
+                    context += `[近期群聊记录]: (已关闭记忆关联)\n`;
                 }
                 context += "\n";
             }
