@@ -349,6 +349,9 @@ window.init = async () => {
      if (typeof setupSwipeBackToggle === 'function') {
             setupSwipeBackToggle();
         }
+        if (typeof setupSystemBackToggle === 'function') {
+            setupSystemBackToggle();
+        }
         
 
         // 预设相关
