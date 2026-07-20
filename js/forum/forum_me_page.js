@@ -58,6 +58,9 @@ function setupMePageFeature() {
         if (realNameInput) realNameInput.value = identity.realName || '';
         if (personaInput) personaInput.value = identity.persona || '';
         if (customCssInput) customCssInput.value = identity.customDetailCss || '';
+
+        // 人设绑定：记录当前论坛身份来源的 user 人设 ID（读取人设后未保存的临时值在此重置）
+        window._forumMeBindPersonaId = identity.boundPersonaId || null;
         
     // ★ [论坛懒加载 F5] 懒加载下内存只有窗口，发帖数走 DB 流式统计（先显示…再异步回填）
     if (window.LAZY_FORUM && window.countMyForumPosts) {
@@ -287,9 +290,11 @@ function setupMePageFeature() {
             if (checked) {
                 const index = parseInt(checked.value);
                 const preset = db.userPersonas[index];
-                if (preset) {         
+                if (preset) {
                     realNameInput.value = preset.realName || '';
                     personaInput.value = preset.persona || '';
+                    // 记录绑定的人设 ID，保存后 user 人设改动会同步到论坛
+                    window._forumMeBindPersonaId = preset.id || null;
                     if (typeof showToast === 'function') {
                         showToast(`已读取人设：${preset.nickname}`);
                     }
@@ -327,6 +332,18 @@ function setupMePageFeature() {
                 const currentPersona = document.getElementById('me-persona-input');
                 const currentCss = document.getElementById('me-custom-css-input');
 
+                // 处理人设绑定：手动改过内容视为脱离绑定，避免之后被 user 人设覆盖
+                let bindId = window._forumMeBindPersonaId || null;
+                if (bindId) {
+                    const boundPreset = (db.userPersonas || []).find(p => p.id === bindId);
+                    if (!boundPreset ||
+                        (currentRealName?.value.trim() || '') !== (boundPreset.realName || '').trim() ||
+                        (currentPersona?.value.trim() || '') !== (boundPreset.persona || '').trim()) {
+                        bindId = null;
+                        window._forumMeBindPersonaId = null;
+                    }
+                }
+
                 // 更新内存中的数据
                 db.forumUserIdentity = {
                     nickname: currentNickname?.value.trim() || '新用户',
@@ -334,7 +351,8 @@ function setupMePageFeature() {
                     persona: currentPersona?.value.trim() || '',
                     realName: currentRealName?.value.trim() || '',
                     anonCode: finalCode,
-                    customDetailCss: currentCss?.value || ''
+                    customDetailCss: currentCss?.value || '',
+                    boundPersonaId: bindId
                 };                
 
                 // ✅ 修复7: 调用保存函数
