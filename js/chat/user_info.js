@@ -101,6 +101,14 @@ if (backBtn) {
                             }
                         });
                     }
+                    // 同步论坛身份：论坛"我"页面绑定了该档案时，姓名/人设跟随变动
+                    if (db.forumUserIdentity && db.forumUserIdentity.boundPersonaId === existingPersona.id) {
+                        db.forumUserIdentity.realName = realName;
+                        db.forumUserIdentity.persona  = persona;
+                        if (typeof saveForumMeta === 'function') {
+                            await saveForumMeta();
+                        }
+                    }
 
                     // 状态有变更时向所有涉及该档案的聊天推送通知
                     if (status !== oldStatus) {
@@ -172,6 +180,11 @@ if (source === 'chat-room') {
                     await dexieDB.userPersonas.delete(p.id);
                 }
                 db.userPersonas = db.userPersonas.filter(x => x.id !== p.id);
+                // 论坛身份若绑定了该档案，解除绑定（内容保留）
+                if (db.forumUserIdentity && db.forumUserIdentity.boundPersonaId === p.id) {
+                    db.forumUserIdentity.boundPersonaId = null;
+                    if (typeof saveForumMeta === 'function') await saveForumMeta();
+                }
                 if (typeof renderContacts === 'function') renderContacts();
                 showToast('档案已删除');
                 goBackToContacts();
