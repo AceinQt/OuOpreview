@@ -10,6 +10,7 @@ const globalSettingKeys =[
     'enableTopSafeArea', 'enableBottomSafeArea', 
     'enableScreenAdaptation',
     'enableSwipeBack',
+    'enableSystemBack',
     // ★ 学习模块设置（绑定人设/API预设，存量小放 globalSettings）
     'studySettings',
     // ★ 系统消息通知设置（总开关 / 全局后台保活时长）
@@ -45,6 +46,7 @@ window.db = {
     enableBottomSafeArea: true,
     enableScreenAdaptation: false,
     enableSwipeBack: false,
+    enableSystemBack: false,
 
     // ★ 系统消息通知设置
     //   enabled: 总开关（是否弹系统通知，含桌面角标）
