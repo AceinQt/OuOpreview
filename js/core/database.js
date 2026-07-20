@@ -36,7 +36,7 @@ window.db = {
     peekData: {}, 
 
     // --- 论坛元数据 ---
-    forumUserIdentity: { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' },
+    forumUserIdentity: { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '', boundPersonaId: null },
     forumBindings: { worldBookIds:[], charIds: [], groupIds: [], userPersonaIds:[], useChatHistory: false, historyLimit: 50 },
     watchingPostIds: [],
     favoritePostIds:[],
