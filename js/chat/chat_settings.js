@@ -97,19 +97,42 @@ function setupChatSettings() {
     // 1. 编辑我的用户身份档案
     const editUserPersonaBtn = document.getElementById('edit-user-persona-btn');
     if (editUserPersonaBtn) {
-        editUserPersonaBtn.addEventListener('click', () => {
+        editUserPersonaBtn.addEventListener('click', async () => {
             const char = db.characters.find(c => c.id === currentChatId);
-            if (char && char.boundPersonaId) {
-                const persona = db.userPersonas.find(p => p.id === char.boundPersonaId);
-                if (persona) {
-                    document.getElementById('chat-settings-sidebar').classList.remove('open'); // 关闭侧边栏
-                    if (typeof openUserPersonaScreen === 'function') openUserPersonaScreen(persona, 'chat-room');
-                } else {
-                    showToast('未找到绑定的身份档案，请重新绑定');
-                }
-            } else {
-                showToast('请先绑定一个身份档案');
+            if (!char) return;
+
+            let persona = char.boundPersonaId
+                ? (db.userPersonas || []).find(p => p.id === char.boundPersonaId)
+                : null;
+
+            // 存量聊天未绑定（或绑定的档案已不存在）：询问是否用聊天内的身份信息新建档案并绑定
+            if (!persona) {
+                const ok = await AppUI.confirm(
+                    '当前聊天还没有绑定身份档案。\n是否用本聊天中的身份信息新建一个档案并自动绑定？',
+                    '未绑定档案', '新建并绑定', '取消'
+                );
+                if (!ok) return;
+
+                persona = {
+                    id: Date.now().toString() + Math.random().toString().slice(2, 6),
+                    realName: char.myName || '我',
+                    nickname: char.myNickname || char.myName || '我',
+                    persona: char.myPersona || '',
+                    status: '在线',
+                    avatar: char.myAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'
+                };
+                if (!db.userPersonas) db.userPersonas = [];
+                db.userPersonas.push(persona);
+                char.boundPersonaId = persona.id;
+
+                if (typeof saveUserPersonaTable === 'function') await saveUserPersonaTable();
+                await saveSingleChat(currentChatId, 'private');
+                if (typeof renderContacts === 'function') renderContacts();
+                showToast(`已新建档案"${persona.nickname}"并绑定`);
             }
+
+            document.getElementById('chat-settings-sidebar').classList.remove('open'); // 关闭侧边栏
+            if (typeof openUserPersonaScreen === 'function') openUserPersonaScreen(persona, 'chat-room');
         });
     }
 

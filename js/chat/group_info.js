@@ -206,18 +206,43 @@ if (ownerAvatarEl) {
     ownerAvatarEl.parentNode.replaceChild(newOwnerAvatar, ownerAvatarEl);
     newOwnerAvatar.src = meAvatar;  // 重新赋值（克隆后数据已在）
 
-    // 找到绑定的 persona 对象
-    const boundId = group.me && group.me.boundPersonaId;
-    const persona = boundId && db.userPersonas && db.userPersonas.find(p => p.id === boundId);
+    newOwnerAvatar.style.cursor = 'pointer';
+    newOwnerAvatar.addEventListener('click', async () => {
+        // 点击时实时查找，避免持有渲染时的旧引用
+        const boundId = group.me && group.me.boundPersonaId;
+        let persona = boundId ? (db.userPersonas || []).find(p => p.id === boundId) : null;
 
-    if (persona) {
-        newOwnerAvatar.style.cursor = 'pointer';
-        newOwnerAvatar.addEventListener('click', () => {
-            if (typeof openUserPersonaScreen === 'function') {
-                openUserPersonaScreen(persona, 'group-info');
-            }
-        });
-    }
+        // 存量群聊未绑定（或绑定的档案已不存在）：询问是否用群内身份信息新建档案并绑定
+        if (!persona) {
+            const ok = await AppUI.confirm(
+                '当前群聊还没有绑定身份档案。\n是否用本群中的身份信息新建一个档案并自动绑定？',
+                '未绑定档案', '新建并绑定', '取消'
+            );
+            if (!ok) return;
+
+            if (!group.me) group.me = {};
+            persona = {
+                id: Date.now().toString() + Math.random().toString().slice(2, 6),
+                realName: group.me.realName || '我',
+                nickname: group.me.nickname || group.me.realName || '我',
+                persona: group.me.persona || '',
+                status: '在线',
+                avatar: group.me.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg'
+            };
+            if (!db.userPersonas) db.userPersonas = [];
+            db.userPersonas.push(persona);
+            group.me.boundPersonaId = persona.id;
+
+            if (typeof saveUserPersonaTable === 'function') await saveUserPersonaTable();
+            await saveSingleChat(group.id, 'group');
+            if (typeof renderContacts === 'function') renderContacts();
+            showToast(`已新建档案"${persona.nickname}"并绑定`);
+        }
+
+        if (typeof openUserPersonaScreen === 'function') {
+            openUserPersonaScreen(persona, 'group-info');
+        }
+    });
 }
     
     // 成员列表
