@@ -23,7 +23,7 @@ if (backBtn) {
         if (source === 'chat-room') {
             switchScreen('chat-room-screen');
         } else if (source === 'group-info') {
-            switchScreen('group-info-screen');
+            _returnToGroupInfoScreen();
         } else {
             goBackToContacts();
         }
@@ -153,7 +153,7 @@ if (source === 'chat-room') {
     switchScreen('chat-room-screen');
     if (typeof loadSettingsToSidebar === 'function') loadSettingsToSidebar();
 } else if (source === 'group-info') {
-    switchScreen('group-info-screen');  // ← 补上
+    _returnToGroupInfoScreen();  // ← 重新渲染，避免群主信息显示旧值
 } else {
     goBackToContacts();
 }
@@ -205,6 +205,19 @@ if (source === 'chat-room') {
             const panel = personaScreen.querySelector(`.char-info-tab-panel[data-panel="${tab}"]`);
             if (panel) panel.classList.add('active');
         });
+    }
+}
+
+// 返回群信息页时重新渲染（群主名片可能刚绑定/编辑过档案），仅切屏会显示旧值
+function _returnToGroupInfoScreen() {
+    const infoScreen = document.getElementById('group-info-screen');
+    const group = infoScreen && db.groups
+        ? db.groups.find(g => g.id === infoScreen.dataset.groupId)
+        : null;
+    if (group && typeof openGroupInfoScreen === 'function') {
+        openGroupInfoScreen(group, infoScreen.dataset.source || '');
+    } else {
+        switchScreen('group-info-screen');
     }
 }
 

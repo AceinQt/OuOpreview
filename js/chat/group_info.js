@@ -190,8 +190,8 @@ function openGroupInfoScreen(group, source = '') {
     let meAvatar = me.avatar || '';
     let meRealName = me.realName || '—';
     let meNickname = me.nickname || me.realName || '—';
-    if (group.boundPersonaId) {
-        const p = db.userPersonas && db.userPersonas.find(up => up.id === group.boundPersonaId);
+    if (me.boundPersonaId) {
+        const p = db.userPersonas && db.userPersonas.find(up => up.id === me.boundPersonaId);
         if (p) { meRealName = p.realName; meNickname = p.nickname; meAvatar = p.avatar || meAvatar; }
     }
     if (ownerAvatar)   ownerAvatar.src          = meAvatar;
@@ -221,10 +221,11 @@ if (ownerAvatarEl) {
             if (!ok) return;
 
             if (!group.me) group.me = {};
+            const oldNick = group.me.nickname || group.me.realName || '我';
             persona = {
                 id: Date.now().toString() + Math.random().toString().slice(2, 6),
-                realName: group.me.realName || '我',
-                nickname: group.me.nickname || group.me.realName || '我',
+                realName: oldNick,
+                nickname: oldNick,
                 persona: group.me.persona || '',
                 status: '在线',
                 avatar: group.me.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg'
@@ -232,6 +233,10 @@ if (ownerAvatarEl) {
             if (!db.userPersonas) db.userPersonas = [];
             db.userPersonas.push(persona);
             group.me.boundPersonaId = persona.id;
+            // 回写群内身份，保持与新档案一致（昵称字段 user_info 的保存同步不覆盖，这里补齐）
+            group.me.realName = persona.realName;
+            group.me.nickname = persona.nickname;
+            if (!group.me.avatar) group.me.avatar = persona.avatar;
 
             if (typeof saveUserPersonaTable === 'function') await saveUserPersonaTable();
             await saveSingleChat(group.id, 'group');

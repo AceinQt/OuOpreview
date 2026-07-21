@@ -251,6 +251,9 @@ async function subscribe() {
     }
 
     // 清除 peek 池上的 _cfHandedOff 标记（Wave B 用；Wave A 下 peek 池一般没有标记，无副作用）
+    // 【修复·重复推送】已物化(_cfMaterialized)的话题跳过、标记原样保留：
+    // 新逻辑下物化即删、正常不会走到这，但老库数据可能还留着已送达话题，
+    // 抹掉它的标记会让它被 schedulePeek 重新排期 → 同一话题次日重复推送+重复写历史。
     function clearPeekHandoff(chat) {
         const q = chat && chat.proactiveMessageQueue;
         if (!Array.isArray(q)) return;
@@ -258,7 +261,7 @@ async function subscribe() {
         if (peek && peek.content) {
             for (const k of Object.keys(peek.content)) {
                 const topic = peek.content[k];
-                if (topic) { delete topic._cfHandedOff; delete topic._cfScheduledAt; delete topic._cfMaterialized; }
+                if (topic && !topic._cfMaterialized) { delete topic._cfHandedOff; delete topic._cfScheduledAt; }
             }
         }
     }
@@ -403,8 +406,8 @@ async function subscribe() {
         if (!peek || !peek.content) return;
 
         const keys = Object.keys(peek.content);
-        // 已有在飞的话题（持久标记）→ 一次只保持一组
-        if (keys.some(k => peek.content[k] && peek.content[k]._cfHandedOff)) return;
+        // 已有在飞的话题（持久标记）→ 一次只保持一组；已物化的不算在飞(老库残留不该卡住新移交)
+        if (keys.some(k => peek.content[k] && peek.content[k]._cfHandedOff && !peek.content[k]._cfMaterialized)) return;
 
         const now = Date.now();
 
@@ -420,10 +423,10 @@ async function subscribe() {
         }
         const target = Math.max(now, lastInteract + 60 * 60 * 1000); // 送达下限:上次聊天+1h
 
-        // 候选:未移交、有消息、未过期(generatedAt+72h)的话题
+        // 候选:未移交、未物化(已送达的老库残留不重排)、有消息、未过期(generatedAt+72h)的话题
         const entries = keys
             .map(k => ({ k, topic: peek.content[k] }))
-            .filter(e => e.topic && !e.topic._cfHandedOff && Array.isArray(e.topic.messages) && e.topic.messages.length)
+            .filter(e => e.topic && !e.topic._cfHandedOff && !e.topic._cfMaterialized && Array.isArray(e.topic.messages) && e.topic.messages.length)
             .filter(e => {
                 const exp = e.topic.expireAt || ((e.topic.generatedAt || now) + 72 * 60 * 60 * 1000);
                 return exp > now;

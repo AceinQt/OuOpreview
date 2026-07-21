@@ -113,10 +113,11 @@ function setupChatSettings() {
                 );
                 if (!ok) return;
 
+                const oldNick = char.myNickname || char.myName || '我';
                 persona = {
                     id: Date.now().toString() + Math.random().toString().slice(2, 6),
-                    realName: char.myName || '我',
-                    nickname: char.myNickname || char.myName || '我',
+                    realName: oldNick,
+                    nickname: oldNick,
                     persona: char.myPersona || '',
                     status: '在线',
                     avatar: char.myAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'
