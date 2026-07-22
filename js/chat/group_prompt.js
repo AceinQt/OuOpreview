@@ -137,8 +137,14 @@ function generateGroupSystemPrompt(group, retrievedContext = '') {
 
     prompt += `5. **模拟群聊氛围**: 为了让群聊看起来真实、活跃且混乱，你的每一次回复都必须遵循以下随机性要求：\n`;
     const numMembers = group.members.length;
-    const minMessages = numMembers * 3;
-    const maxMessages = numMembers * 5;
+    // 回复条数：优先使用用户自定义 replyRange（格式“最低-最高”），否则按成员数自动计算
+    let minMessages = numMembers * 3;
+    let maxMessages = numMembers * 5;
+    const _grr = (group.replyRange || '').match(/^(\d+)\s*-\s*(\d+)$/);
+    if (_grr) {
+        const _lo = parseInt(_grr[1], 10), _hi = parseInt(_grr[2], 10);
+        if (_lo > 0 && _hi >= _lo) { minMessages = _lo; maxMessages = _hi; }
+    }
     prompt += `   - **消息数量**: 你的回复需要包含 **${minMessages}到${maxMessages}条** 消息。确保有足够多的互动。\n`;
     prompt += `   - **发言者与顺序随机**: 发言顺序随机，一个成员可以连续发送多条消息。\n`;
     prompt += `   - **内容多样性**: 你的回复应以普通文本消息为主，但可以 **偶尔、选择性地** 让某个成员发送一条特殊消息（成员拥有的表情包、语音、照片/视频），以增加真实感。不要滥用特殊消息。\n`;

@@ -428,6 +428,29 @@ function setupGroupChatSystem() {
             }
         });
     }
+
+    // 回复条数：格式“最低数-最高数”，留空为默认（按群成员数计算）
+    const groupReplyRangeItem = document.getElementById('setting-group-reply-range-item');
+    if (groupReplyRangeItem) {
+        groupReplyRangeItem.addEventListener('click', async () => {
+            const currentVal = document.getElementById('setting-group-reply-range').value || '';
+            const result = await AppUI.prompt('请输入回复条数范围，格式“最低数-最高数”（如 6-15）；留空按群成员数自动计算', currentVal, '回复条数', '确定', '取消');
+            if (result === null) return; // 取消
+            const trimmed = result.trim();
+            if (trimmed === '') {
+                document.getElementById('setting-group-reply-range').value = '';
+                document.getElementById('setting-group-reply-range-display').textContent = '默认';
+                return;
+            }
+            const m = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+            if (!m) { showToast('格式不正确，请输入如 6-15'); return; }
+            const lo = parseInt(m[1], 10), hi = parseInt(m[2], 10);
+            if (lo <= 0 || hi < lo) { showToast('请确保最低数≥1且不大于最高数'); return; }
+            const normalized = `${lo}-${hi}`;
+            document.getElementById('setting-group-reply-range').value = normalized;
+            document.getElementById('setting-group-reply-range-display').textContent = normalized;
+        });
+    }
 }
 
 // --- 辅助函数 ---
@@ -483,6 +506,10 @@ function loadGroupSettingsToSidebar() {
     document.getElementById('setting-group-max-memory').value = group.maxMemory || 10;
     const maxMemDisplay = document.getElementById('setting-group-max-memory-display');
     if (maxMemDisplay) maxMemDisplay.textContent = group.maxMemory || 10;
+
+    document.getElementById('setting-group-reply-range').value = group.replyRange || '';
+    const groupReplyRangeDisplay = document.getElementById('setting-group-reply-range-display');
+    if (groupReplyRangeDisplay) groupReplyRangeDisplay.textContent = group.replyRange || '默认';
     const groupTimePEl = document.getElementById('setting-group-time-perception');
 if (groupTimePEl) groupTimePEl.checked = group.timePerceptionEnabled || false;
 
@@ -625,6 +652,7 @@ async function saveGroupSettingsFromSidebar() {
     }
 
     group.maxMemory = document.getElementById('setting-group-max-memory').value;
+    group.replyRange = document.getElementById('setting-group-reply-range').value || '';
     const groupTimePEl = document.getElementById('setting-group-time-perception');
 if (groupTimePEl) group.timePerceptionEnabled = groupTimePEl.checked;
 
