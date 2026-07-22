@@ -909,6 +909,8 @@
             
             <!-- 隐藏的记忆轮数 Input，用来配合原有保存逻辑 -->
             <input type="hidden" id="setting-max-memory" value="10">
+            <!-- 隐藏的回复条数 Input，空值表示默认 -->
+            <input type="hidden" id="setting-reply-range" value="">
             <!-- ============================== -->
 
             <!-- 设置项列表 -->
@@ -938,6 +940,13 @@
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-cpu"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg></div>
                     <div class="item-details"><span class="item-name">最大记忆轮数</span></div>
                     <span id="setting-max-memory-display" class="item-value">10</span>
+                    <svg class="chevron-icon" style="margin-left: 5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+                <!-- 回复条数 (Prompt触发) -->
+                <div class="settings-item" id="setting-reply-range-item">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+                    <div class="item-details"><span class="item-name">回复条数</span></div>
+                    <span id="setting-reply-range-display" class="item-value">默认</span>
                     <svg class="chevron-icon" style="margin-left: 5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
                                 <!-- 时间感知 -->
@@ -1016,6 +1025,7 @@
             <input type="hidden" id="setting-group-my-nickname">
             <textarea id="setting-group-my-persona" style="display:none;"></textarea>
             <input type="hidden" id="setting-group-max-memory" value="10">
+            <input type="hidden" id="setting-group-reply-range" value="">
             <input type="file" id="setting-group-chat-bg-upload" accept="image/*" style="display:none;">
             <!-- ======================================= -->
 
@@ -1059,7 +1069,14 @@
                     <span id="setting-group-max-memory-display" class="item-value">10</span>
                     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
-                
+                <!-- ③-a2 回复条数 -->
+                <div class="settings-item" id="setting-group-reply-range-item">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+                    <div class="item-details"><span class="item-name">回复条数</span></div>
+                    <span id="setting-group-reply-range-display" class="item-value">默认</span>
+                    <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+
                 <!-- ③-b 时间感知 -->
 <div class="settings-item toggle-setting" style="cursor: default;">
     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
