@@ -413,14 +413,26 @@ async function subscribe() {
 
         // 最近一条真实聊天(排除主动/视觉消息)——peek 送达至少晚于它 1 小时
         let lastInteract = 0;
+        let lastRealIdx = -1;
         if (Array.isArray(chat.history)) {
             for (let i = chat.history.length - 1; i >= 0; i--) {
                 const m = chat.history[i];
                 if (m && m.id && !m.id.includes('msg_proactive_') && !m.id.includes('msg_visual_')) {
-                    lastInteract = m.timestamp || 0; break;
+                    lastInteract = m.timestamp || 0; lastRealIdx = i; break;
                 }
             }
         }
+
+        // 【不连投】最后一条真实消息之后若已存在 msg_proactive_(用户还没回复上一条主动消息)→ 不再移交新 peek。
+        // 与本地投递路径的 hasSentProactiveSinceLastReal 守卫一致：CF 路径当初漏了这条,才导致 peek 连续投递。
+        // (在飞未物化的 peek 由上方 _cfHandedOff 守卫拦；本条负责“已物化但未获回复”的场景。)
+        if (Array.isArray(chat.history)) {
+            const start = lastRealIdx === -1 ? 0 : lastRealIdx + 1;
+            for (let i = start; i < chat.history.length; i++) {
+                if (chat.history[i] && chat.history[i].id && chat.history[i].id.includes('msg_proactive_')) return;
+            }
+        }
+
         const target = Math.max(now, lastInteract + 60 * 60 * 1000); // 送达下限:上次聊天+1h
 
         // 候选:未移交、未物化(已送达的老库残留不重排)、有消息、未过期(generatedAt+72h)的话题
