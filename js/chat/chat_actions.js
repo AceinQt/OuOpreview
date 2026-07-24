@@ -4,10 +4,7 @@ function createContextMenu(items, x, y) {
                 const menu = document.createElement('div');
                 menu.className = 'context-menu';
 
-                // 先添加到 DOM 以便计算高度，但暂时隐藏
-                menu.style.visibility = 'hidden';
-                document.body.appendChild(menu);
-
+                // 先填充菜单项，再测量尺寸
                 items.forEach(item => {
                     const menuItem = document.createElement('div');
                     menuItem.className = 'context-menu-item';
@@ -19,6 +16,13 @@ function createContextMenu(items, x, y) {
                     };
                     menu.appendChild(menuItem);
                 });
+
+                // 以 visibility:hidden 挂载，以便 getBoundingClientRect 测量尺寸，
+                // 同时避免菜单“闪现”在最终位置之外（定位计算前不可见）。
+                // 注意：菜单自身没有 opacity/transform 初始态，所以隐藏期间不会
+                // 提前播放 CSS 动画，恢复可见时才从 animation 第一帧干净淡入。
+                menu.style.visibility = 'hidden';
+                document.body.appendChild(menu);
 
                 // 获取菜单尺寸和窗口尺寸
                 const menuRect = menu.getBoundingClientRect();
@@ -43,7 +47,9 @@ function createContextMenu(items, x, y) {
                     menu.style.left = `${x}px`;
                 }
 
-                // 恢复可见性
+                // 定位完成后恢复可见。强制重排一行，确保动画从第一帧开始播放，
+                // 不会因为样式批量写入而跳过起始帧造成“闪现”。
+                void menu.offsetWidth; // reflow
                 menu.style.visibility = 'visible';
 
                 // 绑定一次性点击关闭事件

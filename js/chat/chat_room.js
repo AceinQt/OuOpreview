@@ -260,10 +260,20 @@ function setupChatRoom() {
         }
     });
 
+    // 标记本次触摸的长按菜单是否已弹出。用于拦截浏览器长按时派发的原生
+    // contextmenu 事件，避免菜单被 removeContextMenu() 删掉再重建（“闪两下”）。
+    let touchLongPressFired = false;
+
     messageArea.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         // 注意：这里移除了 id === 'load-more-btn' 的判断，因为按钮已经没了
         if (isInMultiSelectMode) return;
+        // 若本次触摸长按已经弹出了菜单，跳过浏览器随后派发的原生 contextmenu。
+        // 桌面右键不受此影响，因为不会有 touchstart，touchLongPressFired 始终为 false。
+        if (touchLongPressFired) {
+            touchLongPressFired = false;
+            return;
+        }
         const messageWrapper = e.target.closest('.message-wrapper');
         if (!messageWrapper) return;
         handleMessageLongPress(messageWrapper, e.clientX, e.clientY);
@@ -273,8 +283,13 @@ function setupChatRoom() {
         // 同样移除了 load-more-btn 的判断
         const messageWrapper = e.target.closest('.message-wrapper');
         if (!messageWrapper) return;
+        touchLongPressFired = false;
+        // 在 touchstart 同步阻止默认行为，可阻止浏览器长按时派发的原生
+        // contextmenu 事件，同时也能抑制文本选中高亮。
+        e.preventDefault();
         longPressTimer = setTimeout(() => {
             const touch = e.touches[0];
+            touchLongPressFired = true;
             handleMessageLongPress(messageWrapper, touch.clientX, touch.clientY);
         }, 400);
     });
