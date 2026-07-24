@@ -84,12 +84,23 @@ function setupChatRoom() {
         chatExpansionPanel.classList.toggle('visible');
     });
     
+    // 发送按钮：touchend 给移动端，click 给 PC 端（鼠标点击只触发 click）。
+    // 移动端 touchend 已 preventDefault，不会再生效后续 click，避免重复发送。
+    let sendBtnTouchHandled = false;
     sendMessageBtn.addEventListener('touchend', (e) => {
         e.preventDefault();
+        sendBtnTouchHandled = true;
         sendMessage();
         setTimeout(() => {
             messageInput.focus();
         }, 50);
+        // 下一轮事件循环重置标记，防止长时间卡住导致 PC 端点击失效
+        setTimeout(() => { sendBtnTouchHandled = false; }, 400);
+    });
+    sendMessageBtn.addEventListener('click', () => {
+        if (sendBtnTouchHandled) return; // 移动端已通过 touchend 发送，跳过本次重复 click
+        sendMessage();
+        messageInput.focus();
     });
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !isGenerating) sendMessage();
