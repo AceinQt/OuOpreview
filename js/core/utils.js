@@ -420,6 +420,15 @@ const AppUI = {
 
             // 4. 显示弹窗 (复用 visible 类触发动画)
             overlay.classList.add('visible');
+
+            // 5. 长文案时给正文区加分隔线（高度限制与滚动由 CSS 负责）
+            contentEl.classList.remove('is-scrollable');
+            contentEl.scrollTop = 0;
+            requestAnimationFrame(() => {
+                if (contentEl.scrollHeight > contentEl.clientHeight + 1) {
+                    contentEl.classList.add('is-scrollable');
+                }
+            });
         });
     },
 
@@ -454,6 +463,7 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
 
             titleEl.innerText   = title;
             contentEl.innerText = '';
+            contentEl.classList.remove('is-scrollable');
             actionsEl.innerHTML = '';
 
             // 把 input-container 里的 input 临时替换成 select
