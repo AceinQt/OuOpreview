@@ -1,29 +1,170 @@
 // forum_generation.js - AI生成：刷新新帖 handleForumRefresh、生成楼层评论 handleGenerateComments、解析与随机网名
 
-            // --- 新增：文本解析工具函数 ---
+            // --- 标签容错：AI（尤其 Gemini）经常把标签拼错/加粗/用全角#/漏掉尾部# ---
+            // 思路：解析前先把所有"形似标签"的行归一化回标准写法，后面的解析逻辑就能保持严格。
+            const FORUM_TAG_VOCAB = [
+                { word: 'AUTHOR',   canon: '#AUTHOR#'  },
+                { word: 'TITLE',    canon: '#TITLE#'   },
+                { word: 'CONTENT',  canon: '#CONTENT#' },
+                { word: 'BODY',     canon: '#CONTENT#' },
+                { word: 'REPLY',    canon: '#REPLY#'   },
+                { word: 'REPLIES',  canon: '#REPLY#'   },
+                // 旧标签 / 常见同义词，一律归到 #REPLY#（务必排在 CONTENT 之后靠编辑距离区分）
+                { word: 'COMMENT',  canon: '#REPLY#'   },
+                { word: 'COMMENTS', canon: '#REPLY#'   },
+                { word: '作者',     canon: '#AUTHOR#'  },
+                { word: '标题',     canon: '#TITLE#'   },
+                { word: '正文',     canon: '#CONTENT#' },
+                { word: '内容',     canon: '#CONTENT#' },
+                { word: '评论',     canon: '#REPLY#'   },
+                { word: '回复',     canon: '#REPLY#'   }
+            ];
+
+            // 首字母兜底表：4 个标准标签首字母互不冲突（A/T/C/R），这是 #C、#R 这类残缺写法的最后一道防线
+            const FORUM_TAG_INITIALS = { A: '#AUTHOR#', T: '#TITLE#', C: '#CONTENT#', R: '#REPLY#' };
+
+            function _editDistance(a, b) {
+                const m = a.length, n = b.length;
+                let prev = Array.from({ length: n + 1 }, (_, j) => j);
+                for (let i = 1; i <= m; i++) {
+                    const cur = [i];
+                    for (let j = 1; j <= n; j++) {
+                        cur[j] = Math.min(
+                            prev[j] + 1,
+                            cur[j - 1] + 1,
+                            prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+                        );
+                    }
+                    prev = cur;
+                }
+                return prev[n];
+            }
+
+            // 把一个疑似标签词映射到标准标签；映射不出来返回 null（调用方保持原文不动）
+            function _matchForumTag(word) {
+                const w = word.toUpperCase();
+
+                // 1. 精确命中（含中文标签）
+                const exact = FORUM_TAG_VOCAB.find(t => t.word === w || t.word === word);
+                if (exact) return exact.canon;
+
+                // 2. 拼写错误：按编辑距离取最近的词。
+                //    这一步能正确区分 COMENTS(距 COMMENTS=1，距 CONTENT=3) 和 CONTNET(距 CONTENT=2)，
+                //    比单纯看首字母可靠得多——两者首字母都是 C。
+                if (/^[A-Z]+$/.test(w)) {
+                    const limit = w.length <= 5 ? 1 : 2;
+                    let best = null, bestDist = Infinity;
+                    FORUM_TAG_VOCAB.forEach(t => {
+                        if (!/^[A-Z]+$/.test(t.word)) return;
+                        const d = _editDistance(w, t.word);
+                        if (d < bestDist) { bestDist = d; best = t; }
+                    });
+                    if (best && bestDist <= limit) return best.canon;
+
+                    // 3. 彻底拼烂了，只认首字母
+                    if (w.length >= 3 && FORUM_TAG_INITIALS[w[0]]) return FORUM_TAG_INITIALS[w[0]];
+                }
+
+                return null;
+            }
+
+            function normalizeForumTags(text) {
+                if (!text) return '';
+
+                // P1: 整行只有一个标签（最常见）。容忍 全角＃、**加粗**、漏掉尾部#、结尾冒号
+                let out = text.replace(
+                    /^[ \t]*\*{0,2}[#＃]{1,3}[ \t]*([A-Za-z一-龥]{2,12})[ \t]*[:：]?[#＃]{0,3}\*{0,2}[ \t\r]*$/gm,
+                    (full, word) => _matchForumTag(word) || full
+                );
+
+                // P2: 标签后面还跟着正文（此时必须有完整的收尾 #，避免误伤正文里的话题词）
+                out = out.replace(
+                    /^[ \t]*\*{0,2}[#＃]{1,3}[ \t]*([A-Za-z一-龥]{2,12})[ \t]*[#＃]{1,3}\*{0,2}/gm,
+                    (full, word) => _matchForumTag(word) || full
+                );
+
+                return out;
+            }
+
+            // 判断一行是不是 "网名:评论内容" 的形状（用于标签整个丢失时的结构兜底）
+            function _looksLikeCommentLine(line) {
+                const m = line.match(/^([^\s:：]{1,20})[:：]\s*(\S.*)$/);
+                if (!m) return null;
+
+                const name = m[1];
+                const body = m[2].trim();
+                if (/[。！？，、；“”‘’…—]/.test(name)) return null;   // 名字里带句读，多半是正文
+                if (/^[#*\->\[（(]/.test(name)) return null;            // markdown / 括号说明
+                if (/^\/\//.test(body)) return null;                    // http:// 这类链接
+                return { username: name, content: body };
+            }
+
+            // 从正文末尾往上剥离连续的评论行。这是与标签无关的最后一层保险：
+            // 哪怕 #REPLY# 整个丢了，评论也不会烂在正文里。
+            function _stripTrailingComments(contentText) {
+                const lines = contentText.split('\n');
+                const picked = [];
+                let cut = lines.length;
+
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    const raw = lines[i].trim();
+                    if (!raw) {
+                        if (picked.length === 0) { cut = i; continue; }   // 结尾空行，跳过
+                        break;                                            // 正文与评论块的分界
+                    }
+                    if (raw.includes('===SEP===')) break;
+
+                    const c = _looksLikeCommentLine(raw);
+                    if (!c) break;
+                    picked.unshift(c);
+                    cut = i;
+                }
+
+                if (picked.length < 2) return null;                       // 至少连续 2 行才敢认定是评论区
+
+                const rest = lines.slice(0, cut).join('\n').trim();
+                if (!rest) return null;                                   // 剥完没正文了，说明判断错了，放弃
+                return { content: rest, comments: picked };
+            }
+
+            // --- 文本解析工具函数 ---
             function parseAIResponseToPost(text) {
-                // 1. 提取作者 (新增)
-                // 匹配 #AUTHOR# 和 #TITLE# 之间的内容
-                const authorMatch = text.match(/#AUTHOR#\s*([\s\S]*?)\s*#TITLE#/i);
-                const author = authorMatch ? authorMatch[1].trim() : null;
+                // 先归一化标签，后面就可以用最朴素的 indexOf 定位
+                const src = normalizeForumTags(text || '');
 
-                // 2. 提取标题
-                const titleMatch = text.match(/#TITLE#\s*([\s\S]*?)\s*#CONTENT#/i);
-                const title = titleMatch ? titleMatch[1].trim() : "无标题";
+                const iA = src.indexOf('#AUTHOR#');
+                const iT = src.indexOf('#TITLE#');
+                const iC = src.indexOf('#CONTENT#');
+                const iR = src.indexOf('#REPLY#');
+                const allIdx = [iA, iT, iC, iR].filter(i => i !== -1);
 
-                // 3. 提取正文 (匹配到 #COMMENTS# 之前)
-                const contentMatch = text.match(/#CONTENT#\s*([\s\S]*?)\s*#COMMENTS#/i);
-                const content = contentMatch ? contentMatch[1].trim() : (text.split('#CONTENT#')[1] || "内容解析失败").trim();
+                // 按"下一个标签的位置"切段：某个标签缺失时只会影响它自己那一段，
+                // 不会像原来那样整条正则失配、把评论全吞进正文。
+                const seg = (start, tag) => {
+                    if (start === -1) return '';
+                    const nexts = allIdx.filter(i => i > start);
+                    const end = nexts.length ? Math.min(...nexts) : src.length;
+                    return src.substring(start + tag.length, end).trim();
+                };
 
-                // 4. 提取并解析评论
+                const author = seg(iA, '#AUTHOR#') || null;
+                let title = seg(iT, '#TITLE#') || '无标题';
+                let content = seg(iC, '#CONTENT#');
+
+                // #CONTENT# 整个丢了：标题段里其实混着正文，第一行当标题，剩下当正文
+                if (iC === -1 && iT !== -1 && title !== '无标题') {
+                    const nl = title.indexOf('\n');
+                    if (nl > -1) {
+                        content = title.substring(nl + 1).trim();
+                        title = title.substring(0, nl).trim();
+                    }
+                }
+                if (!content) content = '内容解析失败';
+
+                // 解析评论区。这里保持宽松（只要有冒号就收），因为已经确定是评论区域了。
                 const comments = [];
-                const commentsBlockMatch = text.match(/#COMMENTS#\s*([\s\S]*)/i);
-
-                if (commentsBlockMatch) {
-                    const commentsBlock = commentsBlockMatch[1];
-                    const lines = commentsBlock.split('\n');
-
-                    lines.forEach(line => {
+                if (iR !== -1) {
+                    seg(iR, '#REPLY#').split('\n').forEach(line => {
                         line = line.trim();
                         if (!line) return;
                         if (line.includes('===SEP===')) return;
@@ -39,6 +180,16 @@
                             });
                         }
                     });
+                }
+
+                // 结构兜底：一条评论都没解析出来，就从正文尾巴上把评论捞回来
+                if (comments.length === 0 && content !== '内容解析失败') {
+                    const salvaged = _stripTrailingComments(content);
+                    if (salvaged) {
+                        content = salvaged.content;
+                        salvaged.comments.forEach(c => comments.push({ ...c, timestamp: "刚刚" }));
+                        console.warn('[forum] #REPLY# 标签缺失，已从正文尾部回收', comments.length, '条评论');
+                    }
                 }
 
                 return { author, title, content, comments };
@@ -137,7 +288,7 @@ savedForumScrollY = 0;
 帖子1标题
 #CONTENT#
 帖子1正文内容...
-#COMMENTS#
+#REPLY#
 网名A:评论内容
 网名B:评论内容
 ===SEP===
@@ -147,15 +298,16 @@ savedForumScrollY = 0;
 帖子2标题
 #CONTENT#
 帖子2正文...
-#COMMENTS#
+#REPLY#
 网名C:评论内容
 
 其他要求：
 1. 随机生成 4 到 8 个AUTHOR不同的帖子。帖子主体语言为CHINESE。每个帖子下生成5-7条评论。
 2.发帖人、评论者网名由你编撰。极少数发帖人或评论者想要隐藏身份时，可以选择匿名评论，匿名评论用户名为“喵叽”+论坛随机生成的四位数字。
-3. 格式必须包含 #AUTHOR#,#TITLE#, #CONTENT#, #COMMENTS# 这4个标签。
-4. **#COMMENTS# 下方直接列出评论**，每行一条，格式为 "网名:评论内容"。不要再加其他标签。
+3. 格式必须包含 #AUTHOR#,#TITLE#, #CONTENT#, #REPLY# 这4个标签。
+4. **#REPLY# 下方直接列出评论**，每行一条，格式为 "网名:评论内容"。不要再加其他标签。
 5.直接输出符合格式的最终结果，无需思考过程、思维链或生成内容说明。
+6. **标签必须逐字照抄**：只能是 #AUTHOR#、#TITLE#、#CONTENT#、#REPLY# 这四个英文标签，全大写、前后各一个半角 #、单独占一行。禁止翻译成中文、禁止改写、禁止加粗或加序号。正文和评论中一律不得出现这四个标签。
 
 `;
 
@@ -201,14 +353,17 @@ cleanContent = cleanContent.replace(/<(think|thought|thinking)>[\s\S]*?<\/\1>/gi
 // 2. 自动删除以 "Thinking:" 或 "思考：" 开头的一整段废话
 cleanContent = cleanContent.replace(/^(Thinking|思考|thought|think)[:：][\s\S]*?\n\n/i, '').trim();
 
-// 3. 【最核心】直接定位到第一个 #AUTHOR# 标签
+// 3. 先做标签归一化（修拼写/全角＃/加粗等变体），否则下面按 #AUTHOR# 截断会失手
+cleanContent = normalizeForumTags(cleanContent);
+
+// 4. 【最核心】直接定位到第一个 #AUTHOR# 标签
 // 这样不管 AI 前面写了多少字思考，只要没带标签，我们直接从正文开始截取
 const firstTag = cleanContent.indexOf('#AUTHOR#');
 if (firstTag !== -1) {
     cleanContent = cleanContent.substring(firstTag);
 }
 
-// 4. 将清理后的内容交给原有的分割逻辑
+// 5. 将清理后的内容交给原有的分割逻辑
 const rawPosts = cleanContent.split('===SEP===');
 
                     const newPostsToAdd = [];
@@ -347,6 +502,7 @@ ${commentsHistoryStr}
 };
 
 let contentStr;
+let finishReason = null;   // 流式分支拿不到 result，单独记下来供下面判断内容审查
 if (stream) {
     let charCount = 0;
     const hideLoadingRef = hideLoading; // 保留引用
@@ -365,12 +521,13 @@ if (stream) {
     if (result.error) throw new Error('API 返回错误: ' + result.error.message);
     if (!result.choices?.[0]?.message) throw new Error('API 返回结构异常，未包含 choices');
     contentStr = result.choices[0].message.content;
+    finishReason = result.choices[0].finish_reason || null;
 }
-                    
+
                     // 检查是否被内容审查拦截 (返回空内容)
                     if (!contentStr || contentStr.trim() === "") {
-                        // 检查结束原因
-                        const reason = result.choices[0].finish_reason;
+                        // 检查结束原因（原代码在这里引用块级作用域的 result，流式下必然 ReferenceError）
+                        const reason = finishReason;
                         if (reason === 'content_filter') {
                             throw new Error('生成失败：内容被AI模型的安全过滤器拦截（可能是由于关键词误判）。');
                         }
