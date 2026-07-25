@@ -138,11 +138,31 @@
                     || item.tag === 'chat-' + chatId;
                 if (belongs) { item.close(); n++; }
             }
-            if (n) console.log(`[通知] 已清理 ${n} 条「${chatId}」的通知栏消息`);
+            console.log(`[通知] 清理「${chatId}」：通知栏共 ${list.length} 条，关掉 ${n} 条`
+                + (list.length && !n ? '（tag/chatId 都对不上，检查一下）' : ''));
         } catch (e) {
             console.warn('[通知] 清理通知栏失败:', e);
         }
     }
+
+    // 回到前台时：如果此刻正停在某个聊天室里，那这个会话的消息就是"看到了"，
+    // 把它残留在通知栏的提示清掉。
+    // ★ 关键场景：用户切后台前就在聊天室里，回来时页面还是那一屏，
+    //   openChatRoom 根本不会重新执行，只靠它清通知会漏掉。
+    function clearNotificationsForVisibleChat() {
+        try {
+            const room = document.getElementById('chat-room-screen');
+            if (!room || !room.classList.contains('active')) return;
+            if (!window.currentChatId) return;
+            clearChatNotifications(window.currentChatId);
+        } catch (_) {}
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') clearNotificationsForVisibleChat();
+    });
+    // 部分安卓 WebView/PWA 从后台恢复时 visibilitychange 不稳，focus 再兜一道
+    window.addEventListener('focus', clearNotificationsForVisibleChat);
 
     // 点系统通知后，跳进对应聊天室。
     // 冷启动时 db / openChatRoom 可能还没就绪，所以带轮询等待（最多 15 秒）。
@@ -584,6 +604,7 @@ function updateHint() {
         buildPushPayload,
         findChat,
         clearChatNotifications,
+        clearNotificationsForVisibleChat,
         openChatFromNotification,
         requestPermission,
         initSettingsUI
