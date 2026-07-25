@@ -10,6 +10,10 @@
 (function () {
     'use strict';
 
+    // 调试日志开关：与通知中枢共用一个（NotifyCenter.setDebug(true/false)）。
+    // 每次现读，改完不用刷新。关着时只打成功/失败，不打过程行。
+    function debugOn() { try { return localStorage.getItem('ouoNotifyDebug') === '1'; } catch (_) { return false; } }
+
     // ── 配置读写（存在 db.globalPushSettings，带默认值兜底）───────────
     function getSettings() {
         const defaults = {
@@ -497,9 +501,12 @@ async function subscribe() {
     //   · peek：无 summary/idle 占位时才排(与本地优先级一致)。
     async function reconcileChat(chat, type, report) {
         const who = (chat && (chat.remarkName || chat.realName || chat.name)) || (chat && chat.id) || '?';
+        // 日志策略：链路已验证，日常只打「真的做了事」的行（✅ 移交成功 / ❌ 失败），
+        // 各种「跳过/不符合条件」的过程行默认静音——它们仍然完整进 report，
+        // 「诊断:立即移交并检查」按钮照旧看得到全部。要在控制台看全量：NotifyCenter.setDebug(true)。
         const say = (r) => {
-            console.log(`[推送节点] ${who}: ${r}`);
             if (report) report.push(who + '：' + r);
+            if (debugOn() || /^[✅❌]/.test(r)) console.log(`[推送节点] ${who}: ${r}`);
             return r;
         };
 
@@ -843,7 +850,19 @@ async function onGenVapid() {
         const testBtn = document.getElementById('push-test-task-btn');
         if (testBtn) testBtn.onclick = sendTestTask;
         const diagBtn = document.getElementById('push-diagnose-btn');
-        if (diagBtn) diagBtn.onclick = diagnoseHandoff;
+        if (diagBtn) {
+            // 诊断会真的跑一遍移交 + 查两次 /list，慢，期间禁止重复点（<botton> 不是真按钮，
+            // :disabled 不生效，所以用标志位 + 改文案来表示忙）
+            let diagBusy = false;
+            diagBtn.onclick = async () => {
+                if (diagBusy) return;
+                diagBusy = true;
+                const old = diagBtn.textContent;
+                diagBtn.textContent = '检查中';
+                try { await diagnoseHandoff(); }
+                finally { diagBusy = false; diagBtn.textContent = old; }
+            };
+        }
 
         if (!s.workerUrl) setHint('可选功能：部署一个专属 Cloudflare Worker，即可在被杀后台时也准点收到消息。');
         else if (s.enabled) setHint('已开启。');
@@ -869,6 +888,8 @@ async function onGenVapid() {
         cancelSi,
         cancelAllDevice,
         diagnoseHandoff,
-        fetchTaskList
+        fetchTaskList,
+        // 控制台开关：PushNode.setDebug(true) 打开全量移交日志（与 NotifyCenter 共用同一开关）
+        setDebug: (on) => { if (window.NotifyCenter && NotifyCenter.setDebug) NotifyCenter.setDebug(on); }
     };
 })();

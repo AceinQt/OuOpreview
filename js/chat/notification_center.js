@@ -10,6 +10,17 @@
     const KEEPALIVE_MIN = 1;
     const KEEPALIVE_MAX = 1440;
 
+    // ── 调试日志开关 ────────────────────────────────────────────
+    // 链路已验证，日常不再刷屏：逐步骤日志默认关闭，只保留 console.warn 的异常。
+    // 要排查时在控制台执行 NotifyCenter.setDebug(true)（即时生效，刷新后仍有效）。
+    let DEBUG = (() => { try { return localStorage.getItem('ouoNotifyDebug') === '1'; } catch (_) { return false; } })();
+    function setDebug(on) {
+        DEBUG = !!on;
+        try { on ? localStorage.setItem('ouoNotifyDebug', '1') : localStorage.removeItem('ouoNotifyDebug'); } catch (_) {}
+        console.log('[通知] 调试日志已' + (DEBUG ? '开启' : '关闭') + '（推送节点日志同步生效）');
+    }
+    function dlog(...a) { if (DEBUG) console.log(...a); }
+
     // 读取全局通知设置（带默认值兜底，兼容旧库——旧库缺的新字段在这里补齐）
     function getSettings() {
         const defaults = { enabled: false, keepAliveEnabled: true, keepAliveMinutes: 30, foldMessages: true, showSenderName: true, silent: false, badgeEnabled: true };
@@ -88,7 +99,7 @@
             console.warn('[通知] 拿不到可用的 Service Worker registration，无法弹通知。reg=', reg);
             return false;
         }
-        console.log('[通知] 使用 registration:', reg.scope, 'active=', !!reg.active);
+        dlog('[通知] 使用 registration:', reg.scope, 'active=', !!reg.active);
 
         try {
             await reg.showNotification(title || '新消息', {
@@ -138,7 +149,7 @@
                     || item.tag === 'chat-' + chatId;
                 if (belongs) { item.close(); n++; }
             }
-            console.log(`[通知] 清理「${chatId}」：通知栏共 ${list.length} 条，关掉 ${n} 条`
+            dlog(`[通知] 清理「${chatId}」：通知栏共 ${list.length} 条，关掉 ${n} 条`
                 + (list.length && !n ? '（tag/chatId 都对不上，检查一下）' : ''));
         } catch (e) {
             console.warn('[通知] 清理通知栏失败:', e);
@@ -275,14 +286,14 @@
             const vis = document.visibilityState;
             const perm = ('Notification' in window) ? Notification.permission : 'n/a';
             const cnt = Array.isArray(messages) ? messages.length : 0;
-            console.log(`[通知] notifyMessages: enabled=${s.enabled} vis=${vis} perm=${perm} fold=${s.foldMessages} showName=${s.showSenderName} chat=${chat && chat.id} msgs=${cnt}`);
+            dlog(`[通知] notifyMessages: enabled=${s.enabled} vis=${vis} perm=${perm} fold=${s.foldMessages} showName=${s.showSenderName} chat=${chat && chat.id} msgs=${cnt}`);
 
-            if (!s.enabled) { console.log('[通知] 跳过：总开关未开'); return; }
-            if (vis !== 'hidden') { console.log('[通知] 跳过：前台可见（仅后台弹）'); return; }
-            if (!chat || !cnt) { console.log('[通知] 跳过：无 chat 或无消息'); return; }
+            if (!s.enabled) { dlog('[通知] 跳过：总开关未开'); return; }
+            if (vis !== 'hidden') { dlog('[通知] 跳过：前台可见（仅后台弹）'); return; }
+            if (!chat || !cnt) { dlog('[通知] 跳过：无 chat 或无消息'); return; }
 
             const notifiable = messages.filter(m => m && m.role === 'assistant' && previewOf(m));
-            if (!notifiable.length) { console.log('[通知] 跳过：无可通知消息（都是系统/视觉类）'); return; }
+            if (!notifiable.length) { dlog('[通知] 跳过：无可通知消息（都是系统/视觉类）'); return; }
 
             const showName = s.showSenderName !== false;
             const silent = s.silent === true;
@@ -314,22 +325,22 @@
                 const last = notifiable[notifiable.length - 1];
                 let { title, body } = buildTitleBody(chat, chatType, last, showName);
                 if (total > 1) body = `[${total}条] ` + body;
-                console.log(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent} 累计=${total}(旧${prevCount})`);
+                dlog(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent} 累计=${total}(旧${prevCount})`);
                 const ok = await fire(title, body, {
                     tag,
                     renotify: true,
                     silent,
                     data: { ...data, count: total }
                 });
-                console.log('[通知] fire 返回:', ok);
+                dlog('[通知] fire 返回:', ok);
             } else {
                 // 分开：每条一个通知，tag 各不相同
                 for (const m of notifiable) {
                     const { title, body } = buildTitleBody(chat, chatType, m, showName);
                     const tag = 'msg-' + (m.id || (chat.id + '-' + (m.timestamp || '')));
-                    console.log(`[通知] 分开弹出: title="${title}" body="${body}" silent=${silent}`);
+                    dlog(`[通知] 分开弹出: title="${title}" body="${body}" silent=${silent}`);
                     const ok = await fire(title, body, { tag, renotify: false, silent, data });
-                    console.log('[通知] fire 返回:', ok);
+                    dlog('[通知] fire 返回:', ok);
                 }
             }
         } catch (e) {
@@ -607,6 +618,7 @@ function updateHint() {
         clearNotificationsForVisibleChat,
         openChatFromNotification,
         requestPermission,
-        initSettingsUI
+        initSettingsUI,
+        setDebug   // 控制台开关：NotifyCenter.setDebug(true) 打开逐步骤日志
     };
 })();
