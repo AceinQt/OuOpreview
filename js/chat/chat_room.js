@@ -359,11 +359,17 @@ if (chat.unreadCount && chat.unreadCount > 0) {
     
     // 延迟更新列表，让进入聊天室的切换动画更顺滑
     setTimeout(() => {
-        if (typeof renderChatList === 'function') renderChatList(); 
+        if (typeof renderChatList === 'function') renderChatList();
     }, 50);
 }
 
-      if (typeof hideCallCollapseBtn === 'function') hideCallCollapseBtn();          
+// 进了聊天室就算已读：把该会话残留在通知栏里的系统通知清掉
+// （用户不点通知、直接点 App 图标进来看消息时，通知栏本来会一直挂着）
+if (window.NotifyCenter && typeof NotifyCenter.clearChatNotifications === 'function') {
+    NotifyCenter.clearChatNotifications(chatId);
+}
+
+      if (typeof hideCallCollapseBtn === 'function') hideCallCollapseBtn();
                 exitMultiSelectMode();
                 cancelMessageEdit();
                 switchScreen('chat-room-screen');

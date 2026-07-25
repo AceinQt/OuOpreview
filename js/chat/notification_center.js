@@ -107,6 +107,73 @@
         }
     }
 
+    // ── 通知栏清理 & 点击跳转 ────────────────────────────────
+    // 在 db 里按 id 找会话，顺带把 chatType 推断出来（通知 data 里没带时用）
+    function findChat(chatId, chatType) {
+        if (!chatId || !window.db) return null;
+        if (chatType !== 'group') {
+            const c = (db.characters || []).find(x => x.id === chatId);
+            if (c) return { chat: c, type: 'private' };
+        }
+        const g = (db.groups || []).find(x => x.id === chatId);
+        if (g) return { chat: g, type: 'group' };
+        const c2 = (db.characters || []).find(x => x.id === chatId);
+        if (c2) return { chat: c2, type: 'private' };
+        return null;
+    }
+
+    // 清掉某个会话在通知栏里残留的所有通知（折叠 tag 'chat-<id>' 与分开模式 'msg-<mid>' 都覆盖）。
+    // 用户看完消息后调用——不管他是点通知进来的，还是直接点图标进来的。
+    async function clearChatNotifications(chatId) {
+        if (!chatId) return;
+        try {
+            const reg = await getActiveReg();
+            if (!reg || typeof reg.getNotifications !== 'function') return;
+            const list = await reg.getNotifications();
+            let n = 0;
+            for (const item of list) {
+                if (!item) continue;
+                if (item.tag === 'notify-test' || item.tag === 'push-test') continue;
+                const belongs = (item.data && item.data.chatId === chatId)
+                    || item.tag === 'chat-' + chatId;
+                if (belongs) { item.close(); n++; }
+            }
+            if (n) console.log(`[通知] 已清理 ${n} 条「${chatId}」的通知栏消息`);
+        } catch (e) {
+            console.warn('[通知] 清理通知栏失败:', e);
+        }
+    }
+
+    // 点系统通知后，跳进对应聊天室。
+    // 冷启动时 db / openChatRoom 可能还没就绪，所以带轮询等待（最多 15 秒）。
+    async function openChatFromNotification(chatId, chatType) {
+        if (!chatId) return;
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            if (window.__appInitDone && typeof openChatRoom === 'function') break;
+            await new Promise(r => setTimeout(r, 200));
+        }
+        if (typeof openChatRoom !== 'function') {
+            console.warn('[通知] 跳转失败：openChatRoom 未就绪');
+            return;
+        }
+        const found = findChat(chatId, chatType);
+        if (!found) {
+            console.warn('[通知] 跳转失败：找不到会话', chatId);
+            return;
+        }
+        window.currentChatId = chatId;
+        window.currentChatType = found.type;
+        try {
+            openChatRoom(chatId, found.type);
+        } catch (e) {
+            console.warn('[通知] openChatRoom 抛错:', e);
+            return;
+        }
+        // 进了聊天室 = 已读，把该会话残留的通知一并清掉
+        clearChatNotifications(chatId);
+    }
+
     // ── 消息内容 → 通知文案 提取 ──────────────────────────────
     function contentOf(message) {
         if (!message) return '';
@@ -202,12 +269,38 @@
             const data = { chatId: chat.id, chatType: chatType };
 
             if (s.foldMessages !== false) {
-                // 折叠：同一会话只弹一条，tag 固定，后到的替换先到的
+                // 折叠：同一会话只弹一条，tag 固定。
+                // 注意：同 tag 的新通知默认是「原地替换」，不少安卓 ROM 对替换不重新提醒，
+                // 用户会觉得"上一条没划掉就收不到新的"。所以这里先把旧的关掉再弹新的，
+                // 并把未读条数累计进 data.count，正文能真实反映"一共几条没看"。
+                const tag = 'chat-' + chat.id;
+                let prevCount = 0;
+                try {
+                    const reg = await getActiveReg();
+                    if (reg && typeof reg.getNotifications === 'function') {
+                        const olds = await reg.getNotifications({ tag });
+                        for (const o of olds) {
+                            prevCount = Math.max(prevCount, (o.data && o.data.count) || 1);
+                            o.close();
+                        }
+                        // 给系统一点时间真正撤下旧通知，避免它把新的又当成替换
+                        if (olds.length) await new Promise(r => setTimeout(r, 80));
+                    }
+                } catch (e) {
+                    console.warn('[通知] 清旧折叠通知失败（忽略）:', e);
+                }
+
+                const total = prevCount + notifiable.length;
                 const last = notifiable[notifiable.length - 1];
                 let { title, body } = buildTitleBody(chat, chatType, last, showName);
-                if (notifiable.length > 1) body = `[${notifiable.length}条] ` + body;
-                console.log(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent}`);
-                const ok = await fire(title, body, { tag: 'chat-' + chat.id, renotify: true, silent, data });
+                if (total > 1) body = `[${total}条] ` + body;
+                console.log(`[通知] 折叠弹出: title="${title}" body="${body}" silent=${silent} 累计=${total}(旧${prevCount})`);
+                const ok = await fire(title, body, {
+                    tag,
+                    renotify: true,
+                    silent,
+                    data: { ...data, count: total }
+                });
                 console.log('[通知] fire 返回:', ok);
             } else {
                 // 分开：每条一个通知，tag 各不相同
@@ -489,6 +582,9 @@ function updateHint() {
         fire,
         notifyMessages,
         buildPushPayload,
+        findChat,
+        clearChatNotifications,
+        openChatFromNotification,
         requestPermission,
         initSettingsUI
     };
