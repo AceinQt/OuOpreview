@@ -1,63 +1,54 @@
    // 长按功能
 function createContextMenu(items, x, y) {
-                removeContextMenu();
-                const menu = document.createElement('div');
-                menu.className = 'context-menu';
+    removeContextMenu(); // 移除旧菜单
+    
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    
+    // 生成菜单项
+    items.forEach(item => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'context-menu-item';
+        if (item.danger) menuItem.classList.add('danger');
+        menuItem.textContent = item.label;
+        menuItem.onclick = (e) => {
+            e.stopPropagation(); // 阻止冒泡
+            item.action();
+            removeContextMenu();
+        };
+        menu.appendChild(menuItem);
+    });
 
-                // 先填充菜单项，再测量尺寸
-                items.forEach(item => {
-                    const menuItem = document.createElement('div');
-                    menuItem.className = 'context-menu-item';
-                    if (item.danger) menuItem.classList.add('danger');
-                    menuItem.textContent = item.label;
-                    menuItem.onclick = () => {
-                        item.action();
-                        removeContextMenu();
-                    };
-                    menu.appendChild(menuItem);
-                });
+    // 核心修复：直接添加到 DOM 中（不需要 visibility: hidden）
+    // 浏览器在当前 JS 代码块执行完之前，不会把半成品画到屏幕上
+    document.body.appendChild(menu);
 
-                // 以 visibility:hidden 挂载，以便 getBoundingClientRect 测量尺寸，
-                // 同时避免菜单“闪现”在最终位置之外（定位计算前不可见）。
-                // 注意：菜单自身没有 opacity/transform 初始态，所以隐藏期间不会
-                // 提前播放 CSS 动画，恢复可见时才从 animation 第一帧干净淡入。
-                menu.style.visibility = 'hidden';
-                document.body.appendChild(menu);
+    // 获取尺寸
+    const menuRect = menu.getBoundingClientRect();
+    const windowHeight = window.innerHeight;
+    const windowWidth = window.innerWidth;
 
-                // 获取菜单尺寸和窗口尺寸
-                const menuRect = menu.getBoundingClientRect();
-                const windowHeight = window.innerHeight;
-                const windowWidth = window.innerWidth;
+    // --- 智能定位逻辑 ---
+    if (y + menuRect.height > windowHeight - 10) { 
+        menu.style.top = `${y - menuRect.height}px`;
+        menu.style.transformOrigin = 'bottom left';
+    } else {
+        menu.style.top = `${y}px`;
+        menu.style.transformOrigin = 'top left';
+    }
 
-                // --- 智能定位逻辑 ---
-                // 1. 垂直方向：如果底部空间不足，且上方空间充足，则向上显示
-                if (y + menuRect.height > windowHeight - 10) { // 留10px边距
-                    menu.style.top = `${y - menuRect.height}px`;
-                    // 稍微做一个动画优化的处理：设置 transform-origin
-                    menu.style.transformOrigin = 'bottom left';
-                } else {
-                    menu.style.top = `${y}px`;
-                    menu.style.transformOrigin = 'top left';
-                }
+    if (x + menuRect.width > windowWidth) {
+        menu.style.left = `${windowWidth - menuRect.width - 10}px`;
+    } else {
+        menu.style.left = `${x}px`;
+    }
 
-                // 2. 水平方向：防止右侧溢出（虽然通常不会，但保险起见）
-                if (x + menuRect.width > windowWidth) {
-                    menu.style.left = `${windowWidth - menuRect.width - 10}px`;
-                } else {
-                    menu.style.left = `${x}px`;
-                }
-
-                // 定位完成后恢复可见。强制重排一行，确保动画从第一帧开始播放，
-                // 不会因为样式批量写入而跳过起始帧造成“闪现”。
-                void menu.offsetWidth; // reflow
-                menu.style.visibility = 'visible';
-
-                // 绑定一次性点击关闭事件
-                // 使用 setTimeout 0 确保当前的点击事件冒泡不会立即触发关闭
-                setTimeout(() => {
-                    document.addEventListener('click', removeContextMenu, { once: true });
-                }, 0);
-            }
+    // 核心修复：稍微延迟一点再绑定全局点击关闭事件
+    // 移动端长按抬手时会触发 touchend -> click，延迟 100ms 可完美避开这个抬手误触
+    setTimeout(() => {
+        document.addEventListener('click', removeContextMenu, { once: true });
+    }, 0);
+}
 
             function removeContextMenu() {
                 const menu = document.querySelector('.context-menu');

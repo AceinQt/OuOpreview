@@ -84,26 +84,29 @@ function setupChatRoom() {
         chatExpansionPanel.classList.toggle('visible');
     });
     
-    // 发送按钮：touchend 给移动端，click 给 PC 端（鼠标点击只触发 click）。
-    // 移动端 touchend 已 preventDefault，不会再生效后续 click，避免重复发送。
-    let sendBtnTouchHandled = false;
+// 1. 手机端触摸发送 (保留原有，e.preventDefault()会阻止移动端再触发click，防止发两次)
     sendMessageBtn.addEventListener('touchend', (e) => {
         e.preventDefault();
-        sendBtnTouchHandled = true;
         sendMessage();
         setTimeout(() => {
             messageInput.focus();
         }, 50);
-        // 下一轮事件循环重置标记，防止长时间卡住导致 PC 端点击失效
-        setTimeout(() => { sendBtnTouchHandled = false; }, 400);
     });
-    sendMessageBtn.addEventListener('click', () => {
-        if (sendBtnTouchHandled) return; // 移动端已通过 touchend 发送，跳过本次重复 click
+    
+    // 2. 电脑端鼠标点击发送 (新增这个监听器)
+    sendMessageBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // 防止默认提交等行为
         sendMessage();
-        messageInput.focus();
+        // 电脑端发送后保持输入框焦点，方便继续打字
+        messageInput.focus(); 
     });
+
+    // 3. 键盘回车发送 (保留原有)
     messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !isGenerating) sendMessage();
+        if (e.key === 'Enter' && !isGenerating) {
+            e.preventDefault();
+            sendMessage();
+        }
     });
     getReplyBtn.addEventListener('click', async () => {
         if (isGenerating) return;
@@ -271,41 +274,50 @@ function setupChatRoom() {
         }
     });
 
-    // 标记本次触摸的长按菜单是否已弹出。用于拦截浏览器长按时派发的原生
-    // contextmenu 事件，避免菜单被 removeContextMenu() 删掉再重建（“闪两下”）。
-    let touchLongPressFired = false;
+let isTouchLongPress = false; // 用于标记是否是由触摸触发的长按
 
     messageArea.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        // 注意：这里移除了 id === 'load-more-btn' 的判断，因为按钮已经没了
+        e.preventDefault(); // 阻止浏览器自带的右键菜单
         if (isInMultiSelectMode) return;
-        // 若本次触摸长按已经弹出了菜单，跳过浏览器随后派发的原生 contextmenu。
-        // 桌面右键不受此影响，因为不会有 touchstart，touchLongPressFired 始终为 false。
-        if (touchLongPressFired) {
-            touchLongPressFired = false;
+        
+        if (isTouchLongPress) {
+            // 注意：这里不要重置 isTouchLongPress，留给下一次触摸去重置
+            // 拦截系统自带的 contextmenu，防止弹两次
             return;
         }
+
         const messageWrapper = e.target.closest('.message-wrapper');
         if (!messageWrapper) return;
         handleMessageLongPress(messageWrapper, e.clientX, e.clientY);
     });
 
     messageArea.addEventListener('touchstart', (e) => {
-        // 同样移除了 load-more-btn 的判断
+        isTouchLongPress = false; // 每次手指落下时重置
         const messageWrapper = e.target.closest('.message-wrapper');
         if (!messageWrapper) return;
-        touchLongPressFired = false;
-        // 在 touchstart 同步阻止默认行为，可阻止浏览器长按时派发的原生
-        // contextmenu 事件，同时也能抑制文本选中高亮。
-        e.preventDefault();
+        
         longPressTimer = setTimeout(() => {
+            isTouchLongPress = true; // 标记为：已经成功触发了长按
             const touch = e.touches[0];
-            touchLongPressFired = true;
             handleMessageLongPress(messageWrapper, touch.clientX, touch.clientY);
         }, 400);
     });
-    messageArea.addEventListener('touchend', () => clearTimeout(longPressTimer));
-    messageArea.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+
+    messageArea.addEventListener('touchmove', () => {
+        clearTimeout(longPressTimer); // 手指滑动时取消长按判定
+    });
+
+    messageArea.addEventListener('touchend', (e) => {
+        clearTimeout(longPressTimer);
+        
+        // 核心修复：如果长按菜单已经弹出了，就阻止默认行为！
+        // 这会掐断浏览器在抬手时自动生成的 click 事件，完美解决“概率性消失”
+        if (isTouchLongPress) {
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+        }
+    });
 
     const messageEditForm = document.getElementById('message-edit-form');
     if (messageEditForm) {

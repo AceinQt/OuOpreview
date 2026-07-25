@@ -50,15 +50,6 @@ function createMessageBubbleElement(message) {
 
         wrapper.appendChild(bubble);
 
-        wrapper.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (!isInMultiSelectMode) {
-                if (typeof createContextMenu === 'function') {
-                    createContextMenu([{ label: '删除', action: () => enterMultiSelectMode(id) }], e.clientX, e.clientY);
-                }
-            }
-        });
-
         return wrapper;
     }
 
