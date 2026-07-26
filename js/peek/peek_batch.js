@@ -2,10 +2,13 @@
 // peek_batch.js
 // 批量生成：一次 API 调用生成所有应用的内容 + 一组顺风车消息
 //
-// 输出协议：AI 依次输出 ===APP:<ID>=== 段落，段落内沿用各应用原有的标签格式
-// （多条目仍用 ===SEP=== 分隔），最后用 ===PROACTIVE_MESSAGES=== 分割出一组主动消息。
+// 输出协议：AI 依次输出 ===APP:<ID>=== 段落，段落内沿用各应用原有的标签格式，
+// 最后用 ===PROACTIVE_MESSAGES=== 分割出一组主动消息。
 // 解析时逐段套用各应用原有的 parse/apply 函数：识别到几个就写入几个，
 // 缺失或解析失败的应用直接跳过，不影响其它应用。
+//
+// 数量：批量生成时每个应用只出 1 条（追求覆盖面而非数量），与各应用单独生成的
+// 3-4 条不同。parse 函数本身仍支持多条（===SEP===），只是提示词不再要求多条。
 // ==========================================
 
 // 批量生成正在进行中（防重复点击）
@@ -29,11 +32,11 @@ const PEEK_BATCH_APPS = [
                 .map(c => c.partnerName)
                 .filter(Boolean);
 
-            let t = `请为 ${char.realName} 编造 3-5 个最近的对话，对话内容需要强烈反映Ta的人设以及最近聊天上下文。\n`;
+            let t = `只生成 1 段最近的对话，对话内容需要强烈反映 ${char.realName} 的人设以及最近聊天上下文。\n`;
             if (existingNames.length > 0) {
-                t += `当前手机里已有以下联系人：${existingNames.join('、')}。但联系人不仅仅局限于这些人，你应该根据聊天上下文情况，尽可能积极创造**新的联系人**进行对话。\n`;
+                t += `当前手机里已有以下联系人：${existingNames.join('、')}。但联系人不仅仅局限于这些人，你应该根据聊天上下文情况，优先创造一个**新的联系人**来对话。\n`;
             }
-            t += `每段对话需要提供对话对象的称呼(#PARTNER#)以及具体的聊天记录(#HISTORY#)。在 #HISTORY# 中，${char.realName} 发送的消息以 "char: " 开头，对方发送的消息以 "partner: " 开头。多段对话之间用 ===SEP=== 分隔。`;
+            t += `需要提供对话对象的称呼(#PARTNER#)以及聊天记录(#HISTORY#)。在 #HISTORY# 中，${char.realName} 发送的消息以 "char: " 开头，对方发送的消息以 "partner: " 开头，一来一回 4-6 句即可。`;
             return t;
         },
         format(char) {
@@ -41,12 +44,6 @@ const PEEK_BATCH_APPS = [
 与Ta对话的人的称呼
 #HISTORY#
 partner: 对方发送的消息内容
-char: ${char.realName}发送的消息内容
-partner: 对方发送的消息内容
-===SEP===
-#PARTNER#
-另一位联系人的称呼
-#HISTORY#
 char: ${char.realName}发送的消息内容
 partner: 对方发送的消息内容`;
         },
@@ -59,18 +56,13 @@ partner: 对方发送的消息内容`;
         appType: 'memos',
         name: '备忘录',
         task(char) {
-            return `请为 ${char.realName} 生成 3-4 条备忘录，可以反映Ta的计划、灵感或者日常琐事。每条备忘录之间用 ===SEP=== 分隔。`;
+            return `只生成 1 条备忘录，可以反映 ${char.realName} 的计划、灵感或者日常琐事。内容可以多行。`;
         },
         format() {
             return `#TITLE#
-备忘录1标题
+备忘录标题
 #CONTENT#
-备忘录1内容
-===SEP===
-#TITLE#
-备忘录2标题
-#CONTENT#
-备忘录2内容...
+备忘录内容...
 可以包含多行...`;
         },
         handle(rawText) {
@@ -82,7 +74,7 @@ partner: 对方发送的消息内容`;
         appType: 'cart',
         name: '购物车',
         task(char) {
-            return `请为 ${char.realName} 生成 3-4 件购物车内的商品，这些商品应该反映Ta近期的兴趣、生活需求或最近聊到的话题。每件商品之间用 ===SEP=== 分隔。`;
+            return `只生成 1 件购物车内的商品，要能反映 ${char.realName} 近期的兴趣、生活需求或最近聊到的话题。`;
         },
         format() {
             return `#TITLE#
@@ -90,14 +82,7 @@ partner: 对方发送的消息内容`;
 #SPEC#
 星空黑 / 官方标配
 #PRICE#
-1299.00
-===SEP===
-#TITLE#
-猫咪零食冻干大礼包
-#SPEC#
-混合口味 500g
-#PRICE#
-89.90`;
+1299.00`;
         },
         handle(rawText) {
             return applyPeekCartContent(parsePeekCartContent(rawText));
@@ -108,16 +93,10 @@ partner: 对方发送的消息内容`;
         appType: 'transfer',
         name: '中转站',
         task(char) {
-            return `请为 ${char.realName} 生成 4-7 条Ta发送给自己的、简短零碎的消息（文件传输助手）。内容像是临时备忘、灵感闪现或随手保存的链接，比"备忘录"更随意、更口语化。每条之间用 ===SEP=== 分隔。`;
+            return `只生成 1 条 ${char.realName} 发送给自己的、简短零碎的消息（文件传输助手）。内容像是临时备忘、灵感闪现或随手保存的链接，比"备忘录"更随意、更口语化。`;
         },
         format() {
             return `#ENTRY#
-要记得买牛奶。
-===SEP===
-#ENTRY#
-https://example.com/interesting-article
-===SEP===
-#ENTRY#
 刚刚那个想法不错，可以深入一下...`;
         },
         handle(rawText) {
@@ -129,7 +108,7 @@ https://example.com/interesting-article
         appType: 'browser',
         name: '浏览器',
         task(char) {
-            return `请为 ${char.realName} 生成 3-5 条浏览记录。记录本身要符合Ta的人设和最近聊天上下文，#ANNOTATION# 则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。每条之间用 ===SEP=== 分隔。`;
+            return `只生成 1 条浏览记录。记录本身要符合 ${char.realName} 的人设和最近聊天上下文，#ANNOTATION# 则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。`;
         },
         format() {
             return `#TITLE#
@@ -137,14 +116,7 @@ https://example.com/interesting-article
 #URL#
 www.example.com/breakfast-tutorial
 #ANNOTATION#
-明早可以试试看，看起来很好吃。
-===SEP===
-#TITLE#
-网页标题
-#URL#
-www.example.com/tech-review-2026
-#ANNOTATION#
-角色对于这条浏览记录的想法或批注`;
+明早可以试试看，看起来很好吃。`;
         },
         handle(rawText) {
             return applyPeekBrowserContent(parsePeekBrowserContent(rawText));
@@ -172,7 +144,7 @@ ${char.myName}
         appType: 'album',
         name: '相册',
         task(char) {
-            return `请为 ${char.realName} 的手机相册生成 5-8 个Ta拍摄的照片或视频。#TYPE# 只能是 photo 或 video；#IMAGE_DESC# 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户；#ANNOTATION# 是 ${char.realName} 自己对这张照片/视频的批注。每个条目之间用 ===SEP=== 分隔。`;
+            return `只生成 1 个 ${char.realName} 拍摄的照片或视频。#TYPE# 只能是 photo 或 video；#IMAGE_DESC# 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户；#ANNOTATION# 是 ${char.realName} 自己对这张照片/视频的批注。`;
         },
         format() {
             return `#TYPE#
@@ -180,14 +152,7 @@ photo
 #IMAGE_DESC#
 一张傍晚在海边的自拍，背景是橙色的晚霞和归来的渔船。
 #ANNOTATION#
-那天的风很舒服。
-===SEP===
-#TYPE#
-video
-#IMAGE_DESC#
-一段在猫咖撸猫的视频，视频里有一只橘猫在打哈欠。
-#ANNOTATION#
-下次还来这里！`;
+那天的风很舒服。`;
         },
         handle(rawText) {
             return applyPeekAlbumContent(parsePeekAlbumContent(rawText));
@@ -198,7 +163,7 @@ video
         appType: 'steps',
         name: '步数',
         task(char) {
-            return `请为 ${char.realName} 生成今天的步数信息：当前步数(#CURRENT_STEPS#，纯数字)、6 条运动轨迹(#TRAJECTORY#，每行一条，禁止照搬示例)以及批注(#ANNOTATION#)。注意：步数只有一份，不需要 ===SEP===。`;
+            return `请为 ${char.realName} 生成今天的步数信息：当前步数(#CURRENT_STEPS#，纯数字)、6 条运动轨迹(#TRAJECTORY#，每行一条，禁止照搬示例)以及批注(#ANNOTATION#)。`;
         },
         format() {
             return `#CURRENT_STEPS#
@@ -230,12 +195,10 @@ video
             const hoursSinceLast = Math.max(1, Math.floor((now - lastGenTime) / 3600000));
             const timeText = hoursSinceLast > 72 ? '几天' : `约 ${hoursSinceLast} 小时`;
 
-            return `请为 ${char.realName} 生成一个符合其人设的社交媒体（类似微博/X）私密小号：昵称(#NICKNAME#)、@开头的ID(#HANDLE#)、个性签名(#BIO#)，以及 3-4 条近期（距离上次更新已过去 ${timeText}）的新帖子(#POST#)。
+            return `请为 ${char.realName} 生成一个符合其人设的社交媒体（类似微博/X）私密小号：昵称(#NICKNAME#)、@开头的ID(#HANDLE#)、个性签名(#BIO#)，以及**只要 1 条**近期（距离上次更新已过去 ${timeText}）的新帖子(#POST#)。
 帖子要求：
-1. 必须按照**时间倒序**输出（最上面的 #POST# 是最新发布的，最下面的相对较早）。
-2. 帖子之间的时间和内容逻辑必须符合客观常识（不要出现时间倒流的情节）。
-3. 每条 #POST# 的第一行用方括号包含相对时间（例如[15分钟前]、[2小时前]、[昨天]），下方是正文（140字以内）。
-4. 内容要生活化、碎片化，符合小号的私密风格。`;
+1. 第一行用方括号包含相对时间（例如[15分钟前]、[2小时前]、[昨天]），下方是正文（140字以内）。
+2. 内容要生活化、碎片化，符合小号的私密风格。`;
         },
         format() {
             return `#NICKNAME#
@@ -246,10 +209,7 @@ video
 角色的个性签名
 #POST#
 [15分钟前]
-第一条正文内容（最新）
-#POST#
-[2小时前]
-第二条正文内容（较早）`;
+帖子正文内容`;
         },
         handle(rawText) {
             const now = Date.now();
@@ -271,9 +231,11 @@ function buildPeekBatchPrompt(char, mainChatContext) {
     prompt += `
 【总体要求】
 1. 下面依次列出 ${PEEK_BATCH_APPS.length} 个应用，请为每一个应用都生成内容。
-2. 每个应用的内容必须以独占一行的 ===APP:标识=== 开头，紧接着按该应用要求的标签格式输出。
-3. 所有内容都要与角色人设、最近聊天上下文高度相关；各应用之间的信息要彼此呼应、逻辑自洽，不要互相矛盾。
-4. 不要输出任何额外的解释、说明或 Markdown 代码块，只输出规定的标签内容。
+2. **每个应用只生成 1 条内容**（步数应用本身就是一份当日记录）。这次追求的是"覆盖面广、品种多"，而不是每个应用堆数量，所以每条都要挑最有代表性、最值得一看的那一条，不要凑数。
+3. 因为每个应用只有 1 条，所以**不要输出 ===SEP=== 分隔符**（它只在同一应用有多条时才需要）。
+4. 每个应用的内容必须以独占一行的 ===APP:标识=== 开头，紧接着按该应用要求的标签格式输出。
+5. 所有内容都要与角色人设、最近聊天上下文高度相关；各应用之间的信息要彼此呼应、逻辑自洽，不要互相矛盾。
+6. 不要输出任何额外的解释、说明或 Markdown 代码块，只输出规定的标签内容。
 `;
 
     PEEK_BATCH_APPS.forEach((app, idx) => {
