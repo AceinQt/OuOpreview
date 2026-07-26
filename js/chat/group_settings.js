@@ -199,6 +199,14 @@ function setupGroupChatSystem() {
         }
     });
 
+    // 清理图片：批量把本群聊的图片转成文字描述
+    const cleanupGroupImagesBtn = document.getElementById('cleanup-group-images-btn');
+    if (cleanupGroupImagesBtn) {
+        cleanupGroupImagesBtn.addEventListener('click', () => {
+            if (typeof cleanupChatImages === 'function') cleanupChatImages();
+        });
+    }
+
     // 8. 清空记录
     document.getElementById('clear-group-chat-history-btn').addEventListener('click', async () => {
         const group = db.groups.find(g => g.id === currentChatId);

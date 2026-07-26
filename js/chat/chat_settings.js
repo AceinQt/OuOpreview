@@ -227,6 +227,14 @@ function setupChatSettings() {
         });
     }
 
+    // 清理图片：批量把本聊天的图片转成文字描述
+    const cleanupImagesBtn = document.getElementById('cleanup-images-btn');
+    if (cleanupImagesBtn) {
+        cleanupImagesBtn.addEventListener('click', () => {
+            if (typeof cleanupChatImages === 'function') cleanupChatImages();
+        });
+    }
+
     const clearChatHistoryBtn = document.getElementById('clear-chat-history-btn');
     if (clearChatHistoryBtn) {
         clearChatHistoryBtn.addEventListener('click', async () => {
