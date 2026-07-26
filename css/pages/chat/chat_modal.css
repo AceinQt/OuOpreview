@@ -347,8 +347,9 @@
      margin-top: 0;
 }
 
-#pa-mode-hints {
-    font-size: 12px; 
+#pa-mode-hints,
+#vision-api-hint {
+    font-size: 12px;
     color: #888; 
     margin-bottom: 10px; 
     line-height: 1.5; 
