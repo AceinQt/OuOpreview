@@ -3,6 +3,53 @@
 // 相册渲染、相册生成
 // ==========================================
 
+// ==========================================
+// 按日期分组：取照片生成时间
+// 新照片带 createdAt；旧照片从 id（album_<时间戳>_xxx）里回推；
+// 两者都没有的（更早期没有 id 的数据）算作"很久以前"
+// ==========================================
+function _albumPhotoTime(photo) {
+    if (photo.createdAt) return photo.createdAt;
+    const m = /^album_(\d{10,})_/.exec(photo.id || '');
+    return m ? Number(m[1]) : null;
+}
+
+// 同一天返回同一个 key，无时间的统一归入 'ancient'
+function _albumDateKey(photo) {
+    const ts = _albumPhotoTime(photo);
+    if (!ts) return 'ancient';
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function _albumDateLabel(photo) {
+    const ts = _albumPhotoTime(photo);
+    if (!ts) return { title: '很久以前', sub: '' };
+    const d = new Date(ts);
+    const title = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    const today = new Date();
+    const dayDiff = Math.round(
+        (new Date(today.getFullYear(), today.getMonth(), today.getDate()) -
+            new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000
+    );
+    return { title, sub: dayDiff === 0 ? '今天' : (dayDiff === 1 ? '昨天' : '') };
+}
+
+// 构建日期分割行（占满整行的网格项）
+function _buildAlbumDateHeaderEl(photo) {
+    const { title, sub } = _albumDateLabel(photo);
+    const el = document.createElement('div');
+    el.className = 'album-date-header';
+    el.textContent = title;
+    if (sub) {
+        const subEl = document.createElement('span');
+        subEl.className = 'album-date-sub';
+        subEl.textContent = sub;
+        el.appendChild(subEl);
+    }
+    return el;
+}
+
 // 构建单张照片的 DOM（分页渲染复用）
 function _buildAlbumPhotoEl(photo, isEdit) {
     if (!photo.id) photo.id = 'album_old_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -72,7 +119,15 @@ function renderPeekAlbum(photos, isAppend = false, resetPage = false) {
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'album';
 
     // 分页：追加时只渲染当前页，全量重绘渲染第0页到当前页
-    PeekPager.slice('album', photos, isAppend).forEach(photo => {
+    // photos 按时间倒序（新的在前），所以只要和"全量数组里的上一张"日期不同就插一条日期行，
+    // 追加渲染时也能接着上一页的分组继续，不会重复出现同一天的标题
+    const start = isAppend ? PeekPager.page('album') * PeekPager.PAGE_SIZE : 0;
+    PeekPager.slice('album', photos, isAppend).forEach((photo, i) => {
+        const index = start + i;
+        const prev = index > 0 ? photos[index - 1] : null;
+        if (!prev || _albumDateKey(prev) !== _albumDateKey(photo)) {
+            grid.appendChild(_buildAlbumDateHeaderEl(photo));
+        }
         grid.appendChild(_buildAlbumPhotoEl(photo, isEdit));
     });
 
@@ -107,6 +162,7 @@ function parsePeekAlbumContent(albumRawText) {
                 type: typeMatch[1].trim() === 'video' ? 'video' : 'photo',
                 imageDescription: descMatch[1].trim(),
                 description: annoMatch ? annoMatch[1].trim() : '无批注',
+                createdAt: Date.now(),
                 isNew: true
             });
         }
