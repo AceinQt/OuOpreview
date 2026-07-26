@@ -880,7 +880,7 @@ if (conversation) {
     document.getElementById('peek-messages-add-btn')
         ?.addEventListener('click', () => addPeekContact());
 
-    // 详情页目前无 action-btn 操作（刷新按钮仅在列表页）
+    // 详情页的 action-btn（屏蔽 / 继续推演）在 peek_messages.js 里绑定
     // TODO 需求3：未来可在此处绑定"旁观模式"入口
     // const peekConversationScreen = document.getElementById('peek-conversation-screen');
     // peekConversationScreen.addEventListener('click', (e) => { ... });

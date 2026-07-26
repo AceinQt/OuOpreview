@@ -166,11 +166,25 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
 
     titleEl.textContent = partnerName;
     messageAreaEl.innerHTML = '';
-    messageAreaEl.scrollTop = 0; 
+    messageAreaEl.scrollTop = 0;
+
+    // 先存下上一个联系人再切换：空对话会提前 return，放在这里保证状态始终正确
+    const prevPartnerName = _peekConvoPartnerName;
+    _peekConvoPartnerName = partnerName;
 
     // ── 屏蔽/取消屏蔽 按钮逻辑 (保留你原有的功能) ─────────────────
     const convo = peekContentCache?.messages?.conversations?.find(c => c.partnerName === partnerName);
     const actionBtn = document.getElementById('peek-conversation-action-btn');
+
+    // ── 继续推演按钮：能定位到对话且非多选模式时才露出，并同步生成中的禁用态 ──
+    // （多选模式下 PeekDeleteManager 只管第一个 action-btn，这个按钮得自己收起来）
+    const continueBtn = document.getElementById('peek-conversation-continue-btn');
+    if (continueBtn) {
+        const inEditMode = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'conversation';
+        continueBtn.style.visibility = (convo && !inEditMode) ? 'visible' : 'hidden';
+    }
+    _syncPeekContinueUI(partnerName);
+
     if (actionBtn && convo) {
         actionBtn.style.visibility = 'visible';
         const renderActionBtnSVG = () => {
@@ -194,6 +208,7 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
     }
 
     if (!history || history.length === 0) {
+        _peekConvoRenderedStart = 0;
         messageAreaEl.innerHTML = '<p class="placeholder-text">这里空空如也...</p>';
         return;
     }
@@ -204,8 +219,6 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
     let unreadBoundaryEl = null;
 
     // ── 分页：默认只渲染最近一页，更早的历史滚动到顶部时再补 ──
-    const prevPartnerName = _peekConvoPartnerName;
-    _peekConvoPartnerName = partnerName;
     let startIndex = Math.max(0, history.length - PEEK_CONVO_PAGE_SIZE);
 
     // 编辑模式进入/退出触发的同会话重绘要保持已渲染区间不变，
@@ -352,6 +365,170 @@ function applyPeekMessagesContent(parsedConversations) {
     });
 
     return parsedConversations.length;
+}
+
+// ==========================================
+// 继续推演：基于当前打开的这一组对话往下生成后续消息
+// 只读本组对话（最多 200 条）+ 主线上下文/世界书，不掺别的 peek 消息，也不生成顺风车
+// ==========================================
+const PEEK_CONTINUE_CONTEXT_LIMIT = 200;   // 本组对话最多带多少条上文
+const _peekConvoGenerating = new Set();    // 正在推演中的 partnerName
+
+// 把"生成中"状态同步到刷新按钮（禁用+旋转）和底部"正在输入"提示
+function _syncPeekContinueUI(partnerName) {
+    const btn = document.getElementById('peek-conversation-continue-btn');
+    const typingEl = document.getElementById('peek-convo-typing');
+    const busy = !!partnerName && _peekConvoGenerating.has(partnerName);
+
+    if (btn) {
+        btn.disabled = busy;
+        btn.classList.toggle('is-spinning', busy);
+    }
+    if (typingEl) {
+        typingEl.textContent = busy ? `"${partnerName}"正在输入中` : '';
+        typingEl.classList.toggle('visible', busy);
+    }
+}
+
+// 解析推演结果：逐行取 char: / partner: 前缀
+function parsePeekConversationLines(rawText) {
+    const messages = [];
+    (rawText || '').split('\n').forEach((line, i) => {
+        const m = line.trim().match(/^(char|partner)\s*[:：]\s*(.+)$/i);
+        if (!m) return;
+        const content = m[2].trim();
+        if (!content) return;
+        messages.push({
+            id: `msg_gen_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`,
+            sender: m[1].toLowerCase() === 'char' ? 'char' : 'partner',
+            content
+        });
+    });
+    return messages;
+}
+
+// 详情页滚到底部（滚动容器可能是 .content 或 .message-area，两个都推）
+function _scrollPeekConvoToBottom() {
+    const messageAreaEl = document.getElementById('peek-message-area');
+    if (!messageAreaEl) return;
+    const doScroll = () => {
+        const contentContainer = messageAreaEl.closest('.content');
+        if (contentContainer) contentContainer.scrollTop = contentContainer.scrollHeight;
+        messageAreaEl.scrollTop = messageAreaEl.scrollHeight;
+    };
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 150);
+}
+
+// 把新推演出的消息直接追加到详情页 DOM（不整页重绘，保住已向上加载的历史）
+function _appendPeekConvoMessages(partnerName, newMessages) {
+    // 用户可能已经切走了：那就只落库，不动 DOM
+    if (_peekConvoPartnerName !== partnerName) return;
+    const screen = document.getElementById('peek-conversation-screen');
+    if (!screen || !screen.classList.contains('active')) return;
+
+    const messageAreaEl = document.getElementById('peek-message-area');
+    if (!messageAreaEl) return;
+
+    // 原本是空对话的话，先清掉占位文案
+    messageAreaEl.querySelector('.placeholder-text')?.remove();
+
+    const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'conversation';
+    const frag = document.createDocumentFragment();
+    newMessages.forEach(msg => frag.appendChild(_buildPeekMessageEl(msg, isEdit)));
+    messageAreaEl.appendChild(frag);
+
+    _scrollPeekConvoToBottom();
+}
+
+async function continuePeekConversation(partnerName) {
+    if (!partnerName) return;
+    if (PeekDeleteManager?.isEditMode) { showToast('请先退出多选模式'); return; }
+    if (_peekConvoGenerating.has(partnerName)) { showToast('正在推演中，请稍候...'); return; }
+
+    const convo = peekContentCache?.messages?.conversations?.find(c => c.partnerName === partnerName);
+    if (!convo) { showToast('找不到对话记录'); return; }
+
+    const char = db.characters.find(c => c.id === window.activePeekCharId);
+    if (!char) return showToast('无法找到当前角色');
+
+    const { url, key, model, streamEnabled, temperature } = getPeekApiConfig(window.activePeekCharId);
+    if (!url || !key || !model) { showToast('请先配置 API！'); return switchScreen('api-settings-screen'); }
+
+    const ok = await AppUI.confirm(
+        `将基于「${partnerName}」这段对话继续往下推演，生成后续消息。`,
+        '继续推演', '开始推演', '取消'
+    );
+    if (!ok) return;
+    // 确认弹窗期间可能已被再次触发
+    if (_peekConvoGenerating.has(partnerName)) return;
+
+    _peekConvoGenerating.add(partnerName);
+    _syncPeekContinueUI(_peekConvoPartnerName);
+    _scrollPeekConvoToBottom();   // 让"正在输入"提示落在视野里
+
+    try {
+        const peekSettings = char.peekScreenSettings || {};
+        const limitCount = (peekSettings.contextLimit !== undefined) ? peekSettings.contextLimit : 50;
+        const mainChatContext = limitCount > 0 ? historyToPlainText(char.history.slice(-limitCount)) : "";
+        const baseContextPrompt = getPeekBasePromptContext(char, mainChatContext);
+
+        // 只取本组对话最近 N 条；时间分割线转成"隔了一段时间"的提示
+        const convoText = (convo.history || [])
+            .slice(-PEEK_CONTINUE_CONTEXT_LIMIT)
+            .map(m => {
+                if (m.content === '[time-divider]') return '(隔了一段时间)';
+                if (!m.content) return '';
+                return `${m.sender === 'char' ? 'char' : 'partner'}: ${m.content}`;
+            })
+            .filter(Boolean)
+            .join('\n');
+
+        let systemPrompt = `你正在模拟角色 ${char.realName} 手机里的一段私聊对话。\n`;
+        systemPrompt += baseContextPrompt;
+        systemPrompt += `\n【本次任务】\n下面是 ${char.realName} 与「${partnerName}」这段对话目前的记录（最多只给出最近${PEEK_CONTINUE_CONTEXT_LIMIT}条）。请**紧接着最后一条消息**继续往下推演，写出这段对话接下来自然发生的内容。\n`;
+        systemPrompt += `\n【当前对话记录】\n---\n${convoText || '（这段对话还没有任何消息，请自然地开启它）'}\n---\n`;
+        systemPrompt += `\n【要求】\n`;
+        systemPrompt += `1. 只推演 ${char.realName} 和「${partnerName}」之间的这一段对话，不要引入其他联系人，也不要另起一段新对话。\n`;
+        systemPrompt += `2. 严禁复述、总结或改写上面已有的消息，只输出**新增**的后续内容。\n`;
+        systemPrompt += `3. 承接最后一条消息的语气和话题自然往下写，允许话题自然推进、转移或让对话自然收尾；内容要符合 ${char.realName} 的人设，并与上面的主线聊天上下文保持一致。\n`;
+        systemPrompt += `4. 本次输出 6-12 条消息，口吻是真人线上聊天，简短口语化。\n`;
+        systemPrompt += `5. 严格按行输出，每条消息单独一行：${char.realName} 发送的以 "char: " 开头；「${partnerName}」发送的以 "partner: " 开头。\n`;
+        systemPrompt += `6. 直接输出消息行，不要输出 #PARTNER#、#HISTORY#、===SEP=== 等任何标签，也不要编号、解释或额外说明。\n`;
+        systemPrompt += `\n输出格式示例：\npartner: 对方发送的消息内容\nchar: ${char.realName}发送的消息内容\npartner: 对方发送的消息内容\n`;
+
+        const contentStr = await callPeekApi({
+            url, key, model,
+            messages: [{ role: 'user', content: systemPrompt }],
+            temperature, streamEnabled
+        });
+
+        const newMessages = parsePeekConversationLines(contentStr);
+        if (newMessages.length === 0) throw new Error('解析推演内容失败，未获取到有效消息。');
+
+        // 直接续在本组对话末尾，不插时间分割线（是同一段对话的延续）
+        convo.history = [...(convo.history || []), ...newMessages];
+        convo.lastUpdated = Date.now();
+
+        // 有新内容就顶到列表最前（用户正看着，不打 new 角标）
+        const list = peekContentCache.messages.conversations;
+        const idx = list.indexOf(convo);
+        if (idx > 0) { list.splice(idx, 1); list.unshift(convo); }
+
+        savePeekData(char.id).catch(e => console.error('Peek自动保存失败:', e));
+        renderPeekChatList(list, false, true);
+        _appendPeekConvoMessages(partnerName, newMessages);
+
+        if (typeof showToast === 'function') showToast(`已推演出 ${newMessages.length} 条新消息`);
+
+    } catch (error) {
+        console.error(error);
+        if (typeof showApiError === 'function') showApiError(error);
+        else if (typeof showToast === 'function') showToast('推演失败: ' + error.message);
+    } finally {
+        _peekConvoGenerating.delete(partnerName);
+        _syncPeekContinueUI(_peekConvoPartnerName);
+    }
 }
 
 async function generateAndRenderPeekMessages(options = {}) {
@@ -502,4 +679,8 @@ function initPeekMessagesEvents() {
     document.getElementById('peek-message-area')?.addEventListener('click', (e) => {
         if (e.target.id === 'peek-convo-history-tip') _loadOlderPeekMessages();
     });
+
+    // 对话详情：继续推演（按 _peekConvoPartnerName 定位当前打开的这一组）
+    document.getElementById('peek-conversation-continue-btn')
+        ?.addEventListener('click', () => continuePeekConversation(_peekConvoPartnerName));
 }
