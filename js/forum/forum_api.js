@@ -74,12 +74,16 @@ function getForumGenerationContext() {
 
 
     // (C) 角色人设 (Characters)
+    // 记录已注入过人设的角色卡 id，群聊分支据此去重，避免同一个角色的人设进两遍浪费 token
+    const injectedCharIds = new Set();
+
     if (bindings.charIds && bindings.charIds.length > 0) {
         context += "===== 主要角色人设 & 近期动态 =====\n";
 
         bindings.charIds.forEach(id => {
             const char = db.characters.find(c => c.id === id);
             if (char) {
+                injectedCharIds.add(char.id);
                 context += `--- 角色: ${char.realName} ---\n`;
                 context += `人设描述: ${char.persona}\n`;
 
@@ -112,8 +116,33 @@ function getForumGenerationContext() {
             const group = (db.groups || []).find(g => g.id === id);
             if (group) {
                 context += `--- 群聊: ${group.name} ---\n`;
-                const memberNames = (group.members || []).map(m => m.realName || m.groupNickname).filter(Boolean).join('、');
-                if (memberNames) context += `群成员: ${memberNames}\n`;
+
+                const memberLines = [];
+                const memberDisplayNames = {}; // 成员id -> 显示名，供下面的聊天记录复用，避免用到过期快照名
+                (group.members || []).forEach(m => {
+                    // 优先回查原角色卡拿最新的真名/昵称/人设，与 group_prompt.js 的口径保持一致
+                    const originalChar = m.originalCharId
+                        ? (db.characters || []).find(c => c.id === m.originalCharId)
+                        : null;
+                    const realName = (originalChar && originalChar.realName)  || m.realName;
+                    const nickname = (originalChar && originalChar.remarkName) || m.groupNickname;
+                    const persona  = (originalChar && originalChar.persona)   || m.persona;
+
+                    const displayName = realName || nickname;
+                    if (!displayName) return;
+                    memberDisplayNames[m.id] = displayName;
+                    const nickPart = (nickname && nickname !== displayName) ? `（群昵称：${nickname}）` : '';
+
+                    // 该角色的人设若上面已经注入过（单独绑定了它，或它同时在别的关联群里），这里只留个名字
+                    if (originalChar && injectedCharIds.has(originalChar.id)) {
+                        memberLines.push(`- ${displayName}${nickPart}：人设见上文，不再重复`);
+                        return;
+                    }
+                    if (originalChar) injectedCharIds.add(originalChar.id);
+
+                    memberLines.push(`- ${displayName}${nickPart}：${persona || '无特定人设'}`);
+                });
+                if (memberLines.length) context += `群成员及人设:\n${memberLines.join('\n')}\n`;
 
                 if (bindings.useChatHistory) {
                     if (group.history && group.history.length > 0) {
@@ -123,8 +152,7 @@ function getForumGenerationContext() {
                             if (msg.role === 'user') {
                                 name = group.me?.realName || 'User';
                             } else {
-                                const sender = (group.members || []).find(mem => mem.id === msg.senderId);
-                                name = sender ? sender.realName : '未知成员';
+                                name = memberDisplayNames[msg.senderId] || '未知成员';
                             }
                             let cleanContent = msg.content;
                             if (typeof cleanContent !== 'string') cleanContent = "[非文本消息]";
