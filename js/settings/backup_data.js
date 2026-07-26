@@ -387,6 +387,7 @@ async function* createFullBackupStream() {
         enableScreenAdaptation: db.enableScreenAdaptation,
         enableSwipeBack:        db.enableSwipeBack,
         studySettings:          db.studySettings,
+        globalVisionSettings:   db.globalVisionSettings,
         studyBanks:             db.studyBanks              || [],
         studyExams:             db.studyExams              || [],
         studyExamRecords:       db.studyExamRecords        || [],
