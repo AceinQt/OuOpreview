@@ -1004,6 +1004,12 @@
                     <div class="item-details"><span class="item-name">更换聊天背景</span></div>
                     <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </label>                
+                <!-- 清理图片：把本聊天所有图片批量转成文字描述，省 token -->
+                <div class="settings-item" id="cleanup-images-btn">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+                    <div class="item-details"><span class="item-name">清理图片（转文字）</span></div>
+                    <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
                 <!-- 清空聊天记录 (移入菜单作为普通选项卡，红字/红图标预警) -->
                 <div class="settings-item" id="clear-chat-history-btn">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></div>
@@ -1125,6 +1131,13 @@
                     <div class="item-details"><span class="item-name">更换聊天背景</span></div>
                     <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </label>
+
+                <!-- 清理图片：把本群聊所有图片批量转成文字描述，省 token -->
+                <div class="settings-item" id="cleanup-group-images-btn">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+                    <div class="item-details"><span class="item-name">清理图片（转文字）</span></div>
+                    <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
 
                 <!-- ⑥ 清空聊天记录 -->
                 <div class="settings-item danger-item" id="clear-group-chat-history-btn">
@@ -2571,12 +2584,22 @@
         <div class="title-container">
             <h1 class="title">Ta的手机</h1>
         </div>
-                <button class="action-btn" id="peek-settings-btn"><svg viewBox="0 0 24 24" fill="currentColor">
+                <div class="action-btn-group">
+                    <!-- 批量生成：一次生成所有应用的内容 -->
+                    <button class="action-btn" id="peek-batch-generate-btn" title="批量生成">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+                            <path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6L12 2z" />
+                            <path d="M18.5 13.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" />
+                            <path d="M6 15l.7 1.8 1.8.7-1.8.7L6 20l-.7-1.8-1.8-.7 1.8-.7L6 15z" />
+                        </svg>
+                    </button>
+                    <button class="action-btn" id="peek-settings-btn"><svg viewBox="0 0 24 24" fill="currentColor">
                         <rect x="3" y="5" width="18" height="1.5" rx="0.75" />
                         <rect x="3" y="11" width="18" height="1.5" rx="0.75" />
                         <rect x="3" y="17" width="18" height="1.5" rx="0.75" />
                     </svg>
 </button>
+                </div>
             </header>
             <main class="content" style="padding: 50px 0; justify-content: flex-start; align-items: center;">
                 <!-- Content rendered by renderPeekScreen() -->
@@ -6756,7 +6779,8 @@
 <script src="js/peek/peek_drafts.js"></script>
 <script src="js/peek/peek_transfer.js"></script>
 <script src="js/peek/peek_unlock.js"></script>
-    
+<script src="js/peek/peek_batch.js"></script>   <!-- 批量生成：依赖上面各应用的 parse/apply -->
+
 <!-- ToDouo -->
     <script src="js/study/study_core.js"></script>
     <script src="js/study/pomodoro.js"></script>
