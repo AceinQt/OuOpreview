@@ -52,7 +52,199 @@
                 await saveSingleChat(currentChatId, currentChatType);
                 renderChatList();
             }                            
-                                                     async function sendMyVoiceMessage(text) {
+                                                     
+
+            // ==========================================
+            // 图片转文字描述（省 token）
+            // 长按图片消息 →「转化为文字」→ 额外调一次识图 API 拿描述
+            // → 成功后才把原图换成文字消息；失败零副作用，原图完好
+            // 转化后 parts 只剩 text，上下文里不再是一张图，而是一小段文字
+            // ==========================================
+
+            // 正在转化中的消息 ID：防止重复点击，长按菜单里据此置灰
+            const _convertingMsgIds = new Set();
+
+            const VISION_DESCRIBE_PROMPT = '请用中文客观描述这张图片的内容：画面主体、场景、可见文字、整体氛围。控制在80字以内，直接输出描述本身，不要任何前缀、引号或Markdown。';
+
+            // 取识图 API 配置
+            // 优先级：全局识图设置 > 该聊天自己的 API 预设 > 全局默认
+            // 注意是「全局优先」：一旦在侧栏指定了识图API，所有聊天的转化都走它
+            function _getVisionApiConfig(chat) {
+                const _pick = (d) => ({
+                    url:      d.url || d.apiUrl || '',
+                    key:      d.key || d.apiKey || '',
+                    model:    d.model || '',
+                    provider: d.provider || 'newapi'
+                });
+                const _findPreset = (name) => (db.apiPresets || [])
+                    .filter(p => !p.type || p.type === 'chat')
+                    .find(p => p.name === name);
+
+                const visionPresetName = (db.globalVisionSettings || {}).apiPreset || '';
+                if (visionPresetName) {
+                    const preset = _findPreset(visionPresetName);
+                    if (preset && preset.data) return _pick(preset.data);
+                }
+                if (chat && chat.chatApiPreset) {
+                    const preset = _findPreset(chat.chatApiPreset);
+                    if (preset && preset.data) return _pick(preset.data);
+                }
+                return _pick(db.apiSettings || {});
+            }
+
+            // 调识图 API，返回图片的文字描述（非流式，60秒超时）
+            async function requestImageDescription(dataUrl, chat) {
+                const { url, key, model, provider } = _getVisionApiConfig(chat);
+                if (!url || !key || !model) throw new Error('识图API未配置完整');
+
+                const _key = (typeof getRandomValue === 'function') ? getRandomValue(key) : key;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 60000);
+
+                try {
+                    let endpoint, headers, body;
+
+                    if (provider === 'gemini') {
+                        let mimeType = 'image/jpeg';
+                        let data = dataUrl;
+                        const match = dataUrl.match(/^data:(image\/(\w+));base64,(.*)$/);
+                        if (match) { mimeType = match[1]; data = match[3]; }
+
+                        endpoint = `${url}/v1beta/models/${model}:generateContent?key=${_key}`;
+                        headers = { 'Content-Type': 'application/json' };
+                        body = {
+                            contents: [{
+                                role: 'user',
+                                parts: [
+                                    { text: VISION_DESCRIBE_PROMPT },
+                                    { inline_data: { mime_type: mimeType, data: data } }
+                                ]
+                            }],
+                            generationConfig: { temperature: 0.4 }
+                        };
+                    } else {
+                        endpoint = `${url}/v1/chat/completions`;
+                        headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${_key}` };
+                        body = {
+                            model: model,
+                            stream: false,
+                            temperature: 0.4,
+                            messages: [{
+                                role: 'user',
+                                content: [
+                                    { type: 'text', text: VISION_DESCRIBE_PROMPT },
+                                    { type: 'image_url', image_url: { url: dataUrl } }
+                                ]
+                            }]
+                        };
+                    }
+
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(body),
+                        signal: controller.signal
+                    });
+
+                    if (!response.ok) {
+                        let detail = '';
+                        try { detail = ((await response.text()) || '').slice(0, 120); } catch (e) {}
+                        throw new Error(`API ${response.status}${detail ? ' ' + detail : ''}`);
+                    }
+
+                    const json = await response.json();
+                    return (provider === 'gemini')
+                        ? (json.candidates?.[0]?.content?.parts?.[0]?.text || '')
+                        : (json.choices?.[0]?.message?.content || '');
+                } catch (err) {
+                    if (err.name === 'AbortError') throw new Error('请求超时（60秒）');
+                    throw err;
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+
+            // 挂上/取下图片气泡的「转化中」遮罩
+            // 每次都按 id 重新查 DOM：等待期间可能已重绘，旧引用会失效
+            function _setImageConvertingUI(messageId, isConverting) {
+                const bubble = document.querySelector(`.message-wrapper[data-id="${messageId}"] .image-bubble`);
+                if (bubble) bubble.classList.toggle('converting', isConverting);
+            }
+
+            // 主流程：把一条图片消息转化成文字描述
+            async function convertImageMessageToText(messageId) {
+                if (_convertingMsgIds.has(messageId)) { showToast('该图片正在转化中'); return; }
+
+                const chat = (currentChatType === 'private')
+                    ? db.characters.find(c => c.id === currentChatId)
+                    : db.groups.find(g => g.id === currentChatId);
+                if (!chat) return;
+
+                const message = chat.history.find(m => m.id === messageId);
+                if (!message) return;
+
+                const imagePart = (message.parts || []).find(p => p.type === 'image');
+                if (!imagePart || !imagePart.data) { showToast('这条消息里没有图片'); return; }
+
+                const confirmMsg = '转化后将删除原图，只保留AI生成的文字描述，且无法还原。\n好处是这张图不再占用上下文额度。\n\n确定继续吗？';
+                const confirmed = (typeof AppUI !== 'undefined' && AppUI.confirm)
+                    ? await AppUI.confirm(confirmMsg, '转化为文字', '确定', '取消')
+                    : confirm(confirmMsg);
+                if (!confirmed) return;
+
+                // 记住发起时的会话，防止用户中途切走后把结果写错地方
+                const targetChatId = currentChatId;
+                const targetChatType = currentChatType;
+
+                _convertingMsgIds.add(messageId);
+                _setImageConvertingUI(messageId, true);
+
+                try {
+                    const raw = await requestImageDescription(imagePart.data, chat);
+                    // 必须剥掉方括号和换行，否则会打断 [xx发来的照片/视频：...] 的气泡正则
+                    const desc = (raw || '').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
+                    if (!desc) throw new Error('返回内容为空');
+
+                    let senderName = '';
+                    if (message.role === 'user') {
+                        senderName = (targetChatType === 'private') ? chat.myName : chat.me.realName;
+                    } else if (targetChatType === 'private') {
+                        senderName = chat.realName || chat.name;
+                    } else {
+                        const sender = (chat.members || []).find(m => m.id === message.senderId);
+                        senderName = sender ? sender.groupNickname : (chat.name || '未知成员');
+                    }
+
+                    // ★ 写数据是最后一步：上面任何一步失败，原图都分毫未动
+                    const newContent = `[${senderName}发来的照片/视频：${desc}]`;
+                    message.content = newContent;
+                    message.parts = [{ type: 'text', text: newContent }];
+
+                    await saveMessageToDB(message, targetChatId, targetChatType);
+                    await saveSingleChat(targetChatId, targetChatType);
+                    renderChatList();
+
+                    // 原地换气泡（还在同一个聊天室时才动 DOM）
+                    if (currentChatId === targetChatId && currentChatType === targetChatType) {
+                        const oldBubble = document.querySelector(`.message-wrapper[data-id="${messageId}"]`);
+                        const newBubble = createMessageBubbleElement(message);
+                        if (oldBubble && newBubble) oldBubble.replaceWith(newBubble);
+                    }
+
+                    showToast('已转化为文字');
+                } catch (err) {
+                    console.error('图片转化失败:', err);
+                    showToast('转化失败：' + (err.message || '未知错误'));
+                } finally {
+                    _convertingMsgIds.delete(messageId);
+                    _setImageConvertingUI(messageId, false);
+                }
+            }
+
+            window.convertImageMessageToText = convertImageMessageToText;
+            window.isImageConverting = (id) => _convertingMsgIds.has(id);
+
+            async function sendMyVoiceMessage(text) {
                 if (!text) return;
                 sendVoiceModal.classList.remove('visible');
                 await new Promise(resolve => setTimeout(resolve, 100));

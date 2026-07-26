@@ -155,6 +155,18 @@ function createContextMenu(items, x, y) {
                     menuItems.push({label: '撤回', action: () => withdrawMessage(messageId)});
                 }
                     }
+
+                    // 图片消息：转文字描述（省 token）
+                    if (isImageRecognitionMsg) {
+                        const isConverting = (typeof isImageConverting === 'function') && isImageConverting(messageId);
+                        menuItems.push({
+                            label: isConverting ? '转化中…' : '转化为文字',
+                            action: () => {
+                                if (isConverting) { showToast('该图片正在转化中'); return; }
+                                convertImageMessageToText(messageId);
+                            }
+                        });
+                    }
                 }
                 menuItems.push({label: '删除', action: () => enterMultiSelectMode(messageId)});
             }

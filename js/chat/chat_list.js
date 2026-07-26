@@ -144,6 +144,47 @@ function setupChatListScreen() {
             });
         }
 
+        // ====== 识图API按钮：打开设置弹窗 ======
+        const visionBtn = document.getElementById('chat-sidebar-vision-btn');
+        const visionModal = document.getElementById('vision-api-modal');
+        const visionForm = document.getElementById('vision-api-form');
+        const visionSelect = document.getElementById('vision-api-preset-select');
+
+        if (visionBtn && visionModal && visionForm && visionSelect) {
+            visionBtn.addEventListener('click', () => {
+                sidebar.classList.remove('active');       // 收起侧边栏
+                sidebarOverlay?.classList.remove('visible');
+
+                // 填充预设下拉框（只取聊天类预设）
+                visionSelect.innerHTML = '<option value="">同聊天API</option>';
+                (db.apiPresets || [])
+                    .filter(p => !p.type || p.type === 'chat')
+                    .forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.name;
+                        opt.textContent = p.name;
+                        visionSelect.appendChild(opt);
+                    });
+                visionSelect.value = (db.globalVisionSettings || {}).apiPreset || '';
+
+                visionModal.classList.add('visible');
+            });
+
+            visionForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                db.globalVisionSettings = { ...(db.globalVisionSettings || {}), apiPreset: visionSelect.value };
+                await saveGlobalKeys(['globalVisionSettings']);
+                visionModal.classList.remove('visible');
+                showToast('识图API已保存');
+            });
+
+            const visionCancelBtn = document.getElementById('vision-api-cancel-btn');
+            visionCancelBtn?.addEventListener('click', () => visionModal.classList.remove('visible'));
+            visionModal.addEventListener('click', (e) => {
+                if (e.target === visionModal) visionModal.classList.remove('visible');
+            });
+        }
+
     chatListContainer.addEventListener('click', (e) => {
         const chatItem = e.target.closest('.chat-item');
         if (chatItem) {
