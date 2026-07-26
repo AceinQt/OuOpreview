@@ -91,7 +91,7 @@ if (watchingContext) {
           `[${character.realName}的消息：喂？]\n` +
           `[${character.realName}的消息：听得到吗？]\n`;
     prompt += `6. **挂断通话**：如果对话需要自然结束，你可以主动挂断，单起一行输出：[${character.realName}挂断了通话]。\n`; 
-    prompt += `7. 现在是 ${currentTime}。`;
+    if (character.timePerceptionEnabled) prompt += `7. 现在是 ${currentTime}。`;
 
     return prompt;
 }
@@ -134,7 +134,9 @@ if (watchingContext) {
 
                     // 记忆
                     if (allFavs) {
-                        prompt += `**重要记忆**：现在是 ${currentTime}，这是需要铭记的历史互动：\n${allFavs}\n\n`;
+                        prompt += character.timePerceptionEnabled
+                            ? `**重要记忆**：现在是 ${currentTime}，这是需要铭记的历史互动：\n${allFavs}\n\n`
+                            : `**重要记忆**：这是需要铭记的历史互动：\n${allFavs}\n\n`;
                         prompt += `*这些记忆会影响${character.realName}的反应，但不要刻意提及"我记得..."，让它自然地影响情绪和判断。*\n\n`;
                     }
                     
@@ -254,7 +256,9 @@ if (watchingContext) {
                     if (_lo > 0 && _hi >= _lo) { replyLo = _lo; replyHi = _hi; }
                 }
                 prompt += `15. **对话节奏**: 你需要模拟真人的线上聊天习惯，你可以一次性生成多条简短消息。每次要回复至少${replyLo}-${replyHi}条短消息。并根据当前行为/心情/地点变化实时更新状态(状态20个字符以内)。\n`;
-                prompt += `16. 现在是 ${currentTime}。你应知晓当前时间，但不要主动提及或评论时间（例如，不要催促我睡觉），不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
+                prompt += character.timePerceptionEnabled
+                    ? `16. 现在是 ${currentTime}。你应知晓当前时间，但不要主动提及或评论时间（例如，不要催促我睡觉），不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`
+                    : `16. 不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
 
                 return prompt;
             }

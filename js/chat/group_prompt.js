@@ -36,9 +36,10 @@ function generateGroupSystemPrompt(group, retrievedContext = '') {
     let myRealName = group.me.realName || group.me.nickname; // 兜底：没真名就用昵称
     let myPersona = group.me.persona;
 
-    // 如果绑定了档案，强制读取最新档案数据
-    if (group.boundPersonaId) {
-        const p = db.userPersonas.find(up => up.id === group.boundPersonaId);
+    // 如果绑定了档案，强制读取最新档案数据（注意 id 存在 group.me 下，不在顶层）
+    // 只覆盖真名和人设：群内昵称允许每个群单独定制，始终用 group.me.nickname
+    if (group.me.boundPersonaId) {
+        const p = db.userPersonas.find(up => up.id === group.me.boundPersonaId);
         if (p) {            
             myRealName = p.realName;
             myPersona = p.persona;
@@ -155,6 +156,15 @@ function generateGroupSystemPrompt(group, retrievedContext = '') {
     prompt += `   - 严格扮演每个角色的人设，不同角色之间应有明显的性格和语气差异。\n`;
     prompt += `   - 你的回复中只能包含第4点列出的合法格式的消息。绝对不能包含任何其他内容，如 \`[场景描述]\`, \`(心理活动)\`, \`*动作*\` 或任何格式之外的解释性文字。\n`;
     prompt += `   - 保持对话的持续性，不要主动结束对话。\n\n`;
+    // 时间感知：仅在该群开启时注入当前时间（与私聊、processTimePerception 用同一个开关）
+    if (group.timePerceptionEnabled) {
+        const now = new Date();
+        const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+        const currentWeekDay = weekDays[now.getDay()];
+        const currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 星期${currentWeekDay} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        prompt += `7. **当前时间**: 现在是 ${currentTime}。群成员应知晓当前时间，但不要主动提及或评论时间。\n\n`;
+    }
+
     prompt += `现在，请根据以上设定，开始扮演群聊中的所有角色。`;
 
     return prompt;

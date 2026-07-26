@@ -90,8 +90,8 @@ function generateProactiveGroupPrompt(group) {
     
     let myRealName = group.me.realName || group.me.nickname;
     let myPersona = group.me.persona;
-    if (group.boundPersonaId && typeof db !== 'undefined' && db.userPersonas) {
-        const p = db.userPersonas.find(up => up.id === group.boundPersonaId);
+    if (group.me.boundPersonaId && typeof db !== 'undefined' && db.userPersonas) {
+        const p = db.userPersonas.find(up => up.id === group.me.boundPersonaId);
         if (p) { myRealName = p.realName; myPersona = p.persona; }
     }
 

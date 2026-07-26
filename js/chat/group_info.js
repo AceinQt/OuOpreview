@@ -366,8 +366,8 @@ async function _renderGroupTokenStatsInner(group, statsPanel, _hideLoading) {
     const me = group.me || {};
     let meRealName = me.realName || me.nickname || '';
     let mePersona  = me.persona  || '';
-    if (group.boundPersonaId) {
-        const p = db.userPersonas && db.userPersonas.find(up => up.id === group.boundPersonaId);
+    if (me.boundPersonaId) {
+        const p = db.userPersonas && db.userPersonas.find(up => up.id === me.boundPersonaId);
         if (p) { meRealName = p.realName; mePersona = p.persona || ''; }
     }
     let membersStr = meRealName + '\n' + mePersona + '\n';
