@@ -16,7 +16,9 @@ const globalSettingKeys =[
     // ★ 系统消息通知设置（总开关 / 全局后台保活时长）
     'globalNotifySettings',
     // ★ 进阶推送节点设置（CF Worker 地址 / VAPID 公钥 / 令牌 / 订阅凭证）
-    'globalPushSettings'
+    'globalPushSettings',
+    // ★ 识图 API 设置（图片转文字描述专用；空 = 跟随各聊天自己的 API）
+    'globalVisionSettings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源
@@ -60,6 +62,11 @@ window.db = {
     //   enabled: 总开关；workerUrl: Worker 地址；vapidPublicKey/vapidPrivateKey: VAPID 密钥
     //   clientToken: 与 Worker 的 CLIENT_TOKEN 对应；subscription: 浏览器推送订阅凭证
     globalPushSettings: { enabled: false, workerUrl: '', vapidPublicKey: '', vapidPrivateKey: '', clientToken: '', subscription: null },
+
+    // ★ 识图 API 设置（长按图片"转化为文字"时使用）
+    //   apiPreset: 预设名；空字符串 = 同聊天API（跟随每个聊天自己的 chatApiPreset）
+    //   一旦指定预设，所有聊天的图片转化都走它
+    globalVisionSettings: { apiPreset: '' },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
