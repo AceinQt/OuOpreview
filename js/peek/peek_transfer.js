@@ -113,6 +113,36 @@ function renderPeekTransferStation(entries, isAppend = false, resetPage = false)
     }
 }
 
+// ==========================================
+// 解析中转站标签文本 → 条目数组（批量生成复用）
+// ==========================================
+function parsePeekTransferContent(transferRawText) {
+    const rawItems = (transferRawText || '').split('===SEP===');
+    const parsedEntries = [];
+
+    rawItems.forEach((rawText) => {
+        if (!rawText.trim()) return;
+        const entryMatch = rawText.match(/#ENTRY#\s*([\s\S]*)$/i);
+        if (entryMatch && entryMatch[1].trim()) {
+            parsedEntries.push({
+                id: `transfer_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                content: entryMatch[1].trim(),
+                isNew: true
+            });
+        }
+    });
+
+    return parsedEntries;
+}
+
+// 把解析好的中转站条目并入缓存（批量生成复用）
+function applyPeekTransferContent(parsedEntries) {
+    if (!parsedEntries || parsedEntries.length === 0) return 0;
+    if (!peekContentCache['transfer']) peekContentCache['transfer'] = { entries: [] };
+    peekContentCache['transfer'].entries = [...parsedEntries, ...peekContentCache['transfer'].entries];
+    return parsedEntries.length;
+}
+
 async function generateAndRenderPeekTransfer(options = {}) {
     const appType = 'transfer';
     const { forceRefresh = false } = options;
@@ -176,24 +206,10 @@ https://example.com/interesting-article
         const transferRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const rawItems = transferRawText.split('===SEP===');
-        const parsedEntries = [];
-
-        rawItems.forEach((rawText) => {
-            if (!rawText.trim()) return;
-            const entryMatch = rawText.match(/#ENTRY#\s*([\s\S]*)$/i);
-            if (entryMatch && entryMatch[1].trim()) {
-                parsedEntries.push({
-                    id: `transfer_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    content: entryMatch[1].trim(),
-                    isNew: true
-                });
-            }
-        });
+        const parsedEntries = parsePeekTransferContent(transferRawText);
 
         if (parsedEntries.length > 0) {
-            if (!peekContentCache['transfer']) peekContentCache['transfer'] = { entries: [] };
-            peekContentCache['transfer'].entries = [...parsedEntries, ...peekContentCache['transfer'].entries];
+            applyPeekTransferContent(parsedEntries);
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekTransferStation(peekContentCache['transfer'].entries, false, true);
         } else {

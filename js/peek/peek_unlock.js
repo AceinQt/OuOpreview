@@ -154,6 +154,110 @@ function renderPeekUnlock(data, isAppend = false, resetPage = false) {
     }
 }
 
+// ==========================================
+// 解析小号标签文本 → { nickname, handle, bio, posts }（批量生成复用）
+// lastGenTime / now 用于把 [15分钟前] 这类相对时间换算成绝对时间戳
+// 缺少昵称或帖子时返回 null
+// ==========================================
+function parsePeekUnlockContent(unlockRawText, lastGenTime, now) {
+    const raw = unlockRawText || '';
+    const nickMatch = raw.match(/#NICKNAME#\s*([\s\S]*?)(?=#HANDLE#|$)/i);
+    const handleMatch = raw.match(/#HANDLE#\s*([\s\S]*?)(?=#BIO#|$)/i);
+    const bioMatch = raw.match(/#BIO#\s*([\s\S]*?)(?=#POST#|$)/i);
+
+    const postSplits = raw.split(/#POST#/i).slice(1);
+    const parsedPosts = [];
+
+    // 尝试从AI给的tag(如[15分钟前])里提取或换算真实的相对时间戳
+    function parseTimeTag(tag, lastTime, currentTime) {
+        let offset = 0;
+        if (/刚/.test(tag)) offset = 1 * 60 * 1000;
+        else if (/(半小时|30分钟)/.test(tag)) offset = 30 * 60 * 1000;
+        else if (/分钟/.test(tag)) {
+            let m = tag.match(/(\d+)/);
+            if (m) offset = parseInt(m[1]) * 60 * 1000;
+        } else if (/小时/.test(tag)) {
+            let m = tag.match(/(\d+)/);
+            if (m) offset = parseInt(m[1]) * 3600 * 1000;
+        } else if (/天/.test(tag)) {
+            let m = tag.match(/(\d+)/);
+            if (m) offset = parseInt(m[1]) * 24 * 3600 * 1000;
+        } else if (/昨天/.test(tag)) {
+            offset = 24 * 3600 * 1000;
+        } else if (/前天/.test(tag)) {
+            offset = 48 * 3600 * 1000;
+        }
+
+        if (offset > 0) {
+            let t = currentTime - offset;
+            // 防止时间跳脱到比上次生成还要早太多的荒谬区间，稍微钳制一下
+            if (t < lastTime) t = lastTime + Math.random() * ((currentTime - lastTime) || 3600000) * 0.5;
+            return t;
+        }
+        // 解析失败的保底机制：取上次生成时间和现在的中间随机
+        return Math.floor(lastTime + Math.random() * (currentTime - lastTime));
+    }
+
+    let lastParsedTime = now; // 用于时间倒流保护
+
+    postSplits.forEach(postStr => {
+        const postMatch = postStr.match(/^\s*\[([^\]]+)\]\s*([\s\S]*)$/);
+        const contentText = postMatch ? postMatch[2].trim() : postStr.trim();
+        if (contentText) {
+            const timeTag = postMatch ? postMatch[1].trim() : '';
+            let absoluteTime = parseTimeTag(timeTag, lastGenTime, now);
+
+            // 时间逻辑保护机制：AI是倒序输出，因此当前循环到的帖子必须比前一个帖子"更老"。
+            // 否则就属于AI逻辑错误，我们直接介入纠偏，强制扣除时间。
+            if (absoluteTime >= lastParsedTime) {
+                absoluteTime = lastParsedTime - Math.floor(Math.random() * 60000 + 60000); // 强制比上一个老1到2分钟
+            }
+            lastParsedTime = absoluteTime;
+
+            parsedPosts.push({
+                id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                timestamp: timeTag,
+                absoluteTime: absoluteTime,
+                content: contentText,
+                isNew: true
+            });
+        }
+    });
+
+    if (!nickMatch || parsedPosts.length === 0) return null;
+
+    return {
+        nickname: nickMatch[1].trim(),
+        handle: handleMatch ? handleMatch[1].trim() : '@unknown',
+        bio: bioMatch ? bioMatch[1].trim() : '...',
+        posts: parsedPosts
+    };
+}
+
+// 把解析好的小号内容并入缓存（批量生成复用）
+function applyPeekUnlockContent(parsed, now) {
+    if (!parsed) return 0;
+    if (!peekContentCache['unlock']) {
+        peekContentCache['unlock'] = { nickname: '', handle: '', bio: '', posts: [] };
+    }
+
+    peekContentCache['unlock'].nickname = parsed.nickname;
+    peekContentCache['unlock'].handle = parsed.handle;
+    peekContentCache['unlock'].bio = parsed.bio;
+    // 将新帖子拼接到原数组最前面
+    peekContentCache['unlock'].posts = [...parsed.posts, ...peekContentCache['unlock'].posts];
+    peekContentCache['unlock'].lastGenTime = now; // 记录本次生成时间
+
+    return parsed.posts.length;
+}
+
+// 上次生成小号内容的时间（无记录时按 3 天前处理）
+function getPeekUnlockLastGenTime(now) {
+    return (peekContentCache['unlock'] && peekContentCache['unlock'].lastGenTime)
+        ? peekContentCache['unlock'].lastGenTime
+        : (now - 3 * 24 * 3600 * 1000);
+}
+
 async function generateAndRenderPeekUnlock(options = {}) {
     const appType = 'unlock';
     const { forceRefresh = false } = options;
@@ -192,7 +296,7 @@ async function generateAndRenderPeekUnlock(options = {}) {
 
         // 确定距离上次更新的时长，用以辅助AI产生时间概念
         const now = Date.now();
-        const lastGenTime = (peekContentCache['unlock'] && peekContentCache['unlock'].lastGenTime) ? peekContentCache['unlock'].lastGenTime : (now - 3 * 24 * 3600 * 1000);
+        const lastGenTime = getPeekUnlockLastGenTime(now);
         const hoursSinceLast = Math.max(1, Math.floor((now - lastGenTime) / 3600000));
         let timeText = hoursSinceLast > 72 ? '几天' : `约 ${hoursSinceLast} 小时`;
 
@@ -245,80 +349,10 @@ async function generateAndRenderPeekUnlock(options = {}) {
         const unlockRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const nickMatch = unlockRawText.match(/#NICKNAME#\s*([\s\S]*?)(?=#HANDLE#|$)/i);
-        const handleMatch = unlockRawText.match(/#HANDLE#\s*([\s\S]*?)(?=#BIO#|$)/i);
-        const bioMatch = unlockRawText.match(/#BIO#\s*([\s\S]*?)(?=#POST#|$)/i);
+        const parsedUnlock = parsePeekUnlockContent(unlockRawText, lastGenTime, now);
 
-        const postSplits = unlockRawText.split(/#POST#/i).slice(1);
-        const parsedPosts = [];
-
-        // 尝试从AI给的tag(如[15分钟前])里提取或换算真实的相对时间戳
-        function parseTimeTag(tag, lastTime, currentTime) {
-            let offset = 0;
-            if (/刚/.test(tag)) offset = 1 * 60 * 1000;
-            else if (/(半小时|30分钟)/.test(tag)) offset = 30 * 60 * 1000;
-            else if (/分钟/.test(tag)) {
-                let m = tag.match(/(\d+)/);
-                if (m) offset = parseInt(m[1]) * 60 * 1000;
-            } else if (/小时/.test(tag)) {
-                let m = tag.match(/(\d+)/);
-                if (m) offset = parseInt(m[1]) * 3600 * 1000;
-            } else if (/天/.test(tag)) {
-                let m = tag.match(/(\d+)/);
-                if (m) offset = parseInt(m[1]) * 24 * 3600 * 1000;
-            } else if (/昨天/.test(tag)) {
-                offset = 24 * 3600 * 1000;
-            } else if (/前天/.test(tag)) {
-                offset = 48 * 3600 * 1000;
-            }
-            
-            if (offset > 0) {
-                let t = currentTime - offset;
-                // 防止时间跳脱到比上次生成还要早太多的荒谬区间，稍微钳制一下
-                if (t < lastTime) t = lastTime + Math.random() * ((currentTime - lastTime) || 3600000) * 0.5;
-                return t;
-            }
-            // 解析失败的保底机制：取上次生成时间和现在的中间随机
-            return Math.floor(lastTime + Math.random() * (currentTime - lastTime));
-        }
-
-        let lastParsedTime = now; // 用于时间倒流保护
-
-        postSplits.forEach(postStr => {
-            const postMatch = postStr.match(/^\s*\[([^\]]+)\]\s*([\s\S]*)$/);
-            const contentText = postMatch ? postMatch[2].trim() : postStr.trim();
-            if (contentText) {
-                const timeTag = postMatch ? postMatch[1].trim() : '';
-                let absoluteTime = parseTimeTag(timeTag, lastGenTime, now);
-                
-                // 时间逻辑保护机制：AI是倒序输出，因此当前循环到的帖子必须比前一个帖子"更老"。
-                // 否则就属于AI逻辑错误，我们直接介入纠偏，强制扣除时间。
-                if (absoluteTime >= lastParsedTime) {
-                    absoluteTime = lastParsedTime - Math.floor(Math.random() * 60000 + 60000); // 强制比上一个老1到2分钟
-                }
-                lastParsedTime = absoluteTime;
-
-                parsedPosts.push({
-                    id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    timestamp: timeTag,
-                    absoluteTime: absoluteTime,
-                    content: contentText,
-                    isNew: true
-                });
-            }
-        });
-
-        if (nickMatch && parsedPosts.length > 0) {
-            if (!peekContentCache['unlock']) {
-                peekContentCache['unlock'] = { nickname: '', handle: '', bio: '', posts:[] };
-            }
-
-            peekContentCache['unlock'].nickname = nickMatch[1].trim();
-            peekContentCache['unlock'].handle = handleMatch ? handleMatch[1].trim() : '@unknown';
-            peekContentCache['unlock'].bio = bioMatch ? bioMatch[1].trim() : '...';
-            // 将新帖子拼接到原数组最前面
-            peekContentCache['unlock'].posts = [...parsedPosts, ...peekContentCache['unlock'].posts];
-            peekContentCache['unlock'].lastGenTime = now; // 记录本次生成时间
+        if (parsedUnlock) {
+            applyPeekUnlockContent(parsedUnlock, now);
 
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekUnlock(peekContentCache['unlock'], false, true);

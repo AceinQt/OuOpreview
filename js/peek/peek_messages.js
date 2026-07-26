@@ -273,6 +273,87 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
     }
 }
 
+// ==========================================
+// 解析消息标签文本 → 对话数组（批量生成复用）
+// ==========================================
+function parsePeekMessagesContent(messagesRawText) {
+    const rawItems = (messagesRawText || '').split('===SEP===');
+    const parsedConversations = [];
+    const now = Date.now();
+
+    rawItems.forEach(rawText => {
+        if (!rawText.trim()) return;
+        const partnerMatch = rawText.match(/#PARTNER#\s*([\s\S]*?)(?=#HISTORY#|$)/);
+        const historyMatch = rawText.match(/#HISTORY#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
+
+        if (partnerMatch && historyMatch) {
+            const historyLines = historyMatch[1].trim().split('\n');
+            const history = [];
+            historyLines.forEach(line => {
+                const msgId = `msg_gen_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                if (line.trim().toLowerCase().startsWith('char:')) {
+                    history.push({ id: msgId, sender: 'char', content: line.replace(/^char:\s*/i, '').trim() });
+                } else if (line.trim().toLowerCase().startsWith('partner:')) {
+                    history.push({ id: msgId, sender: 'partner', content: line.replace(/^partner:\s*/i, '').trim() });
+                }
+            });
+
+            if (history.length > 0) {
+                parsedConversations.push({
+                    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    partnerName: partnerMatch[1].trim(),
+                    history: history,
+                    isNew: true,
+                    lastUpdated: now
+                });
+            }
+        }
+    });
+
+    return parsedConversations;
+}
+
+// 把解析好的对话并入缓存：同名联系人追加时间分割线，新联系人置顶（批量生成复用）
+function applyPeekMessagesContent(parsedConversations) {
+    if (!parsedConversations || parsedConversations.length === 0) return 0;
+    if (!peekContentCache['messages']) peekContentCache['messages'] = { conversations: [] };
+
+    const existingConvos = peekContentCache['messages'].conversations;
+    const now = Date.now();
+
+    parsedConversations.forEach(newConvo => {
+        const existingIdx = existingConvos.findIndex(c => c.partnerName === newConvo.partnerName);
+        if (existingIdx !== -1) {
+            // 如果对方已经积攒了之前的未读消息没看，就保留最早的边界不覆盖
+            const hasUnread = existingConvos[existingIdx].history.some(m => m.isUnreadBoundary);
+
+            const divider = {
+                id: `msg_div_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                content: '[time-divider]',
+                timestamp: now,
+                isUnreadBoundary: !hasUnread // 标记本次新增的时间戳为未读边界起点
+            };
+            existingConvos[existingIdx].history = [
+                ...existingConvos[existingIdx].history,
+                divider,
+                ...newConvo.history
+            ];
+            existingConvos[existingIdx].isNew = true;
+            existingConvos[existingIdx].lastUpdated = now;
+            const [merged] = existingConvos.splice(existingIdx, 1);
+            existingConvos.unshift(merged);
+        } else {
+            // 新联系人，把第一句话作为未读锚定点（如果内容很长，打开刚好看到对话第一句）
+            if (newConvo.history && newConvo.history.length > 0) {
+                newConvo.history[0].isUnreadBoundary = true;
+            }
+            existingConvos.unshift(newConvo);
+        }
+    });
+
+    return parsedConversations.length;
+}
+
 async function generateAndRenderPeekMessages(options = {}) {
     const appType = 'messages';
     const { forceRefresh = false } = options;
@@ -330,74 +411,10 @@ async function generateAndRenderPeekMessages(options = {}) {
         const messagesRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const rawItems = messagesRawText.split('===SEP===');
-        const parsedConversations =[];
-        const now = Date.now();
-
-        rawItems.forEach(rawText => {
-            if (!rawText.trim()) return;
-            const partnerMatch = rawText.match(/#PARTNER#\s*([\s\S]*?)(?=#HISTORY#|$)/);
-            const historyMatch = rawText.match(/#HISTORY#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
-
-            if (partnerMatch && historyMatch) {
-                const historyLines = historyMatch[1].trim().split('\n');
-                const history =[];
-                historyLines.forEach(line => {
-                    const msgId = `msg_gen_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-                    if (line.trim().toLowerCase().startsWith('char:')) {
-                        history.push({ id: msgId, sender: 'char', content: line.replace(/^char:\s*/i, '').trim() });
-                    } else if (line.trim().toLowerCase().startsWith('partner:')) {
-                        history.push({ id: msgId, sender: 'partner', content: line.replace(/^partner:\s*/i, '').trim() });
-                    }
-                });
-
-                if (history.length > 0) {
-                    parsedConversations.push({
-                        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                        partnerName: partnerMatch[1].trim(),
-                        history: history,
-                        isNew: true,
-                        lastUpdated: now
-                    });
-                }
-            }
-        });
+        const parsedConversations = parsePeekMessagesContent(messagesRawText);
 
         if (parsedConversations.length > 0) {
-            if (!peekContentCache['messages']) peekContentCache['messages'] = { conversations: [] };
-            const existingConvos = peekContentCache['messages'].conversations;
-            const now = Date.now();
-
-            parsedConversations.forEach(newConvo => {
-                const existingIdx = existingConvos.findIndex(c => c.partnerName === newConvo.partnerName);
-                if (existingIdx !== -1) {
-                    // 如果对方已经积攒了之前的未读消息没看，就保留最早的边界不覆盖
-                    const hasUnread = existingConvos[existingIdx].history.some(m => m.isUnreadBoundary);
-                    
-                    const divider = {
-                        id: `msg_div_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                        content: '[time-divider]',
-                        timestamp: now,
-                        isUnreadBoundary: !hasUnread // 标记本次新增的时间戳为未读边界起点
-                    };
-                    existingConvos[existingIdx].history = [
-                        ...existingConvos[existingIdx].history,
-                        divider,
-                        ...newConvo.history
-                    ];
-                    existingConvos[existingIdx].isNew = true;
-                    existingConvos[existingIdx].lastUpdated = now;
-                    const [merged] = existingConvos.splice(existingIdx, 1);
-                    existingConvos.unshift(merged);
-                } else {
-                    // 新联系人，把第一句话作为未读锚定点（如果内容很长，打开刚好看到对话第一句）
-                    if (newConvo.history && newConvo.history.length > 0) {
-                        newConvo.history[0].isUnreadBoundary = true;
-                    }
-                    existingConvos.unshift(newConvo);
-                }
-            });
-
+            applyPeekMessagesContent(parsedConversations);
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekChatList(peekContentCache['messages'].conversations, false, true);
         } else {

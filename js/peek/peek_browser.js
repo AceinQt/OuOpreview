@@ -80,6 +80,41 @@ function renderPeekBrowser(historyItems, isAppend = false, resetPage = false) {
     }
 }
 
+// ==========================================
+// 解析浏览记录标签文本 → 记录数组（批量生成复用）
+// ==========================================
+function parsePeekBrowserContent(browserRawText) {
+    const rawItems = (browserRawText || '').split('===SEP===');
+    const parsedHistory = [];
+
+    rawItems.forEach(rawText => {
+        if (!rawText.trim()) return;
+        const titleMatch = rawText.match(/#TITLE#\s*([\s\S]*?)(?=#URL#|$)/);
+        const urlMatch = rawText.match(/#URL#\s*([\s\S]*?)(?=#ANNOTATION#|$)/);
+        const annoMatch = rawText.match(/#ANNOTATION#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
+
+        if (titleMatch && urlMatch) {
+            parsedHistory.push({
+                id: `browser_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                title: titleMatch[1].trim(),
+                url: urlMatch[1].trim(),
+                annotation: annoMatch ? annoMatch[1].trim() : '',
+                isNew: true
+            });
+        }
+    });
+
+    return parsedHistory;
+}
+
+// 把解析好的浏览记录并入缓存（批量生成复用）
+function applyPeekBrowserContent(parsedHistory) {
+    if (!parsedHistory || parsedHistory.length === 0) return 0;
+    if (!peekContentCache['browser']) peekContentCache['browser'] = { history: [] };
+    peekContentCache['browser'].history = [...parsedHistory, ...peekContentCache['browser'].history];
+    return parsedHistory.length;
+}
+
 async function generateAndRenderPeekBrowser(options = {}) {
     const appType = 'browser';
     const { forceRefresh = false } = options;
@@ -148,29 +183,10 @@ www.example.com/tech-review-2026
         const browserRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const rawItems = browserRawText.split('===SEP===');
-        const parsedHistory = [];
-
-        rawItems.forEach(rawText => {
-            if (!rawText.trim()) return;
-            const titleMatch = rawText.match(/#TITLE#\s*([\s\S]*?)(?=#URL#|$)/);
-            const urlMatch = rawText.match(/#URL#\s*([\s\S]*?)(?=#ANNOTATION#|$)/);
-            const annoMatch = rawText.match(/#ANNOTATION#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
-
-            if (titleMatch && urlMatch) {
-                parsedHistory.push({
-                    id: `browser_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    title: titleMatch[1].trim(),
-                    url: urlMatch[1].trim(),
-                    annotation: annoMatch ? annoMatch[1].trim() : '',
-                    isNew: true
-                });
-            }
-        });
+        const parsedHistory = parsePeekBrowserContent(browserRawText);
 
         if (parsedHistory.length > 0) {
-            if (!peekContentCache['browser']) peekContentCache['browser'] = { history: [] };
-            peekContentCache['browser'].history = [...parsedHistory, ...peekContentCache['browser'].history];
+            applyPeekBrowserContent(parsedHistory);
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekBrowser(peekContentCache['browser'].history, false, true);
         } else {

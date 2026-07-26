@@ -88,6 +88,41 @@ function renderPeekAlbum(photos, isAppend = false, resetPage = false) {
     );
 }
 
+// ==========================================
+// 解析相册标签文本 → 照片数组（批量生成复用）
+// ==========================================
+function parsePeekAlbumContent(albumRawText) {
+    const rawPhotos = (albumRawText || '').split('===SEP===');
+    const parsedPhotos = [];
+
+    rawPhotos.forEach(rawText => {
+        if (!rawText.trim()) return;
+        const typeMatch = rawText.match(/#TYPE#\s*([\s\S]*?)(?=#IMAGE_DESC#|$)/);
+        const descMatch = rawText.match(/#IMAGE_DESC#\s*([\s\S]*?)(?=#ANNOTATION#|$)/);
+        const annoMatch = rawText.match(/#ANNOTATION#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
+
+        if (typeMatch && descMatch) {
+            parsedPhotos.push({
+                id: `album_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                type: typeMatch[1].trim() === 'video' ? 'video' : 'photo',
+                imageDescription: descMatch[1].trim(),
+                description: annoMatch ? annoMatch[1].trim() : '无批注',
+                isNew: true
+            });
+        }
+    });
+
+    return parsedPhotos;
+}
+
+// 把解析好的照片并入缓存（批量生成复用）
+function applyPeekAlbumContent(parsedPhotos) {
+    if (!parsedPhotos || parsedPhotos.length === 0) return 0;
+    if (!peekContentCache['album']) peekContentCache['album'] = { photos: [] };
+    peekContentCache['album'].photos = [...parsedPhotos, ...peekContentCache['album'].photos];
+    return parsedPhotos.length;
+}
+
 async function generateAndRenderPeekAlbum(options = {}) {
     const appType = 'album';
     const { forceRefresh = false } = options;
@@ -156,29 +191,10 @@ video
         const albumRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const rawPhotos = albumRawText.split('===SEP===');
-        const parsedPhotos = [];
-
-        rawPhotos.forEach(rawText => {
-            if (!rawText.trim()) return;
-            const typeMatch = rawText.match(/#TYPE#\s*([\s\S]*?)(?=#IMAGE_DESC#|$)/);
-            const descMatch = rawText.match(/#IMAGE_DESC#\s*([\s\S]*?)(?=#ANNOTATION#|$)/);
-            const annoMatch = rawText.match(/#ANNOTATION#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
-
-            if (typeMatch && descMatch) {
-                parsedPhotos.push({
-                    id: `album_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    type: typeMatch[1].trim() === 'video' ? 'video' : 'photo',
-                    imageDescription: descMatch[1].trim(),
-                    description: annoMatch ? annoMatch[1].trim() : '无批注',
-                    isNew: true
-                });
-            }
-        });
+        const parsedPhotos = parsePeekAlbumContent(albumRawText);
 
         if (parsedPhotos.length > 0) {
-            if (!peekContentCache['album']) peekContentCache['album'] = { photos: [] };
-            peekContentCache['album'].photos = [...parsedPhotos, ...peekContentCache['album'].photos];
+            applyPeekAlbumContent(parsedPhotos);
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekAlbum(peekContentCache['album'].photos, false, true);
         } else {

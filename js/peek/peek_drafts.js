@@ -173,6 +173,34 @@ function renderPeekDraftDetail(draft) {
 // ==========================================
 //  生成新草稿（点击 + 按钮）
 // ==========================================
+// ==========================================
+// 解析草稿标签文本 → 草稿对象（批量生成复用）
+// 缺少必需标签时返回 null
+// ==========================================
+function parsePeekDraftContent(draftsRawText) {
+    const raw = draftsRawText || '';
+    const toMatch = raw.match(/#TO#\s*([\s\S]*?)(?=#CONTENT#|$)/i);
+    const contentMatch = raw.match(/#CONTENT#\s*([\s\S]*?)$/i);
+
+    if (!toMatch || !contentMatch) return null;
+
+    return {
+        id: 'draft_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        to: toMatch[1].trim(),
+        content: contentMatch[1].trim(),
+        createdAt: new Date().toISOString(),
+        isNew: true
+    };
+}
+
+// 把解析好的草稿追加进缓存（批量生成复用）
+function applyPeekDraftContent(newDraft) {
+    if (!newDraft) return 0;
+    _migrateDraftsCacheIfNeeded();
+    peekContentCache['drafts'].items.push(newDraft);
+    return 1;
+}
+
 async function generateAndRenderPeekDrafts() {
     const appType = 'drafts';
 
@@ -238,20 +266,11 @@ ${char.myName}
         const draftsRawText  = parts[0] || '';
         const hitchhikerRaw  = parts.length > 1 ? parts[1] : '';
 
-        const toMatch      = draftsRawText.match(/#TO#\s*([\s\S]*?)(?=#CONTENT#|$)/i);
-        const contentMatch = draftsRawText.match(/#CONTENT#\s*([\s\S]*?)$/i);
+        const newDraft = parsePeekDraftContent(draftsRawText);
 
-        if (toMatch && contentMatch) {
-            const newDraft = {
-                id:        'draft_' + Date.now(),
-                to:        toMatch[1].trim(),
-                content:   contentMatch[1].trim(),
-                createdAt: new Date().toISOString(),
-                isNew:     true  // <- 赋予新生成草稿标签
-            };
-
+        if (newDraft) {
             // 追加到数组（增量，不覆盖旧条目）
-            peekContentCache['drafts'].items.push(newDraft);
+            applyPeekDraftContent(newDraft);
 
             await savePeekData(char.id);
 

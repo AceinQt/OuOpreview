@@ -782,6 +782,11 @@ function setupPeekFeature() {
         peekWallpaperModal.classList.add('visible');
     });
 
+    // 批量生成：一次生成所有应用的内容 + 一组顺风车消息
+    document.getElementById('peek-batch-generate-btn')?.addEventListener('click', () => {
+        if (typeof generatePeekBatch === 'function') generatePeekBatch();
+    });
+
     peekWallpaperUpload?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {

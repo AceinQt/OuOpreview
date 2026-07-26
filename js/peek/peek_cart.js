@@ -94,6 +94,42 @@ function renderPeekCart(items, isAppend = false, resetPage = false) {
     }
 }
 
+// ==========================================
+// 解析购物车标签文本 → 商品数组（批量生成复用）
+// ==========================================
+function parsePeekCartContent(cartRawText) {
+    const rawItems = (cartRawText || '').split('===SEP===');
+    const parsedItems = [];
+
+    rawItems.forEach((rawText) => {
+        if (!rawText.trim()) return;
+        const titleMatch = rawText.match(/#TITLE#\s*([\s\S]*?)(?=#SPEC#|$)/);
+        const specMatch = rawText.match(/#SPEC#\s*([\s\S]*?)(?=#PRICE#|$)/);
+        const priceMatch = rawText.match(/#PRICE#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
+
+        if (titleMatch && specMatch && priceMatch) {
+            let cleanPrice = priceMatch[1].replace(/[^\d.]/g, '').trim();
+            parsedItems.push({
+                id: `cart_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                title: titleMatch[1].trim(),
+                spec: specMatch[1].trim(),
+                price: cleanPrice || "0.00",
+                isNew: true
+            });
+        }
+    });
+
+    return parsedItems;
+}
+
+// 把解析好的商品并入缓存（批量生成复用）
+function applyPeekCartContent(parsedItems) {
+    if (!parsedItems || parsedItems.length === 0) return 0;
+    if (!peekContentCache['cart']) peekContentCache['cart'] = { items: [] };
+    peekContentCache['cart'].items = [...parsedItems, ...peekContentCache['cart'].items];
+    return parsedItems.length;
+}
+
 async function generateAndRenderPeekCart(options = {}) {
     const appType = 'cart';
     const { forceRefresh = false } = options;
@@ -162,30 +198,10 @@ async function generateAndRenderPeekCart(options = {}) {
         const cartRawText = parts[0] || '';
         const hitchhikerRawText = parts.length > 1 ? parts[1] : '';
 
-        const rawItems = cartRawText.split('===SEP===');
-        const parsedItems = [];
-
-        rawItems.forEach((rawText) => {
-            if (!rawText.trim()) return;
-            const titleMatch = rawText.match(/#TITLE#\s*([\s\S]*?)(?=#SPEC#|$)/);
-            const specMatch = rawText.match(/#SPEC#\s*([\s\S]*?)(?=#PRICE#|$)/);
-            const priceMatch = rawText.match(/#PRICE#\s*([\s\S]*?)(?=(?:===SEP===|$))/);
-
-            if (titleMatch && specMatch && priceMatch) {
-                let cleanPrice = priceMatch[1].replace(/[^\d.]/g, '').trim();
-                parsedItems.push({
-                    id: `cart_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                    title: titleMatch[1].trim(),
-                    spec: specMatch[1].trim(),
-                    price: cleanPrice || "0.00",
-                    isNew: true
-                });
-            }
-        });
+        const parsedItems = parsePeekCartContent(cartRawText);
 
         if (parsedItems.length > 0) {
-            if (!peekContentCache['cart']) peekContentCache['cart'] = { items: [] };
-            peekContentCache['cart'].items = [...parsedItems, ...peekContentCache['cart'].items];
+            applyPeekCartContent(parsedItems);
             savePeekData(char.id).catch(e => console.error("Peek自动保存失败:", e));
             renderPeekCart(peekContentCache['cart'].items, false, true);
         } else {
