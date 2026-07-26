@@ -248,6 +248,18 @@
           <div class="item-details"><span class="item-name">消息通知</span></div>
           <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
+                <!-- 识图API按钮 -->
+        <div class="settings-item" id="chat-sidebar-vision-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <!-- 眼睛图标 -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">识图API</span></div>
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
     </div>
   </div>
 </div>
@@ -5645,6 +5657,29 @@
             <div class="btn-group">
                 <button type="submit" id="pa-submit-btn" class="btn btn-primary">保存设置</button>
                 <button type="button" id="pa-cancel-btn" class="btn btn-neutral">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- 识图API设置弹窗 -->
+<div id="vision-api-modal" class="modal-overlay">
+    <div class="modal-window">
+        <h3>识图 API</h3>
+        <form id="vision-api-form">
+            <div class="form-group">
+                <label for="vision-api-preset-select">图片转文字描述所用的模型</label>
+                <select id="vision-api-preset-select" class="form-control">
+                    <option value="">同聊天API</option>
+                    <!-- 动态填充 -->
+                </select>
+            </div>
+            <div id="vision-api-hint">
+                选"同聊天API"则跟随每个聊天各自的 API 设置；一旦在此指定预设，所有聊天的图片转化都会走它。<br>
+                请选择支持识图（视觉）的模型，否则转化会失败。
+            </div>
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary">保存设置</button>
+                <button type="button" id="vision-api-cancel-btn" class="btn btn-neutral">取消</button>
             </div>
         </form>
     </div>
