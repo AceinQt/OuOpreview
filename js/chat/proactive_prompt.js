@@ -88,6 +88,7 @@ function generateProactiveGroupPrompt(group) {
     const worldBooksBefore = (group.worldBookIds ||[]).map(id => typeof db !== 'undefined' && db.worldBooks ? db.worldBooks.find(wb => wb.id === id && wb.position === 'before') : null).filter(Boolean).map(wb => wb.content).join('\n');
     const worldBooksAfter = (group.worldBookIds ||[]).map(id => typeof db !== 'undefined' && db.worldBooks ? db.worldBooks.find(wb => wb.id === id && wb.position === 'after') : null).filter(Boolean).map(wb => wb.content).join('\n');
     
+    const myNickname = group.me.nickname;
     let myRealName = group.me.realName || group.me.nickname;
     let myPersona = group.me.persona;
     if (group.me.boundPersonaId && typeof db !== 'undefined' && db.userPersonas) {
@@ -99,6 +100,15 @@ function generateProactiveGroupPrompt(group) {
     prompt += `背景：你正在同时扮演群聊“${group.name}”中的【所有 AI 成员】。你需要模拟群成员们在群内自发聊天、水群的场景。\n\n`;
     
     if (worldBooksBefore) prompt += `群聊世界观：${worldBooksBefore}\n\n`;
+
+    // 我方身份：与私聊主动消息（generateProactivePrivatePrompt 的“我的名字/我的人设”）对齐。
+    // 后面的指令里会出现“我”（如“主动给我转账”“如果我没有发起互动”），必须先说明我是谁。
+    prompt += `## 🙋 我（群主，群里唯一的人类用户）：\n`;
+    prompt += `**我的名字**：${myRealName}`;
+    if (myNickname && myNickname !== myRealName) prompt += `（群内昵称：${myNickname}）`;
+    prompt += `\n`;
+    if (myPersona) prompt += `**我的人设**：${myPersona}\n`;
+    prompt += `⚠️ 我不是你要扮演的对象，绝对不要生成任何以我的名义发出的消息。\n\n`;
 
     prompt += `## 👥 群成员列表及设定：\n`;
     if (group.members) {
