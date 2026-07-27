@@ -2171,8 +2171,8 @@
                     </svg>
                 </div>
                 <div>
-                    <div class="cloud-title">重复消息清理</div>
-                    <div class="cloud-desc">扫描并清理重复产生的消息</div>
+                    <div class="cloud-title">重复数据清理</div>
+                    <div class="cloud-desc">扫描并清理重复产生的数据</div>
                 </div>
             </div>
             <div class="cloud-actions">
@@ -3357,8 +3357,7 @@
                         <!-- 操作栏：删除、阅读、评论 -->
                         <!-- 找到 post-detail-actions 区域 -->
                         <div class="post-detail-actions">
-                            <!-- 【修改】阅读/在看 按钮 -->
-                            <!-- 给外层 div 加 id="detail-watching-btn" -->
+                            <!-- 阅读/在看 按钮 -->
                             <div class="action-item" id="detail-watching-btn" style="cursor: pointer;">
                                 <!-- Eye Icon -->
                                 <svg viewBox="0 0 24 24">
@@ -5707,7 +5706,7 @@
                 </select>
             </div>
             <div id="vision-api-hint">
-                选"同聊天API"则跟随每个聊天各自的 API 设置；一旦在此指定预设，所有聊天的图片转化都会走它。<br>
+                选"同聊天API"则跟随每个聊天各自的 API 设置；一旦在此指定预设，所有聊天的图片转化都使用设置的api。<br>
                 请选择支持识图（视觉）的模型，否则转化会失败。
             </div>
             <div class="btn-group">
@@ -5942,7 +5941,6 @@
         <div id="create-group-modal" class="modal-overlay">
             <div class="modal-window">
                 <h3>创建群聊</h3>
-                <!-- 在 群聊.txt 中找到 id="create-group-modal" 的 div，替换整个 form 内容 -->
 <form id="create-group-form">
     <div class="form-group">
         <label for="group-name-input">群聊名称</label>
@@ -6011,13 +6009,6 @@
                 </form>
             </div>
         </div>
-        <!-- Add Member to Group Action Sheet -->
-        <div id="add-member-actionsheet" class="action-sheet-overlay">
-            <div class="action-sheet">
-                <button class="action-sheet-button" id="invite-existing-member-btn">邀请现有角色</button>
-                <button class="action-sheet-button" id="create-new-member-btn">创建新角色入群</button>
-            </div>
-        </div>
         <!-- Invite Existing Member Modal -->
         <div id="invite-member-modal" class="modal-overlay">
             <div class="modal-window">
@@ -6026,31 +6017,12 @@
                 <button class="btn btn-primary" id="confirm-invite-btn" style="margin-top: 20px;">确认邀请</button>
             </div>
         </div>
-        <!-- Create New Member for Group Modal -->
-        <div id="create-member-for-group-modal" class="modal-overlay">
+        <!-- Remove Member from Group Modal -->
+        <div id="remove-member-modal" class="modal-overlay">
             <div class="modal-window">
-                <h3>创建新角色并加入群聊</h3>
-                <form id="create-member-for-group-form">
-                    <div class="avatar-setting" style="justify-content: center;">
-                        <img src="https://i.postimg.cc/Y96LPskq/o-o-2.jpg" alt="新成员头像"
-                            id="create-group-member-avatar-preview" class="avatar-preview" style="cursor: pointer;">
-                        <input type="file" id="create-group-member-avatar-upload" accept="image/*"
-                            style="display:none;">
-                    </div>
-                    <div class="form-group">
-                        <label for="create-group-member-nickname">群昵称</label>
-                        <input type="text" id="create-group-member-nickname" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-group-member-realname">姓名</label>
-                        <input type="text" id="create-group-member-realname" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="create-group-member-persona">人设</label>
-                        <textarea id="create-group-member-persona" placeholder="详细描述角色的性格、背景等。"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary">创建并加入</button>
-                </form>
+                <h3>移除群成员</h3>
+                <ul id="remove-member-selection-list"></ul>
+                <button class="btn btn-danger" id="confirm-remove-member-btn" style="margin-top: 20px;">确认移除</button>
             </div>
         </div>
 
