@@ -282,19 +282,81 @@ function _renderGroupInfoMembers(group) {
             <span class="group-info-member-nick">${realName}</span>
         `;
 
-        // 有关联原始角色的，可点击跳转 char_info
-        if (member.originalCharId) {
-            item.style.cursor = 'pointer';
-            item.addEventListener('click', () => {
-                const origChar = db.characters && db.characters.find(c => c.id === member.originalCharId);
-                if (origChar && typeof openCharacterScreen === 'function') {
-                    openCharacterScreen(origChar, 'group-info');
-                }
-            });
-        }
+        // 点击头像：已绑定的直接进 char_info；存量未绑定的先问要不要新建档案
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', async () => {
+            // 点击时实时查找，避免持有渲染时的旧引用
+            let origChar = member.originalCharId
+                ? (db.characters || []).find(c => c.id === member.originalCharId)
+                : null;
+
+            if (!origChar) {
+                origChar = await _createAndBindMemberPersona(group, member);
+                if (!origChar) return;
+            }
+            if (typeof openCharacterScreen === 'function') {
+                openCharacterScreen(origChar, 'group-info');
+            }
+        });
 
         container.appendChild(item);
     });
+}
+
+/**
+ * 存量群成员没有绑定私聊档案（或绑定的角色已被删除）时，
+ * 用群内的成员信息新建一个角色档案并回绑，这样人设才能编辑、私聊也能接上。
+ * @returns {Promise<Object|null>} 新建好的角色，取消则返回 null
+ */
+async function _createAndBindMemberPersona(group, member) {
+    const displayName = member.groupNickname || member.realName || '该成员';
+    const ok = await AppUI.confirm(
+        `"${displayName}"还没有绑定角色档案，无法编辑人设。\n是否用本群中的成员信息新建一个档案并自动绑定？`,
+        '未绑定档案', '新建并绑定', '取消'
+    );
+    if (!ok) return null;
+
+    const me = group.me || {};
+    const newChar = {
+        id: `char_${Date.now()}`,
+        realName: member.realName || displayName,
+        remarkName: member.groupNickname || member.realName || displayName,
+        persona: member.persona || '',
+        avatar: member.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg',
+
+        // 我方身份沿用群里已有的设定，省得再配一遍
+        myName: me.realName || '',
+        myNickname: me.nickname || '',
+        myPersona: me.persona || '',
+        myAvatar: me.avatar || 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg',
+        boundPersonaId: me.boundPersonaId || null,
+
+        theme: 'white_blue',
+        maxMemory: 10,
+        chatBg: '',
+        history: [],
+        isPinned: false,
+        status: '在线',
+        worldBookIds: [],
+        useCustomBubbleCss: false,
+        customBubbleCss: '',
+        unreadCount: 0,
+        memoryJournals: [],
+        journalWorldBookIds: [],
+        peekScreenSettings: { wallpaper: '', customIcons: {}, unlockAvatar: '' },
+        lastUserMessageTimestamp: null,
+    };
+
+    if (!db.characters) db.characters = [];
+    db.characters.push(newChar);
+    member.originalCharId = newChar.id;
+
+    await saveSingleChat(newChar.id, 'private');
+    await saveSingleChat(group.id, 'group');
+    if (typeof renderChatList === 'function') renderChatList();
+    if (typeof renderContacts === 'function') renderContacts();
+    showToast(`已新建档案"${newChar.remarkName}"并绑定`);
+    return newChar;
 }
 
 // ============================================================

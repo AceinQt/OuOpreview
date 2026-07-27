@@ -524,7 +524,7 @@ function goBackToContacts() {
                 sortedChats.forEach(chat => {
                     let lastMessageText = '开始聊天吧...';
                     if (chat.history && chat.history.length > 0) {
-                        const invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]/;
+                        const invisibleRegex = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?将.*?移出了群聊\]|\[.*?修改群名为：.*?\]|\[system-display:.*?\]/;
                         const visibleHistory = chat.history.filter(msg => !invisibleRegex.test(msg.content));
                         if (visibleHistory.length > 0) {
                             const lastMsg = visibleHistory[visibleHistory.length - 1];
@@ -588,6 +588,7 @@ function goBackToContacts() {
                         } else {
                             const lastEverMsg = chat.history[chat.history.length - 1];
                             const inviteRegex = /\[(.*?)邀请(.*?)加入了群聊\]/;
+                            const removeRegex = /\[.*?将.*?移出了群聊\]/;
                             const renameRegex = /\[.*?修改群名为：.*?\]/;
                             const timeSkipRegex = /\[system-display:([\s\S]+?)\]/;
                             const timeSkipMatch = lastEverMsg.content.match(timeSkipRegex);
@@ -596,6 +597,8 @@ function goBackToContacts() {
                                 lastMessageText = timeSkipMatch[1];
                             } else if (inviteRegex.test(lastEverMsg.content)) {
                                 lastMessageText = '新成员加入了群聊';
+                            } else if (removeRegex.test(lastEverMsg.content)) {
+                                lastMessageText = '有成员被移出群聊';
                             } else if (renameRegex.test(lastEverMsg.content)) {
                                 lastMessageText = '群聊名称已修改';
                             } else {

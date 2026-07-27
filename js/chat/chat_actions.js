@@ -127,7 +127,7 @@ function createContextMenu(items, x, y) {
                 const isPhotoVideoMessage = /\[.*?发来的照片\/视频：.*?\]/.test(message.content);
                 const isTransferMessage = /\[.*?给你转账：.*?\]|\[.*?的转账：.*?\]|\[.*?向.*?转账：.*?\]/.test(message.content);
                 const isGiftMessage = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/.test(message.content);
-                const isInvisibleMessage = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?修改群名为：.*?\]|\[.*?修改.*?的群昵称为：.*?\]/.test(message.content);
+                const isInvisibleMessage = /\[.*?(?:接收|退回).*?的转账\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[system:.*?\]|\[.*?邀请.*?加入了群聊\]|\[.*?将.*?移出了群聊\]|\[.*?修改群名为：.*?\]|\[.*?修改.*?的群昵称为：.*?\]/.test(message.content);
 
                 if (!isWithdrawn) {
                     if (!isImageRecognitionMsg && !isVoiceMessage && !isStickerMessage && !isPhotoVideoMessage && !isTransferMessage && !isGiftMessage && !isInvisibleMessage) {
@@ -160,7 +160,7 @@ function createContextMenu(items, x, y) {
                     if (isImageRecognitionMsg) {
                         const isConverting = (typeof isImageConverting === 'function') && isImageConverting(messageId);
                         menuItems.push({
-                            label: isConverting ? '转化中…' : '转化为文字',
+                            label: isConverting ? '转化中…' : '转文字',
                             action: () => {
                                 if (isConverting) { showToast('该图片正在转化中'); return; }
                                 convertImageMessageToText(messageId);
@@ -192,7 +192,7 @@ function createContextMenu(items, x, y) {
                         senderName = chat.remarkName;
                         senderId = chat.id;
                     } else {
-                        const sender = chat.members.find(m => m.id === message.senderId);
+                        const sender = findGroupMemberById(chat, message.senderId);
                         senderName = sender ? sender.groupNickname : '未知成员';
                         senderId = sender ? sender.id : 'unknown';
                     }
@@ -342,7 +342,7 @@ async function saveMessageEdit() {
             if (currentChatType === 'private') {
                 senderName = chat.realName || chat.name;
             } else {
-                const sender = chat.members.find(m => m.id === message.senderId);
+                const sender = findGroupMemberById(chat, message.senderId);
                 senderName = sender ? sender.groupNickname : (chat.name || '未知成员');
             }
         }

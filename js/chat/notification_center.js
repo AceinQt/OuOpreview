@@ -252,8 +252,8 @@
 
     function senderName(chat, chatType, message) {
         if (chatType !== 'group') return chatDisplayName(chat, chatType);
-        if (message && message.senderId && Array.isArray(chat.members)) {
-            const m = chat.members.find(x => x.id === message.senderId);
+        if (message && message.senderId) {
+            const m = findGroupMemberById(chat, message.senderId);
             if (m) return m.groupNickname || m.realName || m.name || '成员';
         }
         const t = contentOf(message);

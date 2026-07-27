@@ -64,7 +64,7 @@
             // 正在转化中的消息 ID：防止重复点击，长按菜单里据此置灰
             const _convertingMsgIds = new Set();
 
-            const VISION_DESCRIBE_PROMPT = '请用中文客观描述这张图片里实际可见的内容：主体、外观、动作、场景、画面上的文字。只陈述你看得见的事实，禁止写氛围、情绪、感受、意境、寓意，禁止任何总结句或评价句（例如"整体氛围温馨""给人一种……的感觉"）。控制在80字以内，直接输出描述本身，不要任何前缀、引号或Markdown。';
+            const VISION_DESCRIBE_PROMPT = '请用中文客观描述这张照片里实际可见的主要内容。只陈述你看得见的【主要】内容，忽略模糊背景中不重要的人、事、物，除非你觉得他们很重要才补充描述。不需要升华和分析。直接输出描述本身，不要任何前缀、引号或Markdown。';
 
             // 清洗模型返回的描述：
             // 1) 必须剥掉方括号和换行，否则会打断 [xx发来的照片/视频：...] 的气泡正则
@@ -98,7 +98,7 @@
                 if (chatType === 'private') {
                     return chat.realName || chat.name;
                 }
-                const sender = (chat.members || []).find(m => m.id === message.senderId);
+                const sender = findGroupMemberById(chat, message.senderId);
                 return sender ? sender.groupNickname : (chat.name || '未知成员');
             }
 
@@ -222,7 +222,7 @@
                 const imagePart = (message.parts || []).find(p => p.type === 'image');
                 if (!imagePart || !imagePart.data) { showToast('这条消息里没有图片'); return; }
 
-                const confirmMsg = '转化后将删除原图，只保留AI生成的文字描述，且无法还原。\n好处是这张图不再占用上下文额度。\n\n确定继续吗？';
+                const confirmMsg = '转化后将删除原图，只保留AI生成的文字描述，且无法还原。但这张图将不再占用上下文额度。\n\n确定继续吗？';
                 const confirmed = (typeof AppUI !== 'undefined' && AppUI.confirm)
                     ? await AppUI.confirm(confirmMsg, '转化为文字', '确定', '取消')
                     : confirm(confirmMsg);
@@ -303,7 +303,7 @@
                             // 粗估耗时：每张约 3 秒，3 个并发
                             const estSec = Math.ceil(ids.length * 3 / 3);
                             const estText = (estSec < 60) ? `${estSec} 秒` : `${Math.ceil(estSec / 60)} 分钟`;
-                            return `共找到 ${ids.length} 张图片。\n将逐张调用识图API转成文字描述，原图会被删除且无法还原。\n预计耗时 ${estText} 左右，中途可以随时停止。\n\n确定开始吗？`;
+                            return `共找到 ${ids.length} 张图片。\n将逐张调用识图API转成文字描述，原图会被删除且无法还原。预计耗时 ${estText} 左右，中途可以随时停止。\n\n确定开始吗？`;
                         },
                         { title: '清理图片', confirmText: '开始', cancelText: '取消' }
                     );

@@ -1070,7 +1070,7 @@ if (!invisibleRegex.test(message.content)) {
                             senderName = senderChat.remarkName;
                             senderAvatar = senderChat.avatar;
                         } else { // Group chat
-                            const sender = senderChat.members.find(m => m.id === message.senderId);
+                            const sender = findGroupMemberById(senderChat, message.senderId);
                             if (sender) {
                                 senderName = sender.groupNickname;
                                 senderAvatar = sender.avatar;
