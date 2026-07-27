@@ -172,6 +172,9 @@ function renderPeekConversation(history, partnerName, wasNew = false) {
     const prevPartnerName = _peekConvoPartnerName;
     _peekConvoPartnerName = partnerName;
 
+    // 整页重绘了，正在逐条放消息的动画必须作废，否则会重复追加
+    _peekConvoRevealToken++;
+
     // ── 屏蔽/取消屏蔽 按钮逻辑 (保留你原有的功能) ─────────────────
     const convo = peekContentCache?.messages?.conversations?.find(c => c.partnerName === partnerName);
     const actionBtn = document.getElementById('peek-conversation-action-btn');
@@ -373,6 +376,11 @@ function applyPeekMessagesContent(parsedConversations) {
 // ==========================================
 const PEEK_CONTINUE_CONTEXT_LIMIT = 200;   // 本组对话最多带多少条上文
 const _peekConvoGenerating = new Set();    // 正在推演中的 partnerName
+let _peekConvoRevealToken = 0;             // 逐条放消息的动画令牌，换会话/重绘即失效
+
+// 逐条放出的节奏相对聊天室打字速度的倍率（1 = 完全一致）
+// 旁观别人的对话不用等那么久，这里比聊天室快一点；想完全一致就改成 1
+const PEEK_REVEAL_SPEED = 0.6;
 
 // 把"生成中"状态同步到刷新按钮（禁用+旋转）和底部"正在输入"提示
 function _syncPeekContinueUI(partnerName) {
@@ -420,12 +428,17 @@ function _scrollPeekConvoToBottom() {
     setTimeout(doScroll, 150);
 }
 
+// 详情页此刻是否正停在这段对话上（切走了就别再动 DOM）
+function _isPeekConvoOnScreen(partnerName) {
+    if (_peekConvoPartnerName !== partnerName) return false;
+    const screen = document.getElementById('peek-conversation-screen');
+    return !!screen && screen.classList.contains('active');
+}
+
 // 把新推演出的消息直接追加到详情页 DOM（不整页重绘，保住已向上加载的历史）
 function _appendPeekConvoMessages(partnerName, newMessages) {
     // 用户可能已经切走了：那就只落库，不动 DOM
-    if (_peekConvoPartnerName !== partnerName) return;
-    const screen = document.getElementById('peek-conversation-screen');
-    if (!screen || !screen.classList.contains('active')) return;
+    if (!_isPeekConvoOnScreen(partnerName)) return;
 
     const messageAreaEl = document.getElementById('peek-message-area');
     if (!messageAreaEl) return;
@@ -439,6 +452,35 @@ function _appendPeekConvoMessages(partnerName, newMessages) {
     messageAreaEl.appendChild(frag);
 
     _scrollPeekConvoToBottom();
+}
+
+// 逐条"打字机"式放出新消息，节奏沿用聊天室的 calculateTypingDelay
+// 数据在调用前就已经落库，这里纯粹是播放动画；中途被打断就直接收手
+async function _revealPeekConvoMessages(partnerName, newMessages, charName) {
+    const token = ++_peekConvoRevealToken;
+    const typingEl = document.getElementById('peek-convo-typing');
+    let isFirst = true;
+
+    for (const msg of newMessages) {
+        // 换了会话 / 页面重绘 / 又点了一次推演，都会让 token 失效
+        if (token !== _peekConvoRevealToken || !_isPeekConvoOnScreen(partnerName)) return;
+
+        // "正在输入"跟着下一条消息的说话人走，两边轮流打字更像真的
+        if (typingEl) {
+            typingEl.textContent = `"${msg.sender === 'char' ? charName : partnerName}"正在输入中`;
+            typingEl.classList.add('visible');
+        }
+
+        const baseDelay = (typeof calculateTypingDelay === 'function')
+            ? calculateTypingDelay(msg.content || '', isFirst)
+            : (isFirst ? 500 : 1500);
+        await new Promise(r => setTimeout(r, Math.round(baseDelay * PEEK_REVEAL_SPEED)));
+        isFirst = false;
+
+        if (token !== _peekConvoRevealToken || !_isPeekConvoOnScreen(partnerName)) return;
+
+        _appendPeekConvoMessages(partnerName, [msg]);
+    }
 }
 
 async function continuePeekConversation(partnerName) {
@@ -517,7 +559,9 @@ async function continuePeekConversation(partnerName) {
 
         savePeekData(char.id).catch(e => console.error('Peek自动保存失败:', e));
         renderPeekChatList(list, false, true);
-        _appendPeekConvoMessages(partnerName, newMessages);
+
+        // 数据已经落库，这里只是把气泡一条条放出来；中途切走也不会丢内容
+        await _revealPeekConvoMessages(partnerName, newMessages, char.realName || char.name);
 
         if (typeof showToast === 'function') showToast(`已推演出 ${newMessages.length} 条新消息`);
 
