@@ -629,3 +629,16 @@ function historyToPlainText(history) {
         .map(m => m.content)
         .join('\n');
 }
+
+// ================================================================
+// === findGroupMemberById: 按 senderId 找群成员，退群的从归档里找 ===
+//   被移出群聊的成员会从 group.members 挪到 group.removedMembers，
+//   但他们留下的历史消息仍要显示原来的头像和群昵称，所以渲染侧统一走这里。
+// ================================================================
+function findGroupMemberById(group, senderId) {
+    if (!group || !senderId) return null;
+    return (group.members || []).find(m => m.id === senderId)
+        || (group.removedMembers || []).find(m => m.id === senderId)
+        || null;
+}
+window.findGroupMemberById = findGroupMemberById;
