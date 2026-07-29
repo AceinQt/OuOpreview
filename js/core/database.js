@@ -18,7 +18,9 @@ const globalSettingKeys =[
     // ★ 进阶推送节点设置（CF Worker 地址 / VAPID 公钥 / 令牌 / 订阅凭证）
     'globalPushSettings',
     // ★ 识图 API 设置（图片转文字描述专用；空 = 跟随各聊天自己的 API）
-    'globalVisionSettings'
+    'globalVisionSettings',
+    // ★ 天气 API 设置（用户自行配置，供后续聊天上下文读取）
+    'weatherSettings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源
@@ -67,6 +69,17 @@ window.db = {
     //   apiPreset: 预设名；空字符串 = 同聊天API（跟随每个聊天自己的 chatApiPreset）
     //   一旦指定预设，所有聊天的图片转化都走它
     globalVisionSettings: { apiPreset: '' },
+
+    // ★ 天气 API 设置：全局服务凭据 + 可复用地点预设
+    weatherSettings: {
+        enabled: false,
+        provider: 'qweather',
+        apiHost: '',
+        apiKey: '',
+        cacheMinutes: 30,
+        locationPresets: [],
+        defaultLocationPresetId: ''
+    },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
 
