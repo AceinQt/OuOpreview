@@ -367,6 +367,15 @@ function loadSettingsToSidebar() {
             }
             apiPresetSel.value = e.chatApiPreset || '';
         }
+
+        const weatherLocationSel = document.getElementById('setting-chat-weather-location');
+        if (weatherLocationSel && typeof window.populateWeatherLocationSelect === 'function') {
+            window.populateWeatherLocationSelect(
+                weatherLocationSel,
+                e.weatherMode || 'off',
+                e.weatherLocationPresetId || ''
+            );
+        }
     }
 }
             
@@ -416,6 +425,13 @@ async function saveSettingsFromSidebar() {
         const apiPresetSel = document.getElementById('setting-chat-api-preset');
         if (apiPresetSel) {
             e.chatApiPreset = apiPresetSel.value;
+        }
+
+        const weatherLocationSel = document.getElementById('setting-chat-weather-location');
+        if (weatherLocationSel) {
+            const value = weatherLocationSel.value || 'inherit';
+            e.weatherMode = value === 'off' ? 'off' : (value.startsWith('preset:') ? 'preset' : 'inherit');
+            e.weatherLocationPresetId = value.startsWith('preset:') ? value.slice('preset:'.length) : '';
         }
 
         await saveSingleChat(currentChatId, currentChatType);

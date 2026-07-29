@@ -680,6 +680,11 @@ if (chatType === 'private' && chat.offlineModeEnabled) {
         const isCompatibilityMode = effectiveApiSettings.compatibilityModeEnabled || false; 
         if (chatType === 'private') {
             systemPrompt = generatePrivateSystemPrompt(chat, retrievedContext);
+            // ★ 天气上下文：按该聊天绑定的地点拉取/读取缓存，仅注入本次请求，不写入历史
+            if (typeof getWeatherPromptContext === 'function') {
+                const weatherContext = await getWeatherPromptContext(chat);
+                if (weatherContext) systemPrompt += '\n\n' + weatherContext;
+            }
         } else {
             systemPrompt = generateGroupSystemPrompt(chat, retrievedContext);
 }

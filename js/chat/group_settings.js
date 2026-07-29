@@ -539,6 +539,15 @@ if (groupApiPresetSel) {
     }
     groupApiPresetSel.value = group.chatApiPreset || '';
 }
+
+const groupWeatherLocationSel = document.getElementById('setting-group-weather-location');
+if (groupWeatherLocationSel && typeof window.populateWeatherLocationSelect === 'function') {
+    window.populateWeatherLocationSelect(
+        groupWeatherLocationSel,
+        group.weatherMode || 'off',
+        group.weatherLocationPresetId || ''
+    );
+}
     // ── 气泡外观 ─────────────────────────────────────────
     if (typeof window.populateChatThemeSelects === 'function') {
         window.populateChatThemeSelects();
@@ -710,6 +719,12 @@ if (groupTimePEl) group.timePerceptionEnabled = groupTimePEl.checked;
 const groupApiPresetSel = document.getElementById('setting-group-api-preset');
 if (groupApiPresetSel) {
     group.chatApiPreset = groupApiPresetSel.value;
+}
+const groupWeatherLocationSel = document.getElementById('setting-group-weather-location');
+if (groupWeatherLocationSel) {
+    const value = groupWeatherLocationSel.value || 'inherit';
+    group.weatherMode = value === 'off' ? 'off' : (value.startsWith('preset:') ? 'preset' : 'inherit');
+    group.weatherLocationPresetId = value.startsWith('preset:') ? value.slice('preset:'.length) : '';
 }
     await saveSingleChat(currentChatId, 'group');
     showToast('群聊设置已保存！');
