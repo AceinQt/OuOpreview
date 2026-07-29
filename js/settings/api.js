@@ -14,13 +14,15 @@ const EMB_PROVIDER_URLS = {
     openai:  'https://api.openai.com',
     gemini:  'https://generativelanguage.googleapis.com'
 };
+const QWEATHER_API_HOST_PATTERN = /^https:\/\/(?:[a-z0-9-]+\.)+qweatherapi\.com$/i;
 
 // ── 当前激活的 tab ────────────────────────────────────────────
 let _currentApiTab = 'chat';
 
 // ── 脏数据状态（有未保存的更改） ──────────────────────────────
-let _chatDirty = false;
-let _embDirty  = false;
+let _chatDirty    = false;
+let _embDirty     = false;
+let _weatherDirty = false;
 
 // ── 暂存预设（新增/复制后尚未写入 db 的预设） ─────────────────
 let _stagedPresets = { chat: null, embedding: null };
@@ -53,9 +55,21 @@ function _saveAllPresets(arr) {
 }
 
 // ── 脏数据辅助 ───────────────────────────────────────────────
-function _markDirty(type)   { if (type === 'chat') _chatDirty = true;  else _embDirty = true; }
-function _clearDirty(type)  { if (type === 'chat') _chatDirty = false; else _embDirty = false; }
-function _isDirtyType(type) { return type === 'chat' ? _chatDirty : _embDirty; }
+function _markDirty(type) {
+    if (type === 'chat') _chatDirty = true;
+    else if (type === 'embedding') _embDirty = true;
+    else if (type === 'weather') _weatherDirty = true;
+}
+function _clearDirty(type) {
+    if (type === 'chat') _chatDirty = false;
+    else if (type === 'embedding') _embDirty = false;
+    else if (type === 'weather') _weatherDirty = false;
+}
+function _isDirtyType(type) {
+    if (type === 'chat') return _chatDirty;
+    if (type === 'embedding') return _embDirty;
+    return _weatherDirty;
+}
 
 /** 监听表单字段变化 → 标记脏数据（programmatic _setVal 不触发事件，安全） */
 function _watchDirty(type, ids) {
@@ -486,7 +500,7 @@ function _setupBackGuard() {
     if (!backBtn) return;
     // 在捕获阶段拦截，确保先于 body 委托代理执行
     backBtn.addEventListener('click', async (e) => {
-        const dirty = _chatDirty || _embDirty;
+        const dirty = _chatDirty || _embDirty || _weatherDirty;
         if (!dirty) return; // 无脏数据，正常冒泡给全局代理
         e.stopPropagation();
         e.preventDefault();
@@ -494,6 +508,7 @@ function _setupBackGuard() {
         if (leave) {
             _clearDirty('chat');
             _clearDirty('embedding');
+            _clearDirty('weather');
             if (typeof navigateTo === 'function') navigateTo('settings-screen');
         }
     });
@@ -591,9 +606,17 @@ async function fetchModels(tabType) {
     if (!url || !key) return showToast('请先填写 API 地址和密钥！');
     if (url.endsWith('/')) url = url.slice(0, -1);
 
-    const endpoint = provider === 'gemini'
-        ? `${url}/v1beta/models?key=${getRandomValue(key)}`
-        : `${url}/v1/models`;
+    let endpoint;
+    if (provider === 'gemini') {
+        endpoint = `${url}/v1beta/models?key=${getRandomValue(key)}`;
+    } else {
+        // 智能判断：如果 url 已经以 /v1, /v2, /v3 等结尾，则直接追加 /models
+        if (/\/v\d+$/.test(url)) {
+            endpoint = `${url}/models`; 
+        } else {
+            endpoint = `${url}/v1/models`;
+        }
+    }
     const headers = provider === 'gemini' ? {} : { Authorization: `Bearer ${key}` };
 
     btn.classList.add('loading'); 
@@ -666,6 +689,653 @@ async function fetchModels(tabType) {
             modelSel.innerHTML = '<option value="">拉取失败，请重新获取或手动填写</option>';
         }
     }
+}
+
+// ============================================================
+// 天气 API 设置与测试（和风天气 API v7 / GeoAPI v2）
+// ============================================================
+
+function _normalizeQWeatherHost(value) {
+    return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function _isValidQWeatherHost(value) {
+    return QWEATHER_API_HOST_PATTERN.test(_normalizeQWeatherHost(value));
+}
+
+let _weatherDraft = null;
+let _weatherLoadedPresetId = '';
+
+function _newWeatherPresetId() {
+    return `weather-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function _normalizeWeatherSettings(raw) {
+    const source = raw || {};
+    const presets = Array.isArray(source.locationPresets) ? source.locationPresets
+        .filter(p => p && p.locationId)
+        .map(p => ({
+            id: p.id || _newWeatherPresetId(),
+            name: p.name || p.locationName || p.locationQuery || '未命名地点',
+            locationId: String(p.locationId),
+            locationName: p.locationName || p.name || p.locationQuery || '',
+            locationQuery: p.locationQuery || ''
+        })) : [];
+
+    // 兼容单地点旧配置：首次进入并保存时迁移为一个地点预设。
+    if (!presets.length && source.locationId) {
+        presets.push({
+            id: _newWeatherPresetId(),
+            name: source.locationName || source.locationQuery || '默认地点',
+            locationId: String(source.locationId),
+            locationName: source.locationName || source.locationQuery || '',
+            locationQuery: source.locationQuery || ''
+        });
+    }
+
+    const defaultId = presets.some(p => p.id === source.defaultLocationPresetId)
+        ? source.defaultLocationPresetId
+        : (presets[0] ? presets[0].id : '');
+    return {
+        enabled: !!source.enabled,
+        provider: 'qweather',
+        apiHost: source.apiHost || '',
+        apiKey: source.apiKey || '',
+        cacheMinutes: [20, 30, 60].includes(Number(source.cacheMinutes)) ? Number(source.cacheMinutes) : 30,
+        locationPresets: presets,
+        defaultLocationPresetId: defaultId
+    };
+}
+
+function populateWeatherLocationSelect(select, mode, presetId = '') {
+    if (!select) return;
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    select.innerHTML = '<option value="off">不开启</option><option value="inherit">跟随全局默认</option>';
+    settings.locationPresets.forEach(preset => {
+        const option = document.createElement('option');
+        option.value = `preset:${preset.id}`;
+        option.textContent = preset.name;
+        select.appendChild(option);
+    });
+    const wanted = mode === 'preset' && settings.locationPresets.some(p => p.id === presetId)
+        ? `preset:${presetId}` : (mode === 'inherit' ? 'inherit' : 'off');
+    select.value = wanted;
+}
+
+function _getWeatherCurrentLocation() {
+    const locationSelect = document.getElementById('api-weather-location-select');
+    const selectedOption = locationSelect && locationSelect.selectedIndex >= 0
+        ? locationSelect.options[locationSelect.selectedIndex] : null;
+    return {
+        locationQuery: _getVal('api-weather-city').trim(),
+        locationId: locationSelect ? locationSelect.value : '',
+        locationName: selectedOption && selectedOption.value ? selectedOption.textContent : ''
+    };
+}
+
+function _readWeatherForm() {
+    const cacheMinutes = parseInt(_getVal('api-weather-cache-minutes'), 10);
+    return {
+        enabled: true,
+        provider: 'qweather',
+        apiHost: _normalizeQWeatherHost(_getVal('api-weather-host')),
+        apiKey: _getVal('api-weather-key').trim(),
+        cacheMinutes: [20, 30, 60].includes(cacheMinutes) ? cacheMinutes : 30,
+        locationPresets: (_weatherDraft && _weatherDraft.locationPresets) || [],
+        defaultLocationPresetId: (_weatherDraft && _weatherDraft.defaultLocationPresetId) || ''
+    };
+}
+
+function _populateWeatherPresetSelect(selectedId) {
+    const select = document.getElementById('api-weather-preset-select');
+    if (!select || !_weatherDraft) return;
+    select.innerHTML = '<option value="">— 选择地点预设 —</option>';
+    _weatherDraft.locationPresets.forEach(preset => {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = preset.name;
+        select.appendChild(option);
+    });
+    select.value = selectedId || _weatherLoadedPresetId || _weatherDraft.defaultLocationPresetId || '';
+}
+
+function _setWeatherLocationSelect(location) {
+    const select = document.getElementById('api-weather-location-select');
+    if (!select) return;
+    if (!location || !location.locationId) {
+        select.innerHTML = '<option value="">请先查询地点</option>';
+        return;
+    }
+    const label = location.locationName || `${location.locationQuery || '已保存地点'}（${location.locationId}）`;
+    select.innerHTML = '';
+    const option = document.createElement('option');
+    option.value = location.locationId;
+    option.textContent = label;
+    select.appendChild(option);
+}
+
+function _applyWeatherPresetToForm(presetId) {
+    const preset = _weatherDraft && _weatherDraft.locationPresets.find(p => p.id === presetId);
+    _weatherLoadedPresetId = preset ? preset.id : '';
+    _setVal('api-weather-preset-name', preset ? preset.name : '');
+    _setChecked('api-weather-set-default', !!preset && preset.id === _weatherDraft.defaultLocationPresetId);
+    _setVal('api-weather-city', preset ? (preset.locationQuery || preset.locationName) : '');
+    _setWeatherLocationSelect(preset);
+    _populateWeatherPresetSelect(_weatherLoadedPresetId);
+}
+
+function _syncWeatherPresetFromForm() {
+    if (!_weatherDraft) return;
+    const location = _getWeatherCurrentLocation();
+
+    // 表单里已选中地点但还没有挂到任何预设：自动创建预设（例如首个地点直接查询后保存）
+    if (!_weatherLoadedPresetId && location.locationId) {
+        const preset = {
+            id: _newWeatherPresetId(),
+            name: _getVal('api-weather-preset-name').trim() || location.locationName || location.locationQuery || '默认地点',
+            locationId: location.locationId,
+            locationName: location.locationName,
+            locationQuery: location.locationQuery
+        };
+        _weatherDraft.locationPresets.push(preset);
+        _weatherLoadedPresetId = preset.id;
+        if (!_weatherDraft.defaultLocationPresetId || _getChecked('api-weather-set-default')) {
+            _weatherDraft.defaultLocationPresetId = preset.id;
+        }
+        _populateWeatherPresetSelect(preset.id);
+        _setVal('api-weather-preset-name', preset.name);
+        _setChecked('api-weather-set-default', preset.id === _weatherDraft.defaultLocationPresetId);
+        return;
+    }
+
+    const preset = _weatherDraft.locationPresets.find(p => p.id === _weatherLoadedPresetId);
+    if (!preset) return;
+    preset.name = _getVal('api-weather-preset-name').trim() || preset.name;
+    preset.locationQuery = location.locationQuery;
+    preset.locationId = location.locationId;
+    preset.locationName = location.locationName;
+    if (_getChecked('api-weather-set-default')) _weatherDraft.defaultLocationPresetId = preset.id;
+    else if (_weatherDraft.defaultLocationPresetId === preset.id && _weatherDraft.locationPresets.length > 1) {
+        _weatherDraft.defaultLocationPresetId = _weatherDraft.locationPresets.find(p => p.id !== preset.id).id;
+    }
+}
+
+function _refreshWeatherTabUI() {
+    _weatherDraft = _normalizeWeatherSettings(db.weatherSettings);
+    _setVal('api-weather-provider', 'qweather');
+    _setVal('api-weather-host', _weatherDraft.apiHost);
+    _setVal('api-weather-key', _weatherDraft.apiKey);
+    _setVal('api-weather-cache-minutes', _weatherDraft.cacheMinutes);
+    _applyWeatherPresetToForm(_weatherDraft.defaultLocationPresetId || (_weatherDraft.locationPresets[0] || {}).id);
+    _setWeatherTestResult('', false, true);
+    _clearDirty('weather');
+}
+
+function exportWeatherPresets() {
+    _syncWeatherPresetFromForm();
+    const presets = (_weatherDraft && _weatherDraft.locationPresets) || [];
+    if (!presets.length) return showToast('暂无地点预设可导出');
+    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'api_weather_location_presets.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+function importWeatherPresets() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = function (event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function () {
+            try {
+                const data = JSON.parse(reader.result);
+                if (!Array.isArray(data)) return await AppUI.alert('文件格式不正确');
+                _syncWeatherPresetFromForm();
+                let count = 0;
+                data.forEach(item => {
+                    const normalized = _normalizeWeatherSettings({ locationPresets: [item] }).locationPresets[0];
+                    if (!normalized || !normalized.locationId) return;
+                    normalized.id = _newWeatherPresetId();
+                    const taken = _weatherDraft.locationPresets.map(p => p.name);
+                    if (taken.includes(normalized.name)) {
+                        let suffix = 2;
+                        let name = `${normalized.name}${suffix}`;
+                        while (taken.includes(name)) name = `${normalized.name}${++suffix}`;
+                        normalized.name = name;
+                    }
+                    _weatherDraft.locationPresets.push(normalized);
+                    count++;
+                });
+                if (!count) return await AppUI.alert('文件中没有可用的地点预设');
+                if (!_weatherDraft.defaultLocationPresetId) {
+                    _weatherDraft.defaultLocationPresetId = _weatherDraft.locationPresets[0].id;
+                }
+                _applyWeatherPresetToForm(_weatherDraft.locationPresets[_weatherDraft.locationPresets.length - 1].id);
+                _markDirty('weather');
+                showToast(`已导入 ${count} 个地点预设，请保存天气配置`);
+            } catch (error) {
+                await AppUI.alert('导入失败：' + error.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function _addWeatherPreset(copyCurrent = false) {
+    _syncWeatherPresetFromForm();
+    const source = copyCurrent && _weatherDraft.locationPresets.find(p => p.id === _weatherLoadedPresetId);
+    const baseName = source ? source.name : '地点预设';
+    const taken = _weatherDraft.locationPresets.map(p => p.name);
+    let suffix = source ? 2 : 1;
+    let name = `${baseName}${suffix}`;
+    while (taken.includes(name)) name = `${baseName}${++suffix}`;
+    const preset = source
+        ? { ...source, id: _newWeatherPresetId(), name }
+        : { id: _newWeatherPresetId(), name, locationId: '', locationName: '', locationQuery: '' };
+    _weatherDraft.locationPresets.push(preset);
+    if (!_weatherDraft.defaultLocationPresetId) _weatherDraft.defaultLocationPresetId = preset.id;
+    _applyWeatherPresetToForm(preset.id);
+    _markDirty('weather');
+}
+
+async function _deleteWeatherPreset() {
+    if (!_weatherLoadedPresetId) return showToast('请先选择要删除的地点预设');
+    const preset = _weatherDraft.locationPresets.find(p => p.id === _weatherLoadedPresetId);
+    if (!preset) return;
+    const ok = await AppUI.confirm(`确定删除地点预设「${preset.name}」？`, '删除地点预设', '删除', '取消');
+    if (!ok) return;
+    _weatherDraft.locationPresets = _weatherDraft.locationPresets.filter(p => p.id !== preset.id);
+    if (_weatherDraft.defaultLocationPresetId === preset.id) {
+        _weatherDraft.defaultLocationPresetId = (_weatherDraft.locationPresets[0] || {}).id || '';
+    }
+    _applyWeatherPresetToForm(_weatherDraft.defaultLocationPresetId || (_weatherDraft.locationPresets[0] || {}).id);
+    _markDirty('weather');
+}
+
+async function saveWeatherApiSettings() {
+    _syncWeatherPresetFromForm();
+    const settings = _readWeatherForm();
+    if (!_isValidQWeatherHost(settings.apiHost)) return showToast('请填写控制台提供的专属 API Host');
+    if (!settings.apiKey) return showToast('请填写 API Key');
+    if (!settings.locationPresets.some(p => p.locationId)) return showToast('请至少查询并保存一个地点预设');
+    if (!settings.defaultLocationPresetId) return showToast('请设置一个全局默认地点');
+
+    window.db.weatherSettings = settings;
+    _weatherDraft = _normalizeWeatherSettings(settings);
+    await saveGlobalKeys(['weatherSettings']);
+    _clearDirty('weather');
+    showToast('和风天气配置已保存');
+}
+
+function _setWeatherButtonLoading(id, loading) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('loading', !!loading);
+    btn.disabled = !!loading;
+}
+
+function _setWeatherTestResult(message, isError = false, hidden = false) {
+    const result = document.getElementById('api-weather-test-result');
+    if (!result) return;
+    result.textContent = message || '';
+    result.hidden = !!hidden;
+    result.classList.toggle('is-error', !!isError);
+}
+
+async function _readWeatherApiError(response) {
+    let detail = '';
+    try {
+        const text = (await response.text()).trim();
+        if (text) {
+            try {
+                const body = JSON.parse(text);
+                detail = body.message || body.code || text;
+            } catch (_) {
+                detail = text;
+            }
+        }
+    } catch (_) { /* ignore */ }
+    return `请求失败（HTTP ${response.status}）${detail ? `：${detail}` : ''}`;
+}
+
+function _formatWeatherLocation(item) {
+    const parts = [item.name, item.adm2, item.adm1, item.country].filter(Boolean);
+    return parts.filter((part, index) => parts.indexOf(part) === index).join(' · ');
+}
+
+async function searchWeatherLocations() {
+    const apiHost = _normalizeQWeatherHost(_getVal('api-weather-host'));
+    const apiKey = _getVal('api-weather-key').trim();
+    const query = _getVal('api-weather-city').trim();
+    if (!_isValidQWeatherHost(apiHost)) return showToast('请先填写正确的专属 API Host');
+    if (!apiKey || !query) return showToast('请先填写 API Key 和城市或地区');
+
+    const select = document.getElementById('api-weather-location-select');
+    _setWeatherButtonLoading('api-weather-search-btn', true);
+    _setWeatherTestResult('', false, true);
+
+    try {
+        const params = new URLSearchParams({ location: query, range: 'cn', number: '20', lang: 'zh' });
+        const response = await fetch(`${apiHost}/geo/v2/city/lookup?${params.toString()}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json', 'X-QW-Api-Key': apiKey }
+        });
+        if (!response.ok) throw new Error(await _readWeatherApiError(response));
+
+        const payload = await response.json();
+        if (payload.code !== '200') throw new Error(`和风天气状态码：${payload.code || '未知'}`);
+        const locations = Array.isArray(payload.location) ? payload.location : [];
+        if (locations.length === 0) throw new Error('未找到匹配地点，请尝试更完整的区县名称');
+
+        select.innerHTML = '<option value="">请选择正确地点</option>';
+        locations.forEach(item => {
+            const locationId = String(item.id || '').trim();
+            if (!locationId) return;
+            const option = document.createElement('option');
+            option.value = locationId;
+            option.textContent = _formatWeatherLocation(item);
+            select.appendChild(option);
+        });
+        if (select.options.length === 1) throw new Error('查询结果缺少可用的 LocationID');
+
+        showToast(`找到 ${select.options.length - 1} 个地点，请选择`);
+    } catch (error) {
+        if (select) select.innerHTML = '<option value="">地点查询失败</option>';
+        _setWeatherTestResult(`地点查询失败：${error.message}`, true);
+    } finally {
+        _setWeatherButtonLoading('api-weather-search-btn', false);
+    }
+}
+
+function _applySelectedWeatherLocation() {
+    const select = document.getElementById('api-weather-location-select');
+    if (!select || !select.value) return;
+    _setWeatherTestResult('', false, true);
+    _markDirty('weather');
+}
+
+// ============================================================
+// 聊天运行时天气上下文（按聊天触发，地点级缓存，不写聊天历史）
+// ============================================================
+
+// locationId -> { fetchedAt, payload }
+const _weatherNowCache = new Map();
+
+// 条件注入阈值（可按需调整）
+const WEATHER_INJECT_RULES = {
+    humidityLow: 30,   // 湿度 ≤ 30% 视为干燥才注入
+    humidityHigh: 70,  // 湿度 ≥ 70% 视为潮湿才注入
+    windScale: 6,      // 风力 ≥ 6 级才注入
+    precipMin: 0,      // 降水量 > 0 才注入
+    visMax: 5,         // 能见度 ≤ 5km 才注入
+    tempDiff: 5,       // 未来 24h 与当前温差 ≥ 5℃ 才提醒
+    popMin: 60,        // 降水概率 ≥ 60% 视为可能降雨
+    maxAlerts: 3       // 天气提醒最多注入条数
+};
+
+/** 解析某个聊天应使用的地点预设；返回 null 表示该聊天不注入天气 */
+function _resolveWeatherPresetForChat(chat) {
+    if (!chat || !chat.weatherMode || chat.weatherMode === 'off') return null;
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    if (!settings.apiHost || !settings.apiKey) return null;
+
+    let preset = null;
+    if (chat.weatherMode === 'preset') {
+        preset = settings.locationPresets.find(p => p.id === chat.weatherLocationPresetId);
+    } else {
+        preset = settings.locationPresets.find(p => p.id === settings.defaultLocationPresetId);
+    }
+    return (preset && preset.locationId) ? { settings, preset } : null;
+}
+
+/** 组装注入文本：城市名用预设名；部分指标仅在达到阈值时出现 */
+function _formatWeatherPromptText(now, presetName) {
+    const parts = [];
+    parts.push(`${presetName}目前的天气是${now.text || '未知'}，温度${now.temp === undefined ? '未知' : `${now.temp}℃`}`);
+
+    const humidity = parseInt(now.humidity, 10);
+    if (!isNaN(humidity) && (humidity <= WEATHER_INJECT_RULES.humidityLow || humidity >= WEATHER_INJECT_RULES.humidityHigh)) {
+        parts.push(`湿度${humidity}%`);
+    }
+    const windScale = parseInt(now.windScale, 10);
+    if (!isNaN(windScale) && windScale >= WEATHER_INJECT_RULES.windScale) {
+        parts.push(`${now.windDir || '未知风向'}${windScale}级风`);
+    }
+    const precip = parseFloat(now.precip);
+    if (!isNaN(precip) && precip > WEATHER_INJECT_RULES.precipMin) {
+        parts.push(`降水量${now.precip}mm`);
+    }
+    const vis = parseFloat(now.vis);
+    if (!isNaN(vis) && vis <= WEATHER_INJECT_RULES.visMax) {
+        parts.push(`能见度${now.vis}km`);
+    }
+    return parts.join('，');
+}
+
+/** 天气文字归类：同类之间的变化不提醒（如晴转多云），跨类才提醒 */
+function _weatherCategory(text) {
+    const t = String(text || '');
+    if (t.includes('雷')) return '雷';
+    if (t.includes('雨') || t.includes('雹')) return '雨';
+    if (t.includes('雪')) return '雪';
+    if (t.includes('雾') || t.includes('霾')) return '雾';
+    if (t.includes('台风') || t.includes('飓风')) return '台风';
+    if (t.includes('沙') || t.includes('尘')) return '沙尘';
+    return 'normal';
+}
+
+/** 风力字段可能是 "6" 或 "3-4"，取最大等级 */
+function _parseWindScale(value) {
+    const nums = String(value || '').match(/\d+/g);
+    return nums ? Math.max(...nums.map(Number)) : NaN;
+}
+
+/** 未来小时数（按 fxTime 与当前时间差取整） */
+function _hoursAhead(fxTime) {
+    const t = Date.parse(String(fxTime || '').replace(' ', 'T'));
+    if (isNaN(t)) return null;
+    return Math.max(1, Math.round((t - Date.now()) / 3600000));
+}
+
+/** 对比实时与 24h 预报，只生成“明显变化”的提醒 */
+function _buildWeatherAlerts(now, hourly, presetName) {
+    if (!Array.isArray(hourly) || !hourly.length) return [];
+    const events = [];
+
+    // 1. 天气转变（跨类别），取最早一次
+    const currentCategory = _weatherCategory(now.text);
+    const transition = hourly.find(h => _weatherCategory(h.text) !== currentCategory && _weatherCategory(h.text) !== 'normal');
+    if (transition) {
+        const hours = _hoursAhead(transition.fxTime);
+        let text = `约${hours === null ? '数' : hours}小时后${presetName}天气转为${transition.text}`;
+        const precip = parseFloat(transition.precip);
+        const pop = parseInt(transition.pop, 10);
+        if (!isNaN(precip) && precip > 0) text += `，预计降雨量${transition.precip}mm`;
+        else if (!isNaN(pop) && pop >= WEATHER_INJECT_RULES.popMin) text += `，降水概率${pop}%`;
+        events.push({ hours: hours === null ? 999 : hours, text });
+    }
+
+    // 2. 明显升温 / 降温（24h 极值与当前温差 ≥ 阈值）
+    const currentTemp = parseFloat(now.temp);
+    if (!isNaN(currentTemp)) {
+        const temps = hourly.map(h => parseFloat(h.temp)).filter(t => !isNaN(t));
+        if (temps.length) {
+            const maxTemp = Math.max(...temps);
+            const minTemp = Math.min(...temps);
+            if (maxTemp - currentTemp >= WEATHER_INJECT_RULES.tempDiff) {
+                events.push({ hours: 998, text: `未来24小时内${presetName}将明显升温，最高${maxTemp}℃（当前${currentTemp}℃）` });
+            }
+            if (currentTemp - minTemp >= WEATHER_INJECT_RULES.tempDiff) {
+                events.push({ hours: 998, text: `未来24小时内${presetName}将明显降温，最低${minTemp}℃（当前${currentTemp}℃）` });
+            }
+        }
+    }
+
+    // 3. 大风（当前未达阈值、未来达到阈值），取最早一次
+    const currentWind = _parseWindScale(now.windScale);
+    if (!(currentWind >= WEATHER_INJECT_RULES.windScale)) {
+        const windy = hourly.find(h => _parseWindScale(h.windScale) >= WEATHER_INJECT_RULES.windScale);
+        if (windy) {
+            const hours = _hoursAhead(windy.fxTime);
+            events.push({ hours: hours === null ? 999 : hours, text: `约${hours === null ? '数' : hours}小时后${presetName}将有${windy.windDir || ''}${windy.windScale}级大风` });
+        }
+    }
+
+    // 4. 无天气转变但降水概率高：可能下雨
+    if (!transition && _weatherCategory(now.text) !== '雨') {
+        const pops = hourly.map(h => parseInt(h.pop, 10)).filter(p => !isNaN(p));
+        if (pops.length && Math.max(...pops) >= WEATHER_INJECT_RULES.popMin) {
+            events.push({ hours: 999, text: `未来24小时内${presetName}有降雨可能（降水概率最高${Math.max(...pops)}%）` });
+        }
+    }
+
+    events.sort((a, b) => a.hours - b.hours);
+    return events.slice(0, WEATHER_INJECT_RULES.maxAlerts).map(e => e.text);
+}
+
+/**
+ * 获取某聊天的天气 Prompt 片段。
+ * 仅在用户触发该聊天 AI 回复时调用；失败/未配置/关闭时返回空字符串，绝不影响正常回复。
+ */
+async function getWeatherPromptContext(chat) {
+    const resolved = _resolveWeatherPresetForChat(chat);
+    if (!resolved) return '';
+    const { settings, preset } = resolved;
+
+    const cacheMs = (settings.cacheMinutes || 30) * 60 * 1000;
+    const apiHost = _normalizeQWeatherHost(settings.apiHost);
+    const headers = { Accept: 'application/json', 'X-QW-Api-Key': settings.apiKey };
+    const cached = _weatherNowCache.get(preset.locationId);
+    let nowPayload = null;
+    let hourlyPayload = null;
+
+    if (cached && (Date.now() - cached.fetchedAt) < cacheMs) {
+        nowPayload = cached.nowPayload;
+        hourlyPayload = cached.hourlyPayload;
+    } else {
+        try {
+            const params = new URLSearchParams({ location: preset.locationId, lang: 'zh' });
+            const response = await fetch(`${apiHost}/v7/weather/now?${params.toString()}`, { method: 'GET', headers });
+            if (!response.ok) return '';
+            const body = await response.json();
+            if (body.code !== '200' || !body.now) return '';
+            nowPayload = body;
+
+            // 顺带拉取 24h 预报，失败不影响实况注入
+            try {
+                const hourlyResponse = await fetch(`${apiHost}/v7/weather/24h?${params.toString()}`, { method: 'GET', headers });
+                if (hourlyResponse.ok) {
+                    const hourlyBody = await hourlyResponse.json();
+                    if (hourlyBody.code === '200' && Array.isArray(hourlyBody.hourly)) hourlyPayload = hourlyBody;
+                }
+            } catch (error) {
+                console.warn('天气预报获取失败，本次仅注入实况：', error);
+            }
+
+            _weatherNowCache.set(preset.locationId, { fetchedAt: Date.now(), nowPayload, hourlyPayload });
+        } catch (error) {
+            console.warn('天气获取失败，本次不注入：', error);
+            return '';
+        }
+    }
+
+    const parts = [`[实时天气]\n${_formatWeatherPromptText(nowPayload.now, preset.name)}。`];
+    if (hourlyPayload && hourlyPayload.hourly) {
+        const alerts = _buildWeatherAlerts(nowPayload.now, hourlyPayload.hourly, preset.name);
+        if (alerts.length) parts.push(`[天气提醒]\n${alerts.join('\n')}。`);
+    }
+    parts.push(`（以上是${preset.name}当前的实时天气与预报，可在对话与情境演绎中自然参考，无需主动提及数据来源。）`);
+    return parts.join('\n');
+}
+
+function _formatCurrentWeather(payload, configuredName) {
+    const now = payload.now || {};
+    return [
+        `地点：${configuredName || '已配置地点'}`,
+        `观测时间：${now.obsTime || '未知'}`,
+        `天气：${now.text || '未知'}`,
+        `温度：${now.temp === undefined ? '未知' : `${now.temp}℃`}`,
+        `体感：${now.feelsLike === undefined ? '未知' : `${now.feelsLike}℃`}`,
+        `湿度：${now.humidity === undefined ? '未知' : `${now.humidity}%`}`,
+        `风：${now.windDir || '未知'} ${now.windScale === undefined ? '' : `${now.windScale}级`} ${now.windSpeed === undefined ? '' : `${now.windSpeed} km/h`}`.trim(),
+        `降水量：${now.precip === undefined ? '未知' : `${now.precip} mm`}`,
+        `气压：${now.pressure === undefined ? '未知' : `${now.pressure} hPa`}`,
+        `能见度：${now.vis === undefined ? '未知' : `${now.vis} km`}`,
+        `云量：${now.cloud === undefined ? '未知' : `${now.cloud}%`}`,
+        `露点：${now.dew === undefined ? '未知' : `${now.dew}℃`}`
+    ].join('\n');
+}
+
+async function testWeatherApi() {
+    const settings = _readWeatherForm();
+    const location = _getWeatherCurrentLocation();
+    if (!_isValidQWeatherHost(settings.apiHost)) return showToast('请先填写正确的专属 API Host');
+    if (!settings.apiKey) return showToast('请先填写 API Key');
+    if (!location.locationId) return showToast('请先查询并选择本次测试地点');
+
+    _setWeatherButtonLoading('api-weather-test-btn', true);
+    _setWeatherTestResult('正在获取实况天气…');
+
+    try {
+        const params = new URLSearchParams({ location: location.locationId, lang: 'zh' });
+        const response = await fetch(`${settings.apiHost}/v7/weather/now?${params.toString()}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json', 'X-QW-Api-Key': settings.apiKey }
+        });
+        if (!response.ok) throw new Error(await _readWeatherApiError(response));
+
+        const payload = await response.json();
+        if (payload.code !== '200' || !payload.now) throw new Error(`和风天气状态码：${payload.code || '未知'}`);
+        _setWeatherTestResult(_formatCurrentWeather(payload, location.locationName || location.locationQuery));
+    } catch (error) {
+        _setWeatherTestResult(`实况测试失败：${error.message}`, true);
+    } finally {
+        _setWeatherButtonLoading('api-weather-test-btn', false);
+    }
+}
+
+function initWeatherApiTab() {
+    _refreshWeatherTabUI();
+    _on('api-weather-search-btn', searchWeatherLocations);
+    _on('api-weather-test-btn', testWeatherApi);
+    _on('api-weather-save-btn', saveWeatherApiSettings);
+    _on('api-weather-add-preset', () => _addWeatherPreset(false));
+    _on('api-weather-copy-preset', () => _addWeatherPreset(true));
+    _on('api-weather-del-preset', _deleteWeatherPreset);
+    _on('api-weather-import-preset', importWeatherPresets);
+    _on('api-weather-export-preset', exportWeatherPresets);
+
+    const presetSelect = document.getElementById('api-weather-preset-select');
+    if (presetSelect) presetSelect.addEventListener('change', () => {
+        _syncWeatherPresetFromForm();
+        _applyWeatherPresetToForm(presetSelect.value);
+        _clearDirty('weather');
+    });
+
+    const locationSelect = document.getElementById('api-weather-location-select');
+    if (locationSelect) locationSelect.addEventListener('change', _applySelectedWeatherLocation);
+
+    const cityInput = document.getElementById('api-weather-city');
+    if (cityInput) cityInput.addEventListener('input', () => {
+        if (!locationSelect || !locationSelect.value) return;
+        locationSelect.innerHTML = '<option value="">城市已修改，请重新查询地点</option>';
+        _setWeatherTestResult('', false, true);
+    });
+
+    _watchDirty('weather', [
+        'api-weather-provider', 'api-weather-host', 'api-weather-key',
+        'api-weather-preset-name', 'api-weather-set-default', 'api-weather-city',
+        'api-weather-location-select', 'api-weather-cache-minutes'
+    ]);
 }
 
 // ============================================================
@@ -834,6 +1504,7 @@ function setupApiSettingsApp() {
     _currentApiTab    = 'chat';
     _chatDirty        = false;
     _embDirty         = false;
+    _weatherDirty     = false;
     _stagedPresets    = { chat: null, embedding: null };
     _loadedPresetName = { chat: null, embedding: null };
 
@@ -866,6 +1537,7 @@ function setupApiSettingsApp() {
 
     initChatApiTab();
     initEmbApiTab();
+    initWeatherApiTab();
 }
 
 // ============================================================
@@ -875,6 +1547,7 @@ function openApiSettingsScreen() {
     // 重置脏数据和暂存状态
     _chatDirty        = false;
     _embDirty         = false;
+    _weatherDirty     = false;
     _stagedPresets    = { chat: null, embedding: null };
     _loadedPresetName = { chat: null, embedding: null };
 
@@ -890,9 +1563,10 @@ function openApiSettingsScreen() {
         _currentApiTab = 'chat';
     }
 
-    // 两个 Tab 都刷新回全局默认状态
+    // 各 Tab 都刷新回已保存状态
     _refreshChatTabUI();
     _refreshEmbTabUI();
+    _refreshWeatherTabUI();
 }
 
 // ============================================================
