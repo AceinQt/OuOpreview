@@ -679,12 +679,13 @@ if (chatType === 'private' && chat.offlineModeEnabled) {
         let systemPrompt, requestBody;
         const isCompatibilityMode = effectiveApiSettings.compatibilityModeEnabled || false; 
         if (chatType === 'private') {
-            systemPrompt = generatePrivateSystemPrompt(chat, retrievedContext);
-            // ★ 天气上下文：按该聊天绑定的地点拉取/读取缓存，仅注入本次请求，不写入历史
+            // ★ 天气上下文：按该聊天绑定的地点取数，仅注入本次请求，不写入历史。
+            //   这里只负责"取"，具体排在 prompt 的哪一段由 private_prompt.js 决定。
+            let weatherText = '';
             if (typeof getWeatherPromptContext === 'function') {
-                const weatherContext = await getWeatherPromptContext(chat);
-                if (weatherContext) systemPrompt += '\n\n' + weatherContext;
+                weatherText = (await getWeatherPromptContext(chat)) || '';
             }
+            systemPrompt = generatePrivateSystemPrompt(chat, retrievedContext, weatherText);
         } else {
             systemPrompt = generateGroupSystemPrompt(chat, retrievedContext);
 }

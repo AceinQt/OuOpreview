@@ -1,5 +1,5 @@
             // --- AI Interaction & Prompts ---
-            function generatePrivateSystemPrompt(character, retrievedContext = '') {
+            function generatePrivateSystemPrompt(character, retrievedContext = '', weatherText = '') {
                 const worldBooksBefore = (character.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'before')).filter(Boolean).map(wb => wb.content).join('\n');
                 const worldBooksAfter = (character.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'after')).filter(Boolean).map(wb => wb.content).join('\n');
                 // --- 新增：获取“写作专用”的世界书 ---
@@ -91,7 +91,14 @@ if (watchingContext) {
           `[${character.realName}的消息：喂？]\n` +
           `[${character.realName}的消息：听得到吗？]\n`;
     prompt += `6. **挂断通话**：如果对话需要自然结束，你可以主动挂断，单起一行输出：[${character.realName}挂断了通话]。\n`; 
-    if (character.timePerceptionEnabled) prompt += `7. 现在是 ${currentTime}。`;
+    // 调节旋钮：天气并进时间这一条，见 plans/weather-prompt-refit.md
+    if (character.timePerceptionEnabled && weatherText) {
+        prompt += `7. 现在是 ${currentTime}，${weatherText}。不要主动提及或评论天气。`;
+    } else if (character.timePerceptionEnabled) {
+        prompt += `7. 现在是 ${currentTime}。`;
+    } else if (weatherText) {
+        prompt += `7. ${weatherText}。不要主动提及或评论天气。`;
+    }
 
     return prompt;
 }
@@ -117,11 +124,18 @@ if (watchingContext) {
                     prompt += `💡 **关于“状态”的特殊定义**：\n`;
                     prompt += `虽然是描写面对面互动，但用户的界面上方依然有一个状态栏。请将它视为**主角此刻的“心情”或“动作速写”**。\n`;
                     
-                    // 角色和世界观    
+                    // 角色和世界观
                     if (worldBooksBefore) {
                         prompt += `**世界观设定**：\n${worldBooksBefore}\n\n`;
                     }
-                    
+
+                    // 调节旋钮：天气数据放在情境/档案区（低注意力的参考资料位），不放文末写作手册的自问区。
+                    // 若 AI 忽略天气 → 把 chat_ai_service.js 自问第 4 条扩成"什么天气？"；
+                    // 若 AI 反复重复天气 → 把下面这句改短。详见 plans/weather-prompt-refit.md
+                    if (weatherText) {
+                        prompt += `**当前室外天气**：${weatherText}。（写景时可自然带入，但不要反复描写同一天气特征，也不要让角色主动谈论天气。）\n\n`;
+                    }
+
                     prompt += `**互动对象（故事中的“你”）**：${character.myName}\n`;
                     if (character.myPersona) {
                         prompt += `**对方背景**：${character.myPersona}\n`;
@@ -256,9 +270,16 @@ if (watchingContext) {
                     if (_lo > 0 && _hi >= _lo) { replyLo = _lo; replyHi = _hi; }
                 }
                 prompt += `15. **对话节奏**: 你需要模拟真人的线上聊天习惯，你可以一次性生成多条简短消息。每次要回复至少${replyLo}-${replyHi}条短消息。并根据当前行为/心情/地点变化实时更新状态(状态20个字符以内)。\n`;
-                prompt += character.timePerceptionEnabled
-                    ? `16. 现在是 ${currentTime}。你应知晓当前时间，但不要主动提及或评论时间（例如，不要催促我睡觉），不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`
-                    : `16. 不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
+                // 调节旋钮：天气并进第 16 条时间那句，见 plans/weather-prompt-refit.md
+                let rule16Prefix = '';
+                if (character.timePerceptionEnabled && weatherText) {
+                    rule16Prefix = `现在是 ${currentTime}，${weatherText}。你应知晓当前时间与天气，但不要主动提及或评论时间和天气（例如，不要催促我睡觉，不要没头没脑地聊天气），`;
+                } else if (character.timePerceptionEnabled) {
+                    rule16Prefix = `现在是 ${currentTime}。你应知晓当前时间，但不要主动提及或评论时间（例如，不要催促我睡觉），`;
+                } else if (weatherText) {
+                    rule16Prefix = `${weatherText}。你应知晓当前天气，但不要主动提及或评论天气（例如，不要没头没脑地聊天气），`;
+                }
+                prompt += `16. ${rule16Prefix}不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
 
                 return prompt;
             }

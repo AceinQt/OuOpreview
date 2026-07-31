@@ -459,6 +459,35 @@ function setupGroupChatSystem() {
             document.getElementById('setting-group-reply-range-display').textContent = normalized;
         });
     }
+
+    // 天气：点整行唤起弹窗（选地点 + 是否含预报），取消不写入
+    const groupWeatherItem = document.getElementById('setting-group-weather-item');
+    if (groupWeatherItem) {
+        groupWeatherItem.addEventListener('click', async () => {
+            if (typeof openWeatherSettingDialog !== 'function') return;
+            const result = await openWeatherSettingDialog({
+                weatherMode: document.getElementById('setting-group-weather-mode').value || 'off',
+                weatherLocationPresetId: document.getElementById('setting-group-weather-preset').value || '',
+                weatherForecastEnabled: document.getElementById('setting-group-weather-forecast').value === '1'
+            });
+            if (!result) return;
+            document.getElementById('setting-group-weather-mode').value = result.weatherMode;
+            document.getElementById('setting-group-weather-preset').value = result.weatherLocationPresetId;
+            document.getElementById('setting-group-weather-forecast').value = result.weatherForecastEnabled ? '1' : '0';
+            _refreshGroupWeatherDisplay();
+        });
+    }
+}
+
+/** 按隐藏 input 的当前值刷新群聊侧栏天气行文案 */
+function _refreshGroupWeatherDisplay() {
+    const display = document.getElementById('setting-group-weather-display');
+    if (!display || typeof formatWeatherSettingLabel !== 'function') return;
+    display.textContent = formatWeatherSettingLabel(
+        document.getElementById('setting-group-weather-mode').value || 'off',
+        document.getElementById('setting-group-weather-preset').value || '',
+        document.getElementById('setting-group-weather-forecast').value === '1'
+    );
 }
 
 // --- 辅助函数 ---
@@ -540,13 +569,13 @@ if (groupApiPresetSel) {
     groupApiPresetSel.value = group.chatApiPreset || '';
 }
 
-const groupWeatherLocationSel = document.getElementById('setting-group-weather-location');
-if (groupWeatherLocationSel && typeof window.populateWeatherLocationSelect === 'function') {
-    window.populateWeatherLocationSelect(
-        groupWeatherLocationSel,
-        group.weatherMode || 'off',
-        group.weatherLocationPresetId || ''
-    );
+// 天气：隐藏 input 暂存，侧栏只显示文案，具体设置走弹窗
+const groupWeatherModeInput = document.getElementById('setting-group-weather-mode');
+if (groupWeatherModeInput) {
+    groupWeatherModeInput.value = group.weatherMode || 'off';
+    document.getElementById('setting-group-weather-preset').value = group.weatherLocationPresetId || '';
+    document.getElementById('setting-group-weather-forecast').value = group.weatherForecastEnabled ? '1' : '0';
+    _refreshGroupWeatherDisplay();
 }
     // ── 气泡外观 ─────────────────────────────────────────
     if (typeof window.populateChatThemeSelects === 'function') {
@@ -720,11 +749,11 @@ const groupApiPresetSel = document.getElementById('setting-group-api-preset');
 if (groupApiPresetSel) {
     group.chatApiPreset = groupApiPresetSel.value;
 }
-const groupWeatherLocationSel = document.getElementById('setting-group-weather-location');
-if (groupWeatherLocationSel) {
-    const value = groupWeatherLocationSel.value || 'inherit';
-    group.weatherMode = value === 'off' ? 'off' : (value.startsWith('preset:') ? 'preset' : 'inherit');
-    group.weatherLocationPresetId = value.startsWith('preset:') ? value.slice('preset:'.length) : '';
+const groupWeatherModeInputSave = document.getElementById('setting-group-weather-mode');
+if (groupWeatherModeInputSave) {
+    group.weatherMode = groupWeatherModeInputSave.value || 'off';
+    group.weatherLocationPresetId = document.getElementById('setting-group-weather-preset').value || '';
+    group.weatherForecastEnabled = document.getElementById('setting-group-weather-forecast').value === '1';
 }
     await saveSingleChat(currentChatId, 'group');
     showToast('群聊设置已保存！');

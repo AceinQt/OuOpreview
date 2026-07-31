@@ -227,6 +227,24 @@ function setupChatSettings() {
         });
     }
 
+    // 天气：点整行唤起弹窗（选地点 + 是否含预报），取消不写入
+    const weatherItem = document.getElementById('setting-chat-weather-item');
+    if (weatherItem) {
+        weatherItem.addEventListener('click', async () => {
+            if (typeof openWeatherSettingDialog !== 'function') return;
+            const result = await openWeatherSettingDialog({
+                weatherMode: document.getElementById('setting-chat-weather-mode').value || 'off',
+                weatherLocationPresetId: document.getElementById('setting-chat-weather-preset').value || '',
+                weatherForecastEnabled: document.getElementById('setting-chat-weather-forecast').value === '1'
+            });
+            if (!result) return;
+            document.getElementById('setting-chat-weather-mode').value = result.weatherMode;
+            document.getElementById('setting-chat-weather-preset').value = result.weatherLocationPresetId;
+            document.getElementById('setting-chat-weather-forecast').value = result.weatherForecastEnabled ? '1' : '0';
+            _refreshChatWeatherDisplay();
+        });
+    }
+
     // 清理图片：批量把本聊天的图片转成文字描述
     const cleanupImagesBtn = document.getElementById('cleanup-images-btn');
     if (cleanupImagesBtn) {
@@ -368,15 +386,26 @@ function loadSettingsToSidebar() {
             apiPresetSel.value = e.chatApiPreset || '';
         }
 
-        const weatherLocationSel = document.getElementById('setting-chat-weather-location');
-        if (weatherLocationSel && typeof window.populateWeatherLocationSelect === 'function') {
-            window.populateWeatherLocationSelect(
-                weatherLocationSel,
-                e.weatherMode || 'off',
-                e.weatherLocationPresetId || ''
-            );
+        // 天气：隐藏 input 暂存，侧栏只显示文案，具体设置走弹窗
+        const weatherModeInput = document.getElementById('setting-chat-weather-mode');
+        if (weatherModeInput) {
+            weatherModeInput.value = e.weatherMode || 'off';
+            document.getElementById('setting-chat-weather-preset').value = e.weatherLocationPresetId || '';
+            document.getElementById('setting-chat-weather-forecast').value = e.weatherForecastEnabled ? '1' : '0';
+            _refreshChatWeatherDisplay();
         }
     }
+}
+
+/** 按隐藏 input 的当前值刷新侧栏天气行文案 */
+function _refreshChatWeatherDisplay() {
+    const display = document.getElementById('setting-chat-weather-display');
+    if (!display || typeof formatWeatherSettingLabel !== 'function') return;
+    display.textContent = formatWeatherSettingLabel(
+        document.getElementById('setting-chat-weather-mode').value || 'off',
+        document.getElementById('setting-chat-weather-preset').value || '',
+        document.getElementById('setting-chat-weather-forecast').value === '1'
+    );
 }
             
 // --- 替换 saveSettingsFromSidebar 函数 ---
@@ -427,11 +456,11 @@ async function saveSettingsFromSidebar() {
             e.chatApiPreset = apiPresetSel.value;
         }
 
-        const weatherLocationSel = document.getElementById('setting-chat-weather-location');
-        if (weatherLocationSel) {
-            const value = weatherLocationSel.value || 'inherit';
-            e.weatherMode = value === 'off' ? 'off' : (value.startsWith('preset:') ? 'preset' : 'inherit');
-            e.weatherLocationPresetId = value.startsWith('preset:') ? value.slice('preset:'.length) : '';
+        const weatherModeInput = document.getElementById('setting-chat-weather-mode');
+        if (weatherModeInput) {
+            e.weatherMode = weatherModeInput.value || 'off';
+            e.weatherLocationPresetId = document.getElementById('setting-chat-weather-preset').value || '';
+            e.weatherForecastEnabled = document.getElementById('setting-chat-weather-forecast').value === '1';
         }
 
         await saveSingleChat(currentChatId, currentChatType);
