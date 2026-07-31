@@ -741,25 +741,130 @@ function _normalizeWeatherSettings(raw) {
         provider: 'qweather',
         apiHost: source.apiHost || '',
         apiKey: source.apiKey || '',
-        cacheMinutes: [20, 30, 60].includes(Number(source.cacheMinutes)) ? Number(source.cacheMinutes) : 30,
+        // 注：旧配置里的 cacheMinutes 已废弃（实况改成每次都拉），读到也直接忽略，不再写回
         locationPresets: presets,
-        defaultLocationPresetId: defaultId
+        defaultLocationPresetId: defaultId,
+        dailyLimit: Number(source.dailyLimit) > 0 ? Math.floor(Number(source.dailyLimit)) : 800,
+        dailyCount: Number(source.dailyCount) > 0 ? Math.floor(Number(source.dailyCount)) : 0,
+        dailyCountDate: source.dailyCountDate || ''
     };
 }
 
-function populateWeatherLocationSelect(select, mode, presetId = '') {
-    if (!select) return;
+// ---- 额度计数器：和风超额不返回 402/429，直接发账单，本地计数器是唯一防线 ----
+
+/** 本地日期 YYYY-MM-DD（不管哪个时区，0 点到 0 点总是 24 小时） */
+function _weatherTodayKey() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// 当天已经提示过上限的日期，避免每条回复都弹一次
+let _weatherLimitToastDate = '';
+
+/** 读当日额度状态；日期对不上视为已归零（真正落库在 _addWeatherUsage） */
+function _readWeatherQuota() {
     const settings = _normalizeWeatherSettings(db.weatherSettings);
-    select.innerHTML = '<option value="off">不开启</option><option value="inherit">跟随全局默认</option>';
-    settings.locationPresets.forEach(preset => {
-        const option = document.createElement('option');
-        option.value = `preset:${preset.id}`;
-        option.textContent = preset.name;
-        select.appendChild(option);
-    });
-    const wanted = mode === 'preset' && settings.locationPresets.some(p => p.id === presetId)
-        ? `preset:${presetId}` : (mode === 'inherit' ? 'inherit' : 'off');
-    select.value = wanted;
+    const today = _weatherTodayKey();
+    return {
+        today,
+        limit: settings.dailyLimit,
+        count: settings.dailyCountDate === today ? settings.dailyCount : 0
+    };
+}
+
+/** 记账并落库；跨日在这里一并归零 */
+async function _addWeatherUsage(times) {
+    if (!times) return;
+    const { today, count } = _readWeatherQuota();
+    db.weatherSettings = { ...(db.weatherSettings || {}), dailyCount: count + times, dailyCountDate: today };
+    try {
+        await saveGlobalKeys(['weatherSettings']);
+    } catch (error) {
+        console.warn('天气用量落库失败：', error);
+    }
+    _refreshWeatherUsageUI();
+}
+
+/** 天气 Tab 上的"今日已用 N / 上限 M 次" */
+function _refreshWeatherUsageUI() {
+    const el = document.getElementById('api-weather-usage-display');
+    if (!el) return;
+    const { limit, count } = _readWeatherQuota();
+    el.textContent = `今日已用 ${count} / 上限 ${limit} 次`;
+    el.classList.toggle('is-over-limit', count >= limit);
+}
+
+// ---- 聊天/群聊侧栏的天气行：数据与文案（侧栏只显示文案，具体设置走 AppUI.form 弹窗）----
+
+/** 弹窗地点下拉的选项数据 */
+function getWeatherLocationOptions() {
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    return [
+        { value: 'off', label: '不开启' },
+        { value: 'inherit', label: '跟随全局默认' },
+        ...settings.locationPresets.map(preset => ({ value: `preset:${preset.id}`, label: preset.name }))
+    ];
+}
+
+/** 聊天字段 → 下拉 value */
+function toWeatherSelectValue(mode, presetId = '') {
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    if (mode === 'preset' && settings.locationPresets.some(p => p.id === presetId)) return `preset:${presetId}`;
+    return mode === 'inherit' ? 'inherit' : 'off';
+}
+
+/** 下拉 value → 聊天字段 */
+function parseWeatherSelectValue(value) {
+    const raw = value || 'off';
+    if (raw.startsWith('preset:')) return { weatherMode: 'preset', weatherLocationPresetId: raw.slice('preset:'.length) };
+    if (raw === 'inherit') return { weatherMode: 'inherit', weatherLocationPresetId: '' };
+    return { weatherMode: 'off', weatherLocationPresetId: '' };
+}
+
+/** 侧栏那一行的显示文案：不开启 / 辉城 / 辉城 · 含预报 */
+function formatWeatherSettingLabel(mode, presetId = '', forecastEnabled = false) {
+    if (!mode || mode === 'off') return '不开启';
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    let name;
+    if (mode === 'preset') {
+        const preset = settings.locationPresets.find(p => p.id === presetId);
+        name = preset ? preset.name : '地点已删除';
+    } else {
+        const preset = settings.locationPresets.find(p => p.id === settings.defaultLocationPresetId);
+        name = preset ? `跟随全局（${preset.name}）` : '跟随全局默认';
+    }
+    return forecastEnabled ? `${name} · 含预报` : name;
+}
+
+/**
+ * 弹出天气设置弹窗（地点 + 是否含 24h 预报）。
+ * @param {object} current { weatherMode, weatherLocationPresetId, weatherForecastEnabled }
+ * @returns {Promise<object|null>} 同结构的新值；取消返回 null
+ */
+async function openWeatherSettingDialog(current = {}) {
+    const settings = _normalizeWeatherSettings(db.weatherSettings);
+    if (!settings.locationPresets.length) {
+        await AppUI.alert('还没有可用的天气地点。请先到「API 设置 → 天气」里填好 Host / Key 并添加地点预设。', '天气未配置');
+        return null;
+    }
+    const result = await AppUI.form([
+        {
+            type: 'select', key: 'location', label: '天气地点',
+            options: getWeatherLocationOptions(),
+            value: toWeatherSelectValue(current.weatherMode, current.weatherLocationPresetId)
+        },
+        {
+            type: 'switch', key: 'forecast', label: '加入 24 小时预报',
+            value: !!current.weatherForecastEnabled
+        }
+    ], { title: '天气设置', confirmText: '确定' });
+
+    if (!result) return null;
+    return {
+        ...parseWeatherSelectValue(result.location),
+        weatherForecastEnabled: !!result.forecast
+    };
 }
 
 function _getWeatherCurrentLocation() {
@@ -774,13 +879,11 @@ function _getWeatherCurrentLocation() {
 }
 
 function _readWeatherForm() {
-    const cacheMinutes = parseInt(_getVal('api-weather-cache-minutes'), 10);
     return {
         enabled: true,
         provider: 'qweather',
         apiHost: _normalizeQWeatherHost(_getVal('api-weather-host')),
         apiKey: _getVal('api-weather-key').trim(),
-        cacheMinutes: [20, 30, 60].includes(cacheMinutes) ? cacheMinutes : 30,
         locationPresets: (_weatherDraft && _weatherDraft.locationPresets) || [],
         defaultLocationPresetId: (_weatherDraft && _weatherDraft.defaultLocationPresetId) || ''
     };
@@ -865,7 +968,6 @@ function _refreshWeatherTabUI() {
     _setVal('api-weather-provider', 'qweather');
     _setVal('api-weather-host', _weatherDraft.apiHost);
     _setVal('api-weather-key', _weatherDraft.apiKey);
-    _setVal('api-weather-cache-minutes', _weatherDraft.cacheMinutes);
     _applyWeatherPresetToForm(_weatherDraft.defaultLocationPresetId || (_weatherDraft.locationPresets[0] || {}).id);
     _setWeatherTestResult('', false, true);
     _clearDirty('weather');
@@ -1067,8 +1169,9 @@ function _applySelectedWeatherLocation() {
 // 聊天运行时天气上下文（按聊天触发，地点级缓存，不写聊天历史）
 // ============================================================
 
-// locationId -> { fetchedAt, payload }
-const _weatherNowCache = new Map();
+// 预报缓存：locationId -> { fetchedAt, payload }。实况不缓存（每次都拉）。
+const _weatherForecastCache = new Map();
+const WEATHER_FORECAST_TTL_MS = 60 * 60 * 1000; // 1 小时，写死不给 UI
 
 // 条件注入阈值（可按需调整）
 const WEATHER_INJECT_RULES = {
@@ -1203,58 +1306,81 @@ function _buildWeatherAlerts(now, hourly, presetName) {
 }
 
 /**
- * 获取某聊天的天气 Prompt 片段。
+ * 获取某聊天的天气句子（纯句子，不带方括号块、不带收尾句、不带句号）。
+ * 例：「辉城目前的天气是小雨，温度18℃，湿度85%」
+ * 排版与"不要主动提及天气"这类约束由 private_prompt.js 那边跟时间一起说。
  * 仅在用户触发该聊天 AI 回复时调用；失败/未配置/关闭时返回空字符串，绝不影响正常回复。
  */
 async function getWeatherPromptContext(chat) {
     const resolved = _resolveWeatherPresetForChat(chat);
     if (!resolved) return '';
     const { settings, preset } = resolved;
+    // 预报按聊天开关，默认关（undefined 视为 false）：预报会诱导 AI 主动提"看天气预报"
+    const forecastEnabled = !!chat.weatherForecastEnabled;
 
-    const cacheMs = (settings.cacheMinutes || 30) * 60 * 1000;
     const apiHost = _normalizeQWeatherHost(settings.apiHost);
     const headers = { Accept: 'application/json', 'X-QW-Api-Key': settings.apiKey };
-    const cached = _weatherNowCache.get(preset.locationId);
-    let nowPayload = null;
-    let hourlyPayload = null;
+    const params = new URLSearchParams({ location: preset.locationId, lang: 'zh' });
 
-    if (cached && (Date.now() - cached.fetchedAt) < cacheMs) {
-        nowPayload = cached.nowPayload;
-        hourlyPayload = cached.hourlyPayload;
-    } else {
+    // 额度硬刹车：本次要发几个请求先算清楚，超了就一个都不发（和风超额只会给你发账单，不会报错）
+    const forecastCached = (() => {
+        const cached = _weatherForecastCache.get(preset.locationId);
+        return !!(cached && (Date.now() - cached.fetchedAt) < WEATHER_FORECAST_TTL_MS);
+    })();
+    const plannedRequests = 1 + (forecastEnabled && !forecastCached ? 1 : 0);
+    const quota = _readWeatherQuota();
+    if (quota.count + plannedRequests > quota.limit) {
+        if (_weatherLimitToastDate !== quota.today) {
+            _weatherLimitToastDate = quota.today;
+            showToast(`天气请求已达今日上限（${quota.limit} 次），今天不再取天气`);
+        }
+        return '';
+    }
+    // 预扣：请求一旦发出就已经计入账单，哪怕它失败了
+    await _addWeatherUsage(plannedRequests);
+
+    // 实况每次都拉：天气只进 systemPrompt 不进 history，模型每轮无状态、看不到上一轮读数，
+    // 所以"缓存能保剧情连贯"不成立，缓存只会让角色读到过时天气。
+    const fetchNow = (async () => {
         try {
-            const params = new URLSearchParams({ location: preset.locationId, lang: 'zh' });
             const response = await fetch(`${apiHost}/v7/weather/now?${params.toString()}`, { method: 'GET', headers });
-            if (!response.ok) return '';
+            if (!response.ok) return null;
             const body = await response.json();
-            if (body.code !== '200' || !body.now) return '';
-            nowPayload = body;
-
-            // 顺带拉取 24h 预报，失败不影响实况注入
-            try {
-                const hourlyResponse = await fetch(`${apiHost}/v7/weather/24h?${params.toString()}`, { method: 'GET', headers });
-                if (hourlyResponse.ok) {
-                    const hourlyBody = await hourlyResponse.json();
-                    if (hourlyBody.code === '200' && Array.isArray(hourlyBody.hourly)) hourlyPayload = hourlyBody;
-                }
-            } catch (error) {
-                console.warn('天气预报获取失败，本次仅注入实况：', error);
-            }
-
-            _weatherNowCache.set(preset.locationId, { fetchedAt: Date.now(), nowPayload, hourlyPayload });
+            return (body.code === '200' && body.now) ? body : null;
         } catch (error) {
             console.warn('天气获取失败，本次不注入：', error);
-            return '';
+            return null;
         }
-    }
+    })();
 
-    const parts = [`[实时天气]\n${_formatWeatherPromptText(nowPayload.now, preset.name)}。`];
-    if (hourlyPayload && hourlyPayload.hourly) {
+    // 预报走独立缓存，TTL 写死 1 小时：24h 预报本身不按分钟变，反复拉是白发请求（和风按请求计费）
+    const fetchForecast = (async () => {
+        if (!forecastEnabled) return null;
+        const cached = _weatherForecastCache.get(preset.locationId);
+        if (cached && (Date.now() - cached.fetchedAt) < WEATHER_FORECAST_TTL_MS) return cached.payload;
+        try {
+            const response = await fetch(`${apiHost}/v7/weather/24h?${params.toString()}`, { method: 'GET', headers });
+            if (!response.ok) return null;
+            const body = await response.json();
+            if (body.code !== '200' || !Array.isArray(body.hourly)) return null;
+            _weatherForecastCache.set(preset.locationId, { fetchedAt: Date.now(), payload: body });
+            return body;
+        } catch (error) {
+            console.warn('天气预报获取失败，本次仅注入实况：', error);
+            return null;
+        }
+    })();
+
+    const [nowPayload, hourlyPayload] = await Promise.all([fetchNow, fetchForecast]);
+    if (!nowPayload) return '';
+
+    // 纯句子拼装：不要用方括号块（本项目里 [xxx] 是输出格式保留语法），也不加收尾句
+    const parts = [_formatWeatherPromptText(nowPayload.now, preset.name)];
+    if (forecastEnabled && hourlyPayload && hourlyPayload.hourly) {
         const alerts = _buildWeatherAlerts(nowPayload.now, hourlyPayload.hourly, preset.name);
-        if (alerts.length) parts.push(`[天气提醒]\n${alerts.join('\n')}。`);
+        if (alerts.length) parts.push(alerts.join('；'));
     }
-    parts.push(`（以上是${preset.name}当前的实时天气与预报，可在对话与情境演绎中自然参考，无需主动提及数据来源。）`);
-    return parts.join('\n');
+    return parts.join('；');
 }
 
 function _formatCurrentWeather(payload, configuredName) {
@@ -1334,7 +1460,7 @@ function initWeatherApiTab() {
     _watchDirty('weather', [
         'api-weather-provider', 'api-weather-host', 'api-weather-key',
         'api-weather-preset-name', 'api-weather-set-default', 'api-weather-city',
-        'api-weather-location-select', 'api-weather-cache-minutes'
+        'api-weather-location-select', 'api-weather-daily-limit'
     ]);
 }
 
