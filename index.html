@@ -935,6 +935,10 @@
             <input type="hidden" id="setting-max-memory" value="10">
             <!-- 隐藏的回复条数 Input，空值表示默认 -->
             <input type="hidden" id="setting-reply-range" value="">
+            <!-- 隐藏的天气 Input（弹窗回填，配合原有保存逻辑） -->
+            <input type="hidden" id="setting-chat-weather-mode" value="off">
+            <input type="hidden" id="setting-chat-weather-preset" value="">
+            <input type="hidden" id="setting-chat-weather-forecast" value="0">
             <!-- ============================== -->
 
             <!-- 设置项列表 -->
@@ -960,10 +964,10 @@
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
                 <!-- 天气地点 -->
-                <div class="settings-item">
+                <div class="settings-item" id="setting-chat-weather-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
                     <div class="item-details"><span class="item-name">天气地点</span></div>
-                    <select id="setting-chat-weather-location" class="inline-select"></select>
+                    <span id="setting-chat-weather-display" class="item-value">不开启</span>
                     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
                 <!-- 最大记忆轮数 (Prompt触发) -->
@@ -1063,6 +1067,10 @@
             <textarea id="setting-group-my-persona" style="display:none;"></textarea>
             <input type="hidden" id="setting-group-max-memory" value="10">
             <input type="hidden" id="setting-group-reply-range" value="">
+            <!-- 隐藏的天气 Input（弹窗回填，配合原有保存逻辑） -->
+            <input type="hidden" id="setting-group-weather-mode" value="off">
+            <input type="hidden" id="setting-group-weather-preset" value="">
+            <input type="hidden" id="setting-group-weather-forecast" value="0">
             <input type="file" id="setting-group-chat-bg-upload" accept="image/*" style="display:none;">
             <!-- ======================================= -->
 
@@ -1100,10 +1108,10 @@
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
                 <!-- 天气地点 -->
-                <div class="settings-item">
+                <div class="settings-item" id="setting-group-weather-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
                     <div class="item-details"><span class="item-name">天气地点</span></div>
-                    <select id="setting-group-weather-location" class="inline-select"></select>
+                    <span id="setting-group-weather-display" class="item-value">不开启</span>
                     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
                 <!-- ③ 最大记忆轮数 -->
@@ -2191,15 +2199,6 @@
                         <label for="api-weather-location-select">地点查询结果 <span class="field-hint">选择后保存 LocationID</span></label>
                         <select id="api-weather-location-select">
                             <option value="">请先查询地点</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-cache-minutes">实况缓存时长</label>
-                        <select id="api-weather-cache-minutes">
-                            <option value="20">20 分钟</option>
-                            <option value="30">30 分钟</option>
-                            <option value="60">60 分钟</option>
                         </select>
                     </div>
 
