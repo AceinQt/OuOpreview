@@ -76,9 +76,12 @@ window.db = {
         provider: 'qweather',
         apiHost: '',
         apiKey: '',
-        cacheMinutes: 30,
         locationPresets: [],
-        defaultLocationPresetId: ''
+        defaultLocationPresetId: '',
+        // 额度刹车：和风超额不报错、直接发账单，本地计数器是唯一防线
+        dailyLimit: 800,
+        dailyCount: 0,
+        dailyCountDate: ''
     },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',

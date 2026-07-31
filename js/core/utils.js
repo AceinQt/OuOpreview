@@ -505,6 +505,112 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
     },
 
     /**
+     * 通用多字段表单弹窗（复用 components.css / api.css 的 .form-group、.switch 样式，不新增 CSS）
+     * @param {Array<{type:'select'|'switch'|'text', key:string, label:string, options?:Array<{value:string,label:string}>, value?:any, placeholder?:string}>} fields
+     * @param {object} opts { title, confirmText, cancelText }
+     * @returns {Promise<object|null>} 返回 { key: value } 映射；取消返回 null
+     */
+    async form(fields = [], { title = '设置', confirmText = '保存', cancelText = '取消' } = {}) {
+        return new Promise((resolve) => {
+            const overlay        = document.getElementById('app-global-dialog');
+            const titleEl        = document.getElementById('global-dialog-title');
+            const contentEl      = document.getElementById('global-dialog-content');
+            const actionsEl      = document.getElementById('global-dialog-actions');
+            const inputContainer = document.getElementById('global-dialog-input-container');
+
+            if (!overlay) return resolve(null);
+
+            titleEl.innerText   = title;
+            contentEl.innerText = '';
+            contentEl.classList.remove('is-scrollable');
+            actionsEl.innerHTML = '';
+
+            // 劫持 input-container：把原有子节点整体存下来，关闭时原样塞回。
+            // 注意别学 select() 那样关闭时硬拼 innerHTML 还原——两个弹窗叠开时，后关的会冲掉前面的 DOM。
+            const savedNodes   = Array.from(inputContainer.childNodes);
+            const savedDisplay = inputContainer.style.display;
+            inputContainer.innerHTML = '';
+            inputContainer.style.display = 'block';
+
+            // key -> 读值函数
+            const readers = new Map();
+
+            fields.forEach(field => {
+                const row = document.createElement('div');
+                row.className = field.type === 'switch' ? 'form-group form-group-switch' : 'form-group';
+
+                const labelEl = document.createElement('label');
+                labelEl.innerText = field.label || field.key;
+                row.appendChild(labelEl);
+
+                if (field.type === 'select') {
+                    const sel = document.createElement('select');
+                    sel.className = 'appui-select';
+                    (field.options || []).forEach(o => {
+                        const opt = document.createElement('option');
+                        opt.value = String(o.value);
+                        opt.textContent = o.label;
+                        sel.appendChild(opt);
+                    });
+                    sel.value = String(field.value == null ? '' : field.value);
+                    row.appendChild(sel);
+                    readers.set(field.key, () => sel.value);
+                } else if (field.type === 'switch') {
+                    const sw = document.createElement('label');
+                    sw.className = 'switch';
+                    const box = document.createElement('input');
+                    box.type = 'checkbox';
+                    box.checked = !!field.value;
+                    const slider = document.createElement('span');
+                    slider.className = 'slider round';
+                    sw.appendChild(box);
+                    sw.appendChild(slider);
+                    row.appendChild(sw);
+                    readers.set(field.key, () => box.checked);
+                } else {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.autocomplete = 'off';
+                    input.placeholder = field.placeholder || '';
+                    input.value = field.value == null ? '' : String(field.value);
+                    row.appendChild(input);
+                    readers.set(field.key, () => input.value);
+                }
+
+                inputContainer.appendChild(row);
+            });
+
+            const close = () => {
+                overlay.classList.remove('visible');
+                inputContainer.innerHTML = '';
+                savedNodes.forEach(node => inputContainer.appendChild(node));
+                inputContainer.style.display = savedDisplay || 'none';
+            };
+
+            const createBtn = (text, cls, onClick) => {
+                const btn = document.createElement('button');
+                btn.className     = `btn ${cls}`;
+                btn.style.flex    = '1';
+                btn.style.padding = '10px';
+                btn.innerText     = text;
+                btn.onclick = (e) => { e.stopPropagation(); close(); onClick(); };
+                return btn;
+            };
+
+            const cancelBtn  = createBtn(cancelText,  'btn-neutral', () => resolve(null));
+            const confirmBtn = createBtn(confirmText, 'btn-primary',  () => {
+                const result = {};
+                readers.forEach((read, key) => { result[key] = read(); });
+                resolve(result);
+            });
+            actionsEl.appendChild(confirmBtn);
+            actionsEl.appendChild(cancelBtn);
+
+            overlay.classList.add('visible');
+        });
+    },
+
+    /**
      * 先弹窗、后填内容的确认框：点下去立刻有反馈，正文先显示"计算中"且确定按钮禁用，
      * 等异步任务出结果再替换正文并启用确定。避免统计耗时让用户以为没点到而反复点
      * @param {string}   loadingText 计算期间的占位正文
