@@ -772,7 +772,9 @@ function handleUserInteractionForAudio() {
     const { keepAliveDuration, needsGeneration } = evaluateKeepAliveNeeds();
 
     if (keepAliveDuration <= 0) {
-        if (bgAudioElement && !bgAudioElement.paused) killKeepAliveAudio();
+        // 用 bgAudioElement 存在与否作判据：解锁失败(paused)的元素也要销毁，
+        // 否则它会带着已设好的 mediaSession 元数据滞留，通知栏可能留一张假卡片。
+        if (bgAudioElement) killKeepAliveAudio();
         if (generationTimeoutId) clearTimeout(generationTimeoutId);
         return;
     }
@@ -786,6 +788,13 @@ function handleUserInteractionForAudio() {
         bgAudioElement.setAttribute('webkit-playsinline', '');
         bgAudioElement.preload = 'auto';
         bgAudioElement.src = keepAliveAudioSrc;
+
+        // 【关键】用真实的 playing/pause 事件记录“到底播起来没有”。
+        //   不能拿 element.paused 当判据：play() 会同步把 paused 置为 false，
+        //   哪怕这次调用最终因缺少用户手势被拒。于是前一次徒劳的 play() 会让
+        //   后一次“真正带手势”的事件误以为已在播放而跳过重试。
+        bgAudioElement.addEventListener('playing', () => { bgAudioElement._paPlaying = true; });
+        bgAudioElement.addEventListener('pause', () => { bgAudioElement._paPlaying = false; });
 
         // 媒体控制中心适配（增强版“伪装成正规播放器”，提高安卓通知栏挂载媒体卡片的概率）
         if ('mediaSession' in navigator) {
@@ -816,15 +825,17 @@ function handleUserInteractionForAudio() {
     }
 
     // 播放和唤醒：必须在“用户手势内”首次调用 play() 才能解锁 iOS 的后台播放许可。
-    // 本函数绑定在 window 的 touchstart/click 上，用户在前台随便点一下就完成解锁+起播。
-    if (bgAudioElement.paused) {
+    // 本函数绑定在 window 的 touchstart/touchend/click 上，用户在前台随便点一下就完成解锁+起播。
+    // 判据用 _paPlaying(真播起来了)而非 paused，否则同一次点击里 touchstart 的失败尝试
+    // 会挡掉 touchend/click 这次“带用户激活”的重试——聊天页正是死在这里。
+    if (!bgAudioElement._paPlaying) {
         const p = bgAudioElement.play();
         if (p && typeof p.catch === 'function') {
             p.catch(e => {
                 // iOS 首次点击时音频常常还没加载完，play() 会抛 AbortError/NotAllowedError——属良性。
                 // 此刻元素已被用户手势“解锁”，等它就绪后自动补一次 play() 即可，无需用户二次点击。
                 if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) {
-                    const retry = () => { if (bgAudioElement.paused) bgAudioElement.play().catch(() => {}); };
+                    const retry = () => { if (bgAudioElement && !bgAudioElement._paPlaying) bgAudioElement.play().catch(() => {}); };
                     if (bgAudioElement.readyState >= 3) retry(); // 已就绪，直接补播
                     else bgAudioElement.addEventListener('canplaythrough', retry, { once: true });
                 } else {
@@ -838,7 +849,7 @@ function handleUserInteractionForAudio() {
     if (bgTimeoutId) clearTimeout(bgTimeoutId);
     bgTimeoutId = setTimeout(() => {
         console.log(`[保活精灵] ${Math.floor(keepAliveDuration/60000)} 分钟保活到期，休眠释放资源。`);
-        if (bgAudioElement && !bgAudioElement.paused) killKeepAliveAudio();
+        if (bgAudioElement) killKeepAliveAudio();
         // 同步媒体会话状态，避免通知栏卡片停留在“正在播放”的假象
         if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (_) {} }
     }, keepAliveDuration);
@@ -883,11 +894,17 @@ window.ensureBgAudioUnlocked = ensureBgAudioUnlocked;
 
     // 每次点击都会重置那两个计时器
     window.addEventListener('touchstart', handleUserInteractionForAudio, { passive: true });
+    // 【必须有 touchend】按规范只有 touchend 属于“激活触发事件”，touchstart 不是——
+    //   靠 touchstart 调 play() 拿不到用户激活。而聊天页的发送按钮(chat_room.js)与长按消息区
+    //   都在 touchend 里调了 preventDefault()，那会掐掉浏览器合成的 click，于是聊天页只剩
+    //   touchstart 能触发本函数 → 保活音频永远解锁不了，通知栏不出播放器。
+    //   touchend 被 preventDefault 只影响“是否合成 click”，用户激活照常授予，故此处能救回来。
+    window.addEventListener('touchend', handleUserInteractionForAudio, { passive: true });
     window.addEventListener('click', handleUserInteractionForAudio, { passive: true });
 
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-            console.log(`[保活精灵] App进入后台，当前保活状态: ${bgAudioElement && !bgAudioElement.paused ? '工作中' : '休眠中'}`);
+            console.log(`[保活精灵] App进入后台，当前保活状态: ${bgAudioElement && bgAudioElement._paPlaying ? '工作中' : '休眠中'}`);
             // 进入后台：把到点该发的主动消息移交给 CF 推送节点（未启用则内部直接跳过）
             if (window.PushNode && typeof window.PushNode.reconcile === 'function') {
                 window.PushNode.reconcile().catch(e => console.warn('[推送节点] reconcile 异常:', e));
