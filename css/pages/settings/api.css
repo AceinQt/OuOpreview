@@ -276,3 +276,15 @@
     font-size: 11px;
     line-height: 1.6;
 }
+
+/* ── 今日请求用量 ──────────────────────────────────────────── */
+.weather-usage-display {
+    margin-top: 6px;
+    color: #8a9399;
+    font-size: 12px;
+}
+
+.weather-usage-display.is-over-limit {
+    color: #a53a33;
+    font-weight: 600;
+}
