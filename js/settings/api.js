@@ -1204,6 +1204,12 @@ function _applySelectedWeatherLocation() {
 const _weatherForecastCache = new Map();
 const WEATHER_FORECAST_TTL_MS = 60 * 60 * 1000; // 1 小时，写死不给 UI
 
+// 天气变化增量：`chatId::locationId` -> { category, text, at, fromText, left }
+// 只存内存、不落库：刷新丢失的代价仅是少说一次"雨停了"，不值得动 chat schema 和备份白名单。
+const _weatherLastSeen = new Map();
+const WEATHER_DELTA_TTL_MS = 6 * 60 * 60 * 1000; // 上次观测在 6h 内才算"刚变化"
+const WEATHER_DELTA_REPEAT = 2;                  // 转变句连带几次注入（旋钮）
+
 // 条件注入阈值（可按需调整）
 const WEATHER_INJECT_RULES = {
     humidityLow: 30,   // 湿度 ≤ 30% 视为干燥才注入
@@ -1211,9 +1217,10 @@ const WEATHER_INJECT_RULES = {
     windScale: 6,      // 风力 ≥ 6 级才注入
     precipMin: 0,      // 降水量 > 0 才注入
     visMax: 5,         // 能见度 ≤ 5km 才注入
-    tempDiff: 5,       // 未来 24h 与当前温差 ≥ 5℃ 才提醒
+    tempDiff: 5,       // 与"明天此时"温差 ≥ 5℃ 才提醒（不与 24h 全局极值比，理由见 _buildWeatherAlerts）
     popMin: 60,        // 降水概率 ≥ 60% 视为可能降雨
-    maxAlerts: 3       // 天气提醒最多注入条数
+    maxAlerts: 3,      // 天气提醒最多注入条数
+    samePhaseSamples: 3 // 取预报末尾 N 个点（≈明天同一钟点）求均值，平滑单点抖动
 };
 
 /** 解析某个聊天应使用的地点预设；返回 null 表示该聊天不注入天气 */
@@ -1231,10 +1238,17 @@ function _resolveWeatherPresetForChat(chat) {
     return (preset && preset.locationId) ? { settings, preset } : null;
 }
 
-/** 组装注入文本：城市名用预设名；部分指标仅在达到阈值时出现 */
-function _formatWeatherPromptText(now, presetName) {
+/**
+ * 组装注入文本：城市名用预设名；部分指标仅在达到阈值时出现。
+ * prevText 非空时把"刚从 X 转为 Y"并进首句 —— 给模型的是**变化**而不是状态。
+ * 历史消息里没有时间戳，旧天气在模型眼里永不过期，只给状态它会顺着上文继续演旧天气。
+ */
+function _formatWeatherPromptText(now, presetName, prevText = '') {
     const parts = [];
-    parts.push(`${presetName}目前的天气是${now.text || '未知'}，温度${now.temp === undefined ? '未知' : `${now.temp}℃`}`);
+    const temp = now.temp === undefined ? '未知' : `${now.temp}℃`;
+    parts.push(prevText
+        ? `${presetName}的天气刚从${prevText}转为${now.text || '未知'}，目前温度${temp}`
+        : `${presetName}目前的天气是${now.text || '未知'}，温度${temp}`);
 
     const humidity = parseInt(now.humidity, 10);
     if (!isNaN(humidity) && (humidity <= WEATHER_INJECT_RULES.humidityLow || humidity >= WEATHER_INJECT_RULES.humidityHigh)) {
@@ -1298,18 +1312,23 @@ function _buildWeatherAlerts(now, hourly, presetName) {
         events.push({ hours: hours === null ? 999 : hours, text });
     }
 
-    // 2. 明显升温 / 降温（24h 极值与当前温差 ≥ 阈值）
+    // 2. 明显升温 / 降温：与"明天此时"比，**不能**与 24h 全局极值比。
+    //    24h 窗口必然跨一个夜晚，夏天昼夜温差 7-10℃ 是常态，用全局 min/max 会让 tempDiff:5
+    //    天天误报"即将降温" —— 那是昼夜节律，不是天气过程。模型读到后会说"忍一下马上降温了"，
+    //    而实际明天白天照样 38℃。取预报末尾几个点（≈+22~24h，同一钟点）求均值后比较，
+    //    节律自动抵消；真正持续的冷暖空气（明天此时确实低 8℃）照样报得出来。
     const currentTemp = parseFloat(now.temp);
     if (!isNaN(currentTemp)) {
-        const temps = hourly.map(h => parseFloat(h.temp)).filter(t => !isNaN(t));
-        if (temps.length) {
-            const maxTemp = Math.max(...temps);
-            const minTemp = Math.min(...temps);
-            if (maxTemp - currentTemp >= WEATHER_INJECT_RULES.tempDiff) {
-                events.push({ hours: 998, text: `未来24小时内${presetName}将明显升温，最高${maxTemp}℃（当前${currentTemp}℃）` });
-            }
-            if (currentTemp - minTemp >= WEATHER_INJECT_RULES.tempDiff) {
-                events.push({ hours: 998, text: `未来24小时内${presetName}将明显降温，最低${minTemp}℃（当前${currentTemp}℃）` });
+        const tailTemps = hourly.slice(-WEATHER_INJECT_RULES.samePhaseSamples)
+            .map(h => parseFloat(h.temp)).filter(t => !isNaN(t));
+        if (tailTemps.length) {
+            const samePhaseTemp = Math.round(tailTemps.reduce((sum, t) => sum + t, 0) / tailTemps.length);
+            const diff = samePhaseTemp - currentTemp;
+            // hours 用真实的 24（原来是 998 哨兵值），让"3 小时后转雨"这类近期事件排在前面
+            if (diff >= WEATHER_INJECT_RULES.tempDiff) {
+                events.push({ hours: 24, text: `明天此时${presetName}约${samePhaseTemp}℃，较当前${currentTemp}℃明显升温` });
+            } else if (-diff >= WEATHER_INJECT_RULES.tempDiff) {
+                events.push({ hours: 24, text: `明天此时${presetName}约${samePhaseTemp}℃，较当前${currentTemp}℃明显降温` });
             }
         }
     }
@@ -1334,6 +1353,34 @@ function _buildWeatherAlerts(now, hourly, presetName) {
 
     events.sort((a, b) => a.hours - b.hours);
     return events.slice(0, WEATHER_INJECT_RULES.maxAlerts).map(e => e.text);
+}
+
+/**
+ * 记录并比对该聊天上次读到的天气类别，返回要并进首句的"变化前天气"文字（无变化返 ''）。
+ * - key 带 locationId：换地点预设时不该误报"从雨转晴"。
+ * - 只认跨类别变化（沿用 _weatherCategory 的口径，晴↔多云不报）。
+ * - 说完一次不够：AI 那一轮未必用得上，所以连带 WEATHER_DELTA_REPEAT 次注入。
+ * - 必须在拿到**有效实况**之后才调用，失败路径不能污染基线。
+ */
+function _computeWeatherDelta(chat, locationId, now) {
+    const key = `${(chat && chat.id) || 'unknown'}::${locationId}`;
+    const category = _weatherCategory(now.text);
+    const text = now.text || '未知';
+    const stamp = Date.now();
+    const prev = _weatherLastSeen.get(key);
+    // at 记的是"上次观测时刻"，每轮都刷新；TTL 防的是隔了很久回来——那时的 prev 已经不配叫"刚"
+    const save = (fromText, left) => {
+        _weatherLastSeen.set(key, { category, text, at: stamp, fromText, left });
+        return fromText;
+    };
+
+    if (!prev) return save('', 0);
+    const fresh = (stamp - prev.at) <= WEATHER_DELTA_TTL_MS;
+    if (prev.category !== category) {
+        return fresh ? save(prev.text, WEATHER_DELTA_REPEAT - 1) : save('', 0);
+    }
+    if (prev.left > 0 && fresh) return save(prev.fromText, prev.left - 1);
+    return save('', 0);
 }
 
 /**
@@ -1398,7 +1445,8 @@ async function getWeatherPromptContext(chat) {
     if (!nowPayload) return '';
 
     // 纯句子拼装：不要用方括号块（本项目里 [xxx] 是输出格式保留语法），也不加收尾句
-    const parts = [_formatWeatherPromptText(nowPayload.now, preset.name)];
+    const prevText = _computeWeatherDelta(chat, preset.locationId, nowPayload.now);
+    const parts = [_formatWeatherPromptText(nowPayload.now, preset.name, prevText)];
     if (forecastEnabled && hourlyPayload && hourlyPayload.hourly) {
         const alerts = _buildWeatherAlerts(nowPayload.now, hourlyPayload.hourly, preset.name);
         if (alerts.length) parts.push(alerts.join('；'));
