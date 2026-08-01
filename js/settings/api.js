@@ -786,6 +786,27 @@ async function _addWeatherUsage(times) {
     _refreshWeatherUsageUI();
 }
 
+/**
+ * 发和风请求前的统一闸门：超额直接拦下，没超就预扣 times 次。
+ * ★ 所有真会打到和风的地方都必须走这里（聊天注入、地点查询、实况测试），漏一处计数就不准。
+ * @param {number} times 本次准备发几个请求
+ * @param {object} opts  oncePerDay=true 时当天只提示一次（给每轮回复都会走的聊天注入用）
+ * @returns {Promise<boolean>} false = 已超额，调用方应直接放弃
+ */
+async function _reserveWeatherQuota(times, { oncePerDay = false } = {}) {
+    const quota = _readWeatherQuota();
+    if (quota.count + times > quota.limit) {
+        if (!oncePerDay || _weatherLimitToastDate !== quota.today) {
+            if (oncePerDay) _weatherLimitToastDate = quota.today;
+            showToast(`天气请求已达今日上限（${quota.limit} 次），今天不再发请求`);
+        }
+        return false;
+    }
+    // 预扣：请求一旦发出就已经计入账单，哪怕它失败了
+    await _addWeatherUsage(times);
+    return true;
+}
+
 /** 天气 Tab 上的"今日已用 N / 上限 M 次" */
 function _refreshWeatherUsageUI() {
     const el = document.getElementById('api-weather-usage-display');
@@ -1128,6 +1149,8 @@ async function searchWeatherLocations() {
     const query = _getVal('api-weather-city').trim();
     if (!_isValidQWeatherHost(apiHost)) return showToast('请先填写正确的专属 API Host');
     if (!apiKey || !query) return showToast('请先填写 API Key 和城市或地区');
+    // GeoAPI 查询同样是一次计费请求
+    if (!await _reserveWeatherQuota(1)) return;
 
     const select = document.getElementById('api-weather-location-select');
     _setWeatherButtonLoading('api-weather-search-btn', true);
@@ -1336,16 +1359,8 @@ async function getWeatherPromptContext(chat) {
         return !!(cached && (Date.now() - cached.fetchedAt) < WEATHER_FORECAST_TTL_MS);
     })();
     const plannedRequests = 1 + (forecastEnabled && !forecastCached ? 1 : 0);
-    const quota = _readWeatherQuota();
-    if (quota.count + plannedRequests > quota.limit) {
-        if (_weatherLimitToastDate !== quota.today) {
-            _weatherLimitToastDate = quota.today;
-            showToast(`天气请求已达今日上限（${quota.limit} 次），今天不再取天气`);
-        }
-        return '';
-    }
-    // 预扣：请求一旦发出就已经计入账单，哪怕它失败了
-    await _addWeatherUsage(plannedRequests);
+    // 每轮回复都会走这里，所以到限的提示当天只弹一次
+    if (!await _reserveWeatherQuota(plannedRequests, { oncePerDay: true })) return '';
 
     // 实况每次都拉：天气只进 systemPrompt 不进 history，模型每轮无状态、看不到上一轮读数，
     // 所以"缓存能保剧情连贯"不成立，缓存只会让角色读到过时天气。
@@ -1415,6 +1430,8 @@ async function testWeatherApi() {
     if (!_isValidQWeatherHost(settings.apiHost)) return showToast('请先填写正确的专属 API Host');
     if (!settings.apiKey) return showToast('请先填写 API Key');
     if (!location.locationId) return showToast('请先查询并选择本次测试地点');
+    // 测试也是一次真实请求，同样计数、同样受上限约束
+    if (!await _reserveWeatherQuota(1)) return;
 
     _setWeatherButtonLoading('api-weather-test-btn', true);
     _setWeatherTestResult('正在获取实况天气…');
