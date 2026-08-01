@@ -879,13 +879,19 @@ function _getWeatherCurrentLocation() {
 }
 
 function _readWeatherForm() {
+    const dailyLimit = parseInt(_getVal('api-weather-daily-limit'), 10);
+    // 计数器不是表单字段，从现有配置原样带过去——否则保存天气 Tab 会把当天用量清零
+    const quota = _readWeatherQuota();
     return {
         enabled: true,
         provider: 'qweather',
         apiHost: _normalizeQWeatherHost(_getVal('api-weather-host')),
         apiKey: _getVal('api-weather-key').trim(),
         locationPresets: (_weatherDraft && _weatherDraft.locationPresets) || [],
-        defaultLocationPresetId: (_weatherDraft && _weatherDraft.defaultLocationPresetId) || ''
+        defaultLocationPresetId: (_weatherDraft && _weatherDraft.defaultLocationPresetId) || '',
+        dailyLimit: dailyLimit > 0 ? dailyLimit : 800,
+        dailyCount: quota.count,
+        dailyCountDate: quota.today
     };
 }
 
@@ -968,6 +974,8 @@ function _refreshWeatherTabUI() {
     _setVal('api-weather-provider', 'qweather');
     _setVal('api-weather-host', _weatherDraft.apiHost);
     _setVal('api-weather-key', _weatherDraft.apiKey);
+    _setVal('api-weather-daily-limit', _weatherDraft.dailyLimit);
+    _refreshWeatherUsageUI();
     _applyWeatherPresetToForm(_weatherDraft.defaultLocationPresetId || (_weatherDraft.locationPresets[0] || {}).id);
     _setWeatherTestResult('', false, true);
     _clearDirty('weather');
