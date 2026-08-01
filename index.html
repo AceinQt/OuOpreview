@@ -2202,6 +2202,12 @@
                         </select>
                     </div>
 
+                    <div class="form-group">
+                        <label for="api-weather-daily-limit">每日请求上限 <span class="field-hint">和风超额不报错，只会发账单</span></label>
+                        <input type="number" id="api-weather-daily-limit" min="1" step="10" placeholder="800">
+                        <div class="weather-usage-display" id="api-weather-usage-display">今日已用 0 / 上限 800 次</div>
+                    </div>
+
                     <button type="button" class="btn btn-secondary" id="api-weather-test-btn">
                         <span class="btn-text">测试实况天气</span>
                         <div class="spinner"></div>
