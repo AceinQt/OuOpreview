@@ -21,6 +21,10 @@
             const sendGiftModal = document.getElementById('send-gift-modal'),
                 sendGiftForm = document.getElementById('send-gift-form'),
                 giftDescriptionInput = document.getElementById('gift-description-input');
+            const sendLocationModal = document.getElementById('send-location-modal'),
+                sendLocationForm = document.getElementById('send-location-form'),
+                locationNameInput = document.getElementById('location-name-input'),
+                locationAddressInput = document.getElementById('location-address-input');
             const timeSkipModal = document.getElementById('time-skip-modal'),
                 timeSkipForm = document.getElementById('time-skip-form'),
                 timeSkipInput = document.getElementById('time-skip-input');     
@@ -524,6 +528,46 @@
                 }
                 await saveSingleChat(currentChatId, currentChatType);
                 renderChatList();
+            }
+
+            // --- NEW: Send Location System ---
+            async function sendMyLocation(name, address) {
+                if (!name) return;
+                sendLocationModal.classList.remove('visible');
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+                await processTimePerception(chat, currentChatId, currentChatType);
+
+                const locationPart = address ? `；地址：${address}` : '';
+                const content = (currentChatType === 'private')
+                    ? `[${chat.myName}发送了位置：${name}${locationPart}]`
+                    : `[${chat.me.realName}发送了位置：${name}${locationPart}]`;
+                const message = {
+                    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                    role: 'user',
+                    content: content,
+                    parts: [{ type: 'text', text: content }],
+                    timestamp: Date.now()
+                };
+                if (currentChatType === 'group') message.senderId = 'user_me';
+                chat.history.push(message);
+                addMessageBubble(message, currentChatId, currentChatType);
+                await saveMessageToDB(message, currentChatId, currentChatType);
+                await saveSingleChat(currentChatId, currentChatType);
+                renderChatList();
+            }
+
+            // --- NEW: Location Modal System ---
+            function setupLocationSystem() {
+                sendLocationModal.addEventListener('click', (e) => {
+                    if (e.target === sendLocationModal) sendLocationModal.classList.remove('visible');
+                });
+                sendLocationForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const name = locationNameInput.value.trim();
+                    const address = locationAddressInput.value.trim();
+                    sendMyLocation(name, address);
+                });
             }
 
             // --- NEW: Time Skip System ---

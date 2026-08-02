@@ -234,6 +234,7 @@
         if (/(发来的?语音|的语音)/.test(t)) return '[语音]';
         if (/(发来的?转账|的转账)/.test(t)) return '[转账]';
         if (/(送来的?礼物|的礼物)/.test(t)) return '[礼物]';
+        if (/发送了位置/.test(t)) return '[位置]';
         // 去掉 [名字的消息：正文] 之类的包装
         if (t.startsWith('[')) {
             const m = t.match(/^\[[^\]]*?[:：]([\s\S]+?)\]?$/);

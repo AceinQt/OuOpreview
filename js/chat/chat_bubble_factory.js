@@ -228,6 +228,9 @@ function createMessageBubbleElement(message) {
     const groupGiftRegex = /\[(.*?)\s*向\s*(.*?)\s*送来了礼物[:：]\s*([\s\S]+?)\]/;
     const imageRecogRegex = /\[.*?发来了一张图片[:：]\]/;
     const textRegex = /\[(?:.+?)的消息[:：]\s*([\s\S]+?)\]/;
+    // 位置：先整体抓 body，再在分支里按「；地址：」拆成地点名 + 详细地址（地址选填）
+    // 发送者名里禁冒号，免得正文提到「发送了位置：」的普通消息被这条抢走（本分支在 textRegex 之前）
+    const locationRegex = /\[(?:[^\[\]：:]+?)发送了位置[:：]\s*([\s\S]+?)\]/;
     const pomodoroRecordRegex = /\[专注记录\]\s*任务：([\s\S]+?)，时长：([\s\S]+?)，期间与 .*? 互动 (\d+)\s*次。/;
 
     const pomodoroMatch = content.match(pomodoroRecordRegex);
@@ -242,6 +245,7 @@ function createMessageBubbleElement(message) {
     const groupGiftMatch = content.match(groupGiftRegex);
     const imageRecogMatch = content.match(imageRecogRegex);
     const textMatch = content.match(textRegex);
+    const locationMatch = content.match(locationRegex);
 
     if (pomodoroMatch) {
         const taskName = pomodoroMatch[1];
@@ -349,6 +353,17 @@ function createMessageBubbleElement(message) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'pv-card';
         bubbleElement.innerHTML = `<div class="pv-card-content">${photoVideoMatch[1].trim()}</div><div class="pv-card-image-overlay" style="background-image: url('${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}');"></div><div class="pv-card-footer"><svg viewBox="0 0 24 24"><path d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z"></path></svg><span>照片/视频・点击查看</span></div>`;
+    } else if (locationMatch) {
+        const body = locationMatch[1].trim();
+        const sepIndex = body.indexOf('；地址：');
+        const locName = sepIndex === -1 ? body : body.slice(0, sepIndex).trim();
+        const locAddress = sepIndex === -1 ? '' : body.slice(sepIndex + 4).trim();
+
+        bubbleElement = document.createElement('div');
+        bubbleElement.className = 'location-card';
+        bubbleElement.innerHTML = `<div class="location-card-map"><svg class="location-card-pin" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 0 1 9.5 9 2.5 2.5 0 0 1 12 6.5 2.5 2.5 0 0 1 14.5 9a2.5 2.5 0 0 1-2.5 2.5z"/></svg></div><div class="location-card-info"><p class="location-card-name"></p>${locAddress ? '<p class="location-card-address"></p>' : ''}</div>`;
+        bubbleElement.querySelector('.location-card-name').textContent = locName;
+        if (locAddress) bubbleElement.querySelector('.location-card-address').textContent = locAddress;
     } else if (privateSentTransferMatch || privateReceivedTransferMatch || groupTransferMatch) {
         const isSentTransfer = !!privateSentTransferMatch || (groupTransferMatch && isSent);
         const match = privateSentTransferMatch || privateReceivedTransferMatch || groupTransferMatch;

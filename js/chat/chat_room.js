@@ -1093,6 +1093,7 @@ if (!invisibleRegex.test(message.content)) {
                             else if (/\[.*?发来的照片\/视频：.*?\]/.test(previewText)) previewText = '[照片/视频]';
                             else if (/\[.*?的转账：.*?\]/.test(previewText)) previewText = '[转账]';
                             else if (/\[.*?送来的礼物：.*?\]/.test(previewText)) previewText = '[礼物]';
+                            else if (/\[.*?发送了位置：.*?\]/.test(previewText)) previewText = '[位置]';
                             else if (/\[.*?发来了一张图片：\]/.test(previewText)) previewText = '[图片]';
                             else if (message.parts && message.parts.some(p => p.type === 'html')) previewText = '[互动]';
                         }
@@ -1426,6 +1427,14 @@ function formatSmartTime(timestamp) {
                         icon: `<svg viewBox="0 0 24 24"><path d="M22,12V20A2,2 0 0,1 20,22H4A2,2 0 0,1 2,20V12A1,1 0 0,1 1,11V8A2,2 0 0,1 3,6H6.17C6.06,5.69 6,5.35 6,5A3,3 0 0,1 9,2C10,2 10.88,2.5 11.43,3.24V3.23L12,4L12.57,3.23V3.24C13.12,2.5 14,2 15,2A3,3 0 0,1 18,5C18,5.35 17.94,5.69 17.83,6H21A2,2 0 0,1 23,8V11A1,1 0 0,1 22,12M4,20H11V12H4V20M20,20V12H13V20H20M9,4A1,1 0 0,0 8,5A1,1 0 0,0 9,6A1,1 0 0,0 10,5A1,1 0 0,0 9,4M15,4A1,1 0 0,0 14,5A1,1 0 0,0 15,6A1,1 0 0,0 16,5A1,1 0 0,0 15,4M3,8V10H11V8H3M13,8V10H21V8H13Z" /></svg>`
                     },
                     {
+                        id: 'send-location-modal',
+                        name: '发送位置',
+                        icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 21.5C12 21.5 19 15.6 19 10C19 6.1 15.9 3 12 3C8.1 3 5 6.1 5 10C5 15.6 12 21.5 12 21.5Z" stroke="#555" stroke-width="2" fill="none" stroke-linejoin="round"/>
+<circle cx="12" cy="10" r="2.6" stroke="#555" stroke-width="2"/>
+</svg>`
+                    },
+                    {
                         id: 'time-skip-modal',
                         name: '剧情旁白',
                         icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1561,6 +1570,11 @@ switch (action) {
                                 renderGroupRecipientSelectionList('送礼物给');
                                 groupRecipientSelectionModal.classList.add('visible');
                             }
+                            break;
+                        case 'send-location-modal':
+                            // 打开发送位置弹窗（私聊/群聊直接发送，无需选收件人）
+                            sendLocationForm.reset();
+                            sendLocationModal.classList.add('visible');
                             break;
                         case 'time-skip-modal':
                             // 打开跳过时间
