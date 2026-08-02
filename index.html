@@ -935,10 +935,6 @@
             <input type="hidden" id="setting-max-memory" value="10">
             <!-- 隐藏的回复条数 Input，空值表示默认 -->
             <input type="hidden" id="setting-reply-range" value="">
-            <!-- 隐藏的天气 Input（弹窗回填，配合原有保存逻辑） -->
-            <input type="hidden" id="setting-chat-weather-mode" value="off">
-            <input type="hidden" id="setting-chat-weather-preset" value="">
-            <input type="hidden" id="setting-chat-weather-forecast" value="0">
             <!-- ============================== -->
 
             <!-- 设置项列表 -->
@@ -963,13 +959,6 @@
     <select id="setting-chat-api-preset" class="inline-select"></select>
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
-                <!-- 天气地点 -->
-                <div class="settings-item" id="setting-chat-weather-item">
-                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
-                    <div class="item-details"><span class="item-name">天气地点</span></div>
-                    <span id="setting-chat-weather-display" class="item-value">不开启</span>
-                    <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
                 <!-- 最大记忆轮数 (Prompt触发) -->
                 <div class="settings-item" id="setting-max-memory-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-cpu"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg></div>
@@ -1067,10 +1056,6 @@
             <textarea id="setting-group-my-persona" style="display:none;"></textarea>
             <input type="hidden" id="setting-group-max-memory" value="10">
             <input type="hidden" id="setting-group-reply-range" value="">
-            <!-- 隐藏的天气 Input（弹窗回填，配合原有保存逻辑） -->
-            <input type="hidden" id="setting-group-weather-mode" value="off">
-            <input type="hidden" id="setting-group-weather-preset" value="">
-            <input type="hidden" id="setting-group-weather-forecast" value="0">
             <input type="file" id="setting-group-chat-bg-upload" accept="image/*" style="display:none;">
             <!-- ======================================= -->
 
@@ -1107,13 +1092,6 @@
     <select id="setting-group-api-preset" class="inline-select"></select>
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
-                <!-- 天气地点 -->
-                <div class="settings-item" id="setting-group-weather-item">
-                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
-                    <div class="item-details"><span class="item-name">天气地点</span></div>
-                    <span id="setting-group-weather-display" class="item-value">不开启</span>
-                    <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
                 <!-- ③ 最大记忆轮数 -->
                 <div class="settings-item" id="setting-group-max-memory-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg></div>
@@ -1922,10 +1900,6 @@
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 3.5V2M19.4393 4.56066L20.5 3.5M20.5103 8.5H22.0103M21.9506 13C21.4489 18.0533 17.1853 22 12 22C6.47715 22 2 17.5228 2 12C2 6.81465 5.94668 2.5511 11 2.04938M12 8H16V12M15.6197 8C13.2653 11.3276 9.38636 13.5 5 13.5C3.9971 13.5 3.02072 13.3864 2.08302 13.1715" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>向量</span>
             </button>
-            <button class="api-sidebar-btn" data-api-tab="weather">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 19H8a5 5 0 1 1 1.9-9.63A6 6 0 0 1 21 12.5 3.5 3.5 0 0 1 17.5 19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5V3M3.76 6.76 2.34 5.34M12 6l1.42-1.42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <span>天气</span>
-            </button>
         </div>
 
         <!-- ── 右侧内容区 ── -->
@@ -2121,106 +2095,6 @@
 
                 <div class="bottom-actions api-save-area">
                     <button type="button" class="btn btn-primary action-btn-full" id="api-emb-save-btn">保存向量配置</button>
-                </div>
-            </div>
-
-            <!-- 天气 Tab -->
-            <div class="api-tab-pane" id="api-tab-weather">
-                <div class="api-section-scroll">
-                    <div class="form-group">
-                        <label for="api-weather-preset-select">选择地点预设</label>
-                        <select id="api-weather-preset-select"></select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-preset-name">预设名称（可修改）</label>
-                        <input type="text" id="api-weather-preset-name" placeholder="例如：上海、北京家里" maxlength="40">
-                    </div>
-
-                    <div class="form-group form-group-switch">
-                        <label for="api-weather-set-default">全局默认地点</label>
-                        <label class="switch">
-                            <input type="checkbox" id="api-weather-set-default">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <!-- 预设管理（同聊天 / 向量 API） -->
-                    <div class="form-group">
-                        <label>预设管理</label>
-                        <div class="api-preset-btns-row">
-                            <button type="button" id="api-weather-add-preset" class="api-icon-btn" title="新增空白预设">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <button type="button" id="api-weather-copy-preset" class="api-icon-btn" title="复制当前预设">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
-                            <button type="button" id="api-weather-del-preset" class="api-icon-btn" title="删除当前预设">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                            </button>
-                            <button type="button" id="api-weather-import-preset" class="api-icon-btn" title="导入地点预设">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            </button>
-                            <button type="button" id="api-weather-export-preset" class="api-icon-btn" title="导出地点预设">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-provider">天气服务商</label>
-                        <select id="api-weather-provider">
-                            <option value="qweather">和风天气</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-host">专属 API Host <span class="field-hint">不含接口路径</span></label>
-                        <input type="url" id="api-weather-host" placeholder="例如：https://abcxyz.qweatherapi.com" autocomplete="off">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-key">API Key <span class="field-hint">仅保存在当前浏览器</span></label>
-                        <input type="password" id="api-weather-key" placeholder="请输入和风天气 API Key" autocomplete="off">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-city">城市或地区</label>
-                        <div class="weather-inline-row">
-                            <input type="text" id="api-weather-city" placeholder="例如：北京市朝阳区" maxlength="80">
-                            <button type="button" class="btn btn-secondary weather-inline-btn" id="api-weather-search-btn">
-                                <span class="btn-text">查询地点</span>
-                                <div class="spinner"></div>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-location-select">地点查询结果 <span class="field-hint">选择后保存 LocationID</span></label>
-                        <select id="api-weather-location-select">
-                            <option value="">请先查询地点</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="api-weather-daily-limit">每日请求上限 <span class="field-hint">和风超额不报错，只会发账单</span></label>
-                        <input type="number" id="api-weather-daily-limit" min="1" step="10" placeholder="800">
-                        <div class="weather-usage-display" id="api-weather-usage-display">今日已用 0 / 上限 800 次</div>
-                    </div>
-
-                    <button type="button" class="btn btn-secondary" id="api-weather-test-btn">
-                        <span class="btn-text">测试实况天气</span>
-                        <div class="spinner"></div>
-                    </button>
-
-                    <div class="weather-test-result" id="api-weather-test-result" hidden></div>
-
-                    <p class="weather-api-footnote">当前使用 API Key 认证，纯前端无法彻底隐藏密钥，请勿使用共享公共 Key。和风天气已公告从 2027 年起限制 API Key 认证的每日请求量，后续可再增加服务端 JWT 模式。</p>
-                    <div class="api-scroll-spacer"></div>
-                </div>
-
-                <div class="bottom-actions api-save-area">
-                    <button type="button" class="btn btn-primary action-btn-full" id="api-weather-save-btn">保存天气配置</button>
                 </div>
             </div>
 
@@ -5463,8 +5337,6 @@
                 <label for="message-edit-type">消息类型</label>
                 <select id="message-edit-type" class="form-control">
                     <option value="text">普通对话</option>
-                    <option value="voice">语音消息</option>
-                    <option value="photo-video">文字图片</option>
                     <option value="display">用户剧情旁白</option>
                     <option value="narration">线下模式旁白</option>
                 </select>
@@ -5732,6 +5604,23 @@
                         <label for="gift-description-input">礼物描述</label>
                         <textarea id="gift-description-input" placeholder="告诉Ta你送了什么特别的东西..." required
                             rows="4"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">发送</button>
+                </form>
+            </div>
+        </div>
+        <!-- NEW: Send Location Modal -->
+        <div id="send-location-modal" class="modal-overlay">
+            <div class="modal-window">
+                <h3>发送位置</h3>
+                <form id="send-location-form">
+                    <div class="form-group">
+                        <label for="location-name-input">地点名称</label>
+                        <input type="text" id="location-name-input" placeholder="例如：老地方咖啡" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="location-address-input">详细地址</label>
+                        <input type="text" id="location-address-input" placeholder="（选填）例如：城南槐花巷12号">
                     </div>
                     <button type="submit" class="btn btn-primary">发送</button>
                 </form>
