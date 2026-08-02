@@ -4,6 +4,20 @@ function switchScreen(targetId) {
     const targetScreen = document.getElementById(targetId);
     if (!targetScreen) return;
 
+    // ── 页面离开钩子 ──
+    // 下面那句"关闭所有遮罩层"只认 .modal-overlay / .action-sheet-overlay / .settings-sidebar，
+    // 用裸 .visible 控制显隐的面板（如聊天室底部的"+"面板、表情面板）会活着跟去下一个页面。
+    // 各模块在这里注册自己的复位逻辑，返回键 / 滑动返回 / 系统返回键最终都会走到这。
+    const leavingScreen = document.querySelector('.screen.active');
+    const leavingId = leavingScreen ? leavingScreen.id : null;
+    if (leavingId && leavingId !== targetId && window._screenLeaveHooks?.[leavingId]) {
+        try {
+            window._screenLeaveHooks[leavingId](targetId);
+        } catch (e) {
+            console.error(`[switchScreen] 离开钩子执行失败 (${leavingId}):`, e);
+        }
+    }
+
     // 检查是否是滑动返回触发的切换
     const isSwipeBack = targetScreen.dataset.swipeBack === 'true';
 
