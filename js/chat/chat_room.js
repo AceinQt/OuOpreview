@@ -84,10 +84,22 @@ function setupChatRoom() {
         chatExpansionPanel.classList.toggle('visible');
     });
     
+    // ★ sendMessage 是 fire-and-forget（三处调用点都不 await），异常默认只会变成
+    //   静默的 unhandled rejection —— 曾经因此让"消息没落库"的 ReferenceError 毫无征兆。
+    //   统一走这个包装：出错就报红 + 弹提示，让丢消息类问题第一时间可见。
+    const _safeSendMessage = () => {
+        Promise.resolve()
+            .then(() => sendMessage())
+            .catch(err => {
+                console.error('❌ [sendMessage] 发送流程异常，该消息可能未写入数据库：', err);
+                if (typeof showToast === 'function') showToast('消息发送异常，请截图控制台报错');
+            });
+    };
+
 // 1. 手机端触摸发送 (保留原有，e.preventDefault()会阻止移动端再触发click，防止发两次)
     sendMessageBtn.addEventListener('touchend', (e) => {
         e.preventDefault();
-        sendMessage();
+        _safeSendMessage();
         setTimeout(() => {
             messageInput.focus();
         }, 50);
@@ -96,7 +108,7 @@ function setupChatRoom() {
     // 2. 电脑端鼠标点击发送 (新增这个监听器)
     sendMessageBtn.addEventListener('click', (e) => {
         e.preventDefault(); // 防止默认提交等行为
-        sendMessage();
+        _safeSendMessage();
         // 电脑端发送后保持输入框焦点，方便继续打字
         messageInput.focus(); 
     });
@@ -105,7 +117,7 @@ function setupChatRoom() {
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !isGenerating) {
             e.preventDefault();
-            sendMessage();
+            _safeSendMessage();
         }
     });
     getReplyBtn.addEventListener('click', async () => {
@@ -1333,21 +1345,45 @@ const contextContent = `[系统情景通知：距离上一次互动已经过去$
     message.callSessionId = chat.currentCallSessionId;
 }             
                 chat.history.push(message);
-                addMessageBubble(message, currentChatId, currentChatType);
-   if (currentChatType === 'private' && chat.callMode && typeof appendCallUserMessage === 'function') {
-    appendCallUserMessage(text);
-}             
 
-                if (chat.history.length > 0 && chat.history.length % 100 === 0) {
-                    promptForBackupIfNeeded('history_milestone');
+                // ★★★ 落库铁律 ★★★
+                //   消息进了内存，就必须落库。push 与 saveMessageToDB 之间不允许出现任何
+                //   会同步抛异常的语句，可选逻辑一律套 try/catch。
+                //
+                //   历史 Bug（用户消息偶发丢失的根因）：这里原先在写库之前调用了一个
+                //   从未定义过的 promptForBackupIfNeeded('history_milestone')，
+                //   条件是 chat.history.length % 100 === 0 —— 每满 100 条触发一次
+                //   ReferenceError，把后面的 saveMessageToDB / saveSingleChat 全部掀翻。
+                //   于是：消息在内存里、气泡在屏幕上、AI 也读得到并正常回复，
+                //   但数据库里从来没有过它。重开 App 后用户消息消失、AI 的回复还在，
+                //   表现就是"最后一次对话的倒数第二条丢了"，且只发生在普通文字消息上
+                //   （贴纸/图片/转账等走 chat_feature_basic.js，没有这段代码）。
+                //   三个调用点（click / touchend / Enter）都是 fire-and-forget，
+                //   异常只是静默的 unhandled rejection，界面上毫无征兆。
+
+                // 气泡先上屏，保持发送手感（async 函数未 await，其内部异常不会波及本函数）
+                try {
+                    addMessageBubble(message, currentChatId, currentChatType);
+                    if (currentChatType === 'private' && chat.callMode && typeof appendCallUserMessage === 'function') {
+                        appendCallUserMessage(text);
+                    }
+                } catch (e) {
+                    console.error('⚠️ [sendMessage] 气泡渲染失败，但消息仍会正常落库：', e);
                 }
-await saveMessageToDB(message, currentChatId, currentChatType);
-                await saveSingleChat(currentChatId, currentChatType);
-                renderChatList();
 
-                // 新增：发送后清空引用状态
-                if (currentQuoteInfo) {
-                    cancelQuoteReply();
+                // 关键路径：写库。上面无论出什么事都必须执行到这里。
+                await saveMessageToDB(message, currentChatId, currentChatType);
+                await saveSingleChat(currentChatId, currentChatType);
+
+                // 收尾的非关键逻辑，同样不允许影响已落库的消息
+                try {
+                    renderChatList();
+                    // 新增：发送后清空引用状态
+                    if (currentQuoteInfo) {
+                        cancelQuoteReply();
+                    }
+                } catch (e) {
+                    console.error('⚠️ [sendMessage] 消息已成功落库，但收尾步骤出错：', e);
                 }
             }
             
