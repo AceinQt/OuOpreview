@@ -1,4 +1,4 @@
-function generateGroupSystemPrompt(group, retrievedContext = '') {
+function generateGroupSystemPrompt(group, retrievedContext = '', weatherText = '') {
      const worldBooksBefore = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'before')).filter(Boolean).map(wb => wb.content).join('\n');
     const worldBooksAfter = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'after')).filter(Boolean).map(wb => wb.content).join('\n');
 
@@ -160,12 +160,21 @@ function generateGroupSystemPrompt(group, retrievedContext = '') {
     prompt += `   - 你的回复中只能包含第4点列出的合法格式的消息。绝对不能包含任何其他内容，如 \`[场景描述]\`, \`(心理活动)\`, \`*动作*\` 或任何格式之外的解释性文字。\n`;
     prompt += `   - 保持对话的持续性，不要主动结束对话。\n\n`;
     // 时间感知：仅在该群开启时注入当前时间（与私聊、processTimePerception 用同一个开关）
-    if (group.timePerceptionEnabled) {
-        const now = new Date();
-        const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-        const currentWeekDay = weekDays[now.getDay()];
-        const currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 星期${currentWeekDay} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        prompt += `7. **当前时间**: 现在是 ${currentTime}。群成员应知晓当前时间，但不要主动提及或评论时间。\n\n`;
+    // 调节旋钮：天气并进这一条，与私聊线上第 16 条同构，见 plans/weather-prompt-refit.md
+    if (group.timePerceptionEnabled || weatherText) {
+        let line = '';
+        if (group.timePerceptionEnabled) {
+            const now = new Date();
+            const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+            const currentWeekDay = weekDays[now.getDay()];
+            const currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 星期${currentWeekDay} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            line = weatherText
+                ? `7. **当前时间与天气**: 现在是 ${currentTime}，${weatherText}。群成员应知晓当前时间与天气，但不要主动提及或评论时间和天气。\n\n`
+                : `7. **当前时间**: 现在是 ${currentTime}。群成员应知晓当前时间，但不要主动提及或评论时间。\n\n`;
+        } else {
+            line = `7. **当前天气**: ${weatherText}。群成员应知晓当前天气，但不要主动提及或评论天气。\n\n`;
+        }
+        prompt += line;
     }
 
     prompt += `现在，请根据以上设定，开始扮演群聊中的所有角色。`;

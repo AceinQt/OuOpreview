@@ -678,11 +678,17 @@ if (chatType === 'private' && chat.offlineModeEnabled) {
     try {
         let systemPrompt, requestBody;
         const isCompatibilityMode = effectiveApiSettings.compatibilityModeEnabled || false; 
+        // ★ 天气上下文：按该聊天绑定的地点取数，仅注入本次请求，不写入历史。
+        //   这里只负责"取"，具体排在 prompt 的哪一段由 private_prompt.js / group_prompt.js 决定。
+        let weatherText = '';
+        if (typeof getWeatherPromptContext === 'function') {
+            weatherText = (await getWeatherPromptContext(chat)) || '';
+        }
         if (chatType === 'private') {
-            systemPrompt = generatePrivateSystemPrompt(chat, retrievedContext);
+            systemPrompt = generatePrivateSystemPrompt(chat, retrievedContext, weatherText);
         } else {
-            systemPrompt = generateGroupSystemPrompt(chat, retrievedContext);
-}
+            systemPrompt = generateGroupSystemPrompt(chat, retrievedContext, weatherText);
+        }
 
         let rawHistory = chat.history.slice(-chat.maxMemory);
         const historySlice = rawHistory.filter(msg => {
