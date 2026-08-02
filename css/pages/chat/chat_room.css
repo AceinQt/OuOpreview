@@ -666,6 +666,58 @@
     flex-shrink: 0;
 }
 
+/* 位置卡片：路网是纯 CSS 渐变画的，不联网也不占天气额度 */
+.location-card {
+    width: 220px;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    background-color: white;
+    margin: 0;
+}
+
+.location-card-map {
+    position: relative;
+    height: 100px;
+    background-color: #e6ecf1;
+    background-image:
+        repeating-linear-gradient(66deg, transparent 0 26px, rgba(120, 140, 160, 0.20) 26px 29px),
+        repeating-linear-gradient(156deg, transparent 0 34px, rgba(120, 140, 160, 0.16) 34px 36px),
+        repeating-linear-gradient(66deg, transparent 0 78px, rgba(255, 255, 255, 0.55) 78px 86px);
+}
+
+.location-card-pin {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    /* 针尖落在中心点上，所以纵向要比 50% 多提一点 */
+    transform: translate(-50%, -62%);
+    fill: #e8503a;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+}
+
+.location-card-info {
+    padding: 8px 10px 10px;
+    background-color: white;
+}
+
+.location-card-name {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    word-break: break-all;
+}
+
+.location-card-address {
+    margin: 3px 0 0;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.4;
+    word-break: break-all;
+}
+
 .transfer-card {
     width: 240px;
     height: auto;
