@@ -59,28 +59,8 @@ function setupChatRoom() {
             stickerModal.classList.remove('visible');
         }
 
-        const offlineBtn = document.querySelector('.expansion-item[data-action="offline-mode-settings"]');
-        if (offlineBtn) {
-            offlineBtn.classList.remove('active');
-            if (currentChatType === 'private' && currentChatId) {
-                const chat = db.characters.find(c => c.id === currentChatId);
-                if (chat && chat.offlineModeEnabled) {
-                    offlineBtn.classList.add('active');
-                }
-            }
-        }
-        
-        const proactiveBtn = document.querySelector('.expansion-item[data-action="proactive-messaging-settings"]');
-        if (proactiveBtn) {
-            proactiveBtn.classList.remove('active');
-            if (currentChatType === 'private' && currentChatId) {
-                const chat = db.characters.find(c => c.id === currentChatId);
-                 // 假设我们在角色属性中用 proactiveMessagingEnabled 来控制开关
-                if (chat && chat.proactiveMode === 'fixed' || chat.proactiveMode === 'timer') {
-                    proactiveBtn.classList.add('active');
-                }
-            }
-        }               
+        // 面板是单例复用的，开之前必须按当前会话重新点灯
+        syncChatExpansionActiveState();
         chatExpansionPanel.classList.toggle('visible');
     });
     
@@ -351,8 +331,74 @@ let isTouchLongPress = false; // 用于标记是否是由触摸触发的长按
     initCallFeature();
     
 }
- 
-            
+
+    // ==========================================
+    // 聊天室临时 UI 复位
+    // ==========================================
+/**
+ * 把"+"面板里与会话绑定的开关（线下模式 / 后台消息）对齐到当前会话的真实状态。
+ * 面板是全局单例、只在启动时构建一次，所以每次打开面板、每次进聊天室都得重新对齐，
+ * 否则会挂着上一个会话残留的蓝色高亮。
+ */
+function syncChatExpansionActiveState(chatId = currentChatId, chatType = currentChatType) {
+    const chat = (chatType === 'private' && chatId && Array.isArray(window.db?.characters))
+        ? db.characters.find(c => c.id === chatId)
+        : null;
+
+    const offlineBtn = document.querySelector('.expansion-item[data-action="offline-mode-settings"]');
+    if (offlineBtn) {
+        offlineBtn.classList.toggle('active', !!(chat && chat.offlineModeEnabled));
+    }
+
+    const proactiveBtn = document.querySelector('.expansion-item[data-action="proactive-messaging-settings"]');
+    if (proactiveBtn) {
+        // ★ 括号不能省：原来的 `chat && x === 'fixed' || x === 'timer'` 因 && 优先级更高，
+        //   timer 模式下整个条件恒真，会把面板里所有图标都点亮。
+        proactiveBtn.classList.toggle('active',
+            !!chat && (chat.proactiveMode === 'fixed' || chat.proactiveMode === 'timer'));
+    }
+}
+
+/**
+ * 关闭聊天室里所有"浮在页面上"的临时 UI：底部 + 面板、表情面板、设置侧边栏、
+ * 通话记录侧栏、通话记录折叠浮动按钮。离开聊天室时由 _screenLeaveHooks 自动调用。
+ *
+ * ⚠️ 故意不碰 #call-overlay：通话中有计时器、音频和未落库的会话状态，
+ *    只把 UI 藏掉会变成"看不见但还在跑"，挂断另有出口。
+ */
+function closeChatRoomPanels() {
+    // 这两个是裸 .visible 的普通 div，switchScreen 的遮罩清理覆盖不到，必须手动关
+    document.getElementById('chat-expansion-panel')?.classList.remove('visible');
+    document.getElementById('sticker-modal')?.classList.remove('visible');
+    if (typeof exitStickerManageMode === 'function') exitStickerManageMode();
+
+    // 侧边栏：switchScreen 也会清，但"聊天室 → 聊天室"直切时这里要兜住
+    document.getElementById('chat-settings-sidebar')?.classList.remove('open');
+    document.getElementById('group-settings-sidebar')?.classList.remove('open');
+
+    // 通话的附属 UI（通话本体不动）
+    if (typeof closeCallHistory === 'function') closeCallHistory();
+    if (typeof hideCallCollapseBtn === 'function') hideCallCollapseBtn();
+
+    // 顺手把开关高亮复位，避免下次面板出现的第一帧还是旧会话的状态
+    syncChatExpansionActiveState();
+}
+
+/**
+ * 换会话时的完整复位：面板之外，再把输入区的会话级状态（多选、引用、编辑）清掉，
+ * 否则 A 会话选中的消息 / 引用的气泡会带进 B 会话。
+ */
+function resetChatRoomState() {
+    closeChatRoomPanels();
+    if (typeof exitMultiSelectMode === 'function') exitMultiSelectMode();
+    if (typeof cancelQuoteReply === 'function') cancelQuoteReply();
+    if (typeof cancelMessageEdit === 'function') cancelMessageEdit();
+}
+
+// 离开聊天室即复位（界面返回按钮 / 滑动返回 / 系统返回键最终都会走 switchScreen）
+window._screenLeaveHooks = window._screenLeaveHooks || {};
+window._screenLeaveHooks['chat-room-screen'] = closeChatRoomPanels;
+
     // ==========================================
     // 初始化聊天室界面
     // ==========================================                       
@@ -381,10 +427,11 @@ if (window.NotifyCenter && typeof NotifyCenter.clearChatNotifications === 'funct
     NotifyCenter.clearChatNotifications(chatId);
 }
 
-      if (typeof hideCallCollapseBtn === 'function') hideCallCollapseBtn();
-                exitMultiSelectMode();
-                cancelMessageEdit();
+                // 进新会话前先把上一个会话残留的面板/侧边栏/多选/引用全部清干净
+                resetChatRoomState();
                 switchScreen('chat-room-screen');
+                // 按本次要打开的会话重新点灯（不依赖调用方是否已同步全局 currentChatId）
+                syncChatExpansionActiveState(chatId, type);
                 const callBtn = document.getElementById('video-call-btn');
     if (callBtn) {
         if (type === 'group') {
@@ -1512,35 +1559,22 @@ function formatSmartTime(timestamp) {
                     }
                 ];
 
-                // 在渲染 expansionGrid 时，检查当前角色是否开启了线下模式，如果是，给按钮加 active 样式
- // 在渲染 expansionGrid 时，检查当前角色是否开启了线下模式/主动消息
                 expansionGrid.innerHTML = '';
                 expansionItems.forEach(item => {
                     const itemEl = document.createElement('div');
                     itemEl.className = 'expansion-item';
                     itemEl.dataset.action = item.id;
 
-                    // --- 检查激活状态 ---
-                    if (currentChatType === 'private') {
-                        const chat = db.characters.find(c => c.id === currentChatId);
-                        if (chat) {
-                            if (item.id === 'offline-mode-settings' && chat.offlineModeEnabled) {
-                                itemEl.classList.add('active');
-                            }
-                            // ====== 【新增：判断主动发消息的激活状态】 ======
-                            if (item.id === 'proactive-messaging-settings' && chat.proactiveMode === 'fixed'|| chat.proactiveMode === 'timer') {
-    itemEl.classList.add('active');
-}
-                            // ==============================================
-                        }
-                    }
-                    
                     itemEl.innerHTML = `
                     <div class="expansion-item-icon">${item.icon}</div>
                     <span class="expansion-item-name">${item.name}</span>
                 `;
                     expansionGrid.appendChild(itemEl);
                 });
+
+                // 激活状态（线下模式 / 后台消息）统一交给 syncChatExpansionActiveState，
+                // 这里构建时先按当前会话对齐一次；之后每次开面板、每次进聊天室都会再对齐。
+                syncChatExpansionActiveState();
 
                 expansionGrid.addEventListener('click', (e) => {
                     const item = e.target.closest('.expansion-item');
