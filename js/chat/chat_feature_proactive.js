@@ -136,6 +136,14 @@ async function applyAwaySettings(chat, mode, dailyLimit, frequency, timerInterva
     }
     // ─────────────────────────────────
 
+    // 【保活】模式一改就地重算一次保活需求。
+    //   必须在这里补：用户点“确定”的那次 click 是先冒泡到 window 跑完 handleUserInteractionForAudio、
+    //   之后才轮到 submit 的默认行为，所以那一次读到的还是旧模式(算出 0 → 直接 return)。
+    //   等模式真正落到 fixed/timer 时手势已经过去，用户直接切后台就没有播放器。
+    //   放在 await 之前、字段已就位之后调用，用户激活仍在有效期内，play() 不会被拦。
+    //   反向切到 random/dnd 时同样受益：这一次调用会把不再需要的保活音频顺手销毁。
+    if (typeof handleUserInteractionForAudio === 'function') handleUserInteractionForAudio();
+
     await saveSingleChat(chat.id, currentChatType);
 
     // 切到免打扰 / 固定模式：这两种不该有顺风车推送，撤销该会话在 CF 上的待发任务
