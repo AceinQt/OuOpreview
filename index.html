@@ -6841,8 +6841,12 @@
 <script src="js/core/lazy_load.js"></script>
 <script src="js/core/utils.js"></script>
 
+<!-- API 层：凭据 / 额度 / 请求封装。必须排在 settings 和 chat 之前，两边都依赖它 -->
+    <script src="js/api/weather_api.js"></script>
+    <script src="js/api/doubao_tts_api.js"></script>
+
 <!-- 设置页面 -->
-    <script src="js/settings/api.js"></script>
+    <script src="js/settings/api_settings.js"></script>
     <script src="js/settings/wallpaper.js"></script>    
     <script src="js/settings/update_log.js"></script>
     <script src="js/settings/tutorial.js"></script>
@@ -6875,6 +6879,7 @@
     <script src="js/chat/notification_center.js"></script>
     <script src="js/chat/push_node.js"></script>
     <script src="js/chat/chat_feature_call.js"></script>
+    <script src="js/chat/chat_weather_context.js"></script>
     <script src="js/chat/chat_ai_service.js"></script>
     <script src="js/chat/chat_bubble_factory.js"></script>
         <script src="js/chat/chat_actions.js"></script>
