@@ -1,0 +1,109 @@
+/* ============================================================
+   GitHub 仓库设置页
+   ============================================================
+   仓库定义（凭据）和用途绑定（谁用哪个仓库）分两段。
+   表单控件本身复用 components.css / api.css 里的 .form-group、.switch，
+   这里只补这个页面特有的分段标题、用途行和测试结果块。 */
+
+.gh-section {
+    margin: 0 14px 18px;
+    padding: 16px;
+    background: #fff;
+    border-radius: 14px;
+}
+
+.gh-section-title {
+    margin: 0 0 4px;
+    color: #333;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.gh-section-desc {
+    margin: 0 0 16px;
+    color: #8a9399;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* ── 仓库管理按钮行（同 api.css 的 .api-preset-btns-row）────────── */
+.gh-btns-row {
+    display: flex;
+    gap: 8px;
+}
+
+/* ── 测试连接结果 ──────────────────────────────────────────── */
+.gh-test-result {
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid #d9e8ef;
+    border-radius: 12px;
+    background: #fbfdfe;
+    color: #44515a;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-line;
+}
+
+.gh-test-result.is-error {
+    border-color: #f2c7c4;
+    background: #fff8f7;
+    color: #a53a33;
+}
+
+.gh-test-result.is-ok {
+    border-color: #b6e3c4;
+    background: #f6fdf8;
+    color: #2f6b43;
+}
+
+/* ── 用途行 ────────────────────────────────────────────────── */
+.gh-purpose {
+    padding: 14px 0;
+    border-top: 1px solid #f0f2f4;
+}
+
+.gh-purpose:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.gh-purpose-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.gh-purpose-name {
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.gh-purpose-hint {
+    margin: 4px 0 0;
+    color: #8a9399;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* 关掉的用途把下面的仓库/路径收起来，视觉上明确"这行没在用" */
+.gh-purpose-body {
+    margin-top: 12px;
+}
+
+.gh-purpose-body[hidden] {
+    display: none;
+}
+
+.gh-purpose-body .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.gh-footnote {
+    margin: 0 16px 20px;
+    color: #8a9399;
+    font-size: 11px;
+    line-height: 1.7;
+}
