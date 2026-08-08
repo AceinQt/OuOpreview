@@ -68,13 +68,6 @@
     border-top: 0;
 }
 
-.gh-purpose-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
 .gh-purpose-name {
     color: #333;
     font-size: 14px;
@@ -88,17 +81,9 @@
     line-height: 1.6;
 }
 
-/* 关掉的用途把下面的仓库/路径收起来，视觉上明确"这行没在用" */
-.gh-purpose-body {
-    margin-top: 12px;
-}
-
-.gh-purpose-body[hidden] {
-    display: none;
-}
-
-.gh-purpose-body .form-group:last-child {
-    margin-bottom: 0;
+/* 用途行只有一个仓库下拉，没有开关也没有目录输入框 */
+.gh-purpose-select {
+    margin: 10px 0 0;
 }
 
 .gh-footnote {
