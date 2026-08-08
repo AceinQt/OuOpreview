@@ -21,10 +21,15 @@ const globalSettingKeys =[
     'globalVisionSettings',
     // ★ 天气 API 设置（用户自行配置，供后续聊天上下文读取）
     'weatherSettings',
-    // ★ 语音合成设置（豆包音频生成：Key / 格式 / 按秒配额 / 本地缓存上限 / 云端归档仓库）
+    // ★ 语音合成设置（豆包音频生成：Key / 音色预设 / 按秒配额 / 本地缓存上限）
     //   注：必须在这个白名单里，否则 saveGlobalKeys 写得进去、loadData 读不回来，
     //   表现为"配置和今日用量每次重启都归零"。
-    'voiceSettings'
+    'voiceSettings',
+    // ★ GitHub 仓库定义（凭据在这里，可被语音/图片等多个用途共享）
+    'githubRepos',
+    // ★ 用途绑定（哪个功能用哪个仓库、存哪个目录）。和上面拆开是因为仓库是共享资源，
+    //   同一个仓库可以被多个用途引用，凭据不该跟着用途复制好几份。
+    'githubBindings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源
@@ -73,6 +78,15 @@ window.db = {
     //   apiPreset: 预设名；空字符串 = 同聊天API（跟随每个聊天自己的 chatApiPreset）
     //   一旦指定预设，所有聊天的图片转化都走它
     globalVisionSettings: { apiPreset: '' },
+
+    // ★ GitHub 仓库定义 + 用途绑定（见 js/api/github_repo_api.js）
+    //   githubRepos:    [{ id, name, token, username, repo, branch }]
+    //   githubBindings: { voice: { enabled, repoId, pathPrefix }, image: {...} }
+    //   拆成两层是因为仓库是可被多个用途共享的资源：绑定只存一个 repoId 引用，
+    //   改令牌只改一处。每条已归档的内容还会记下自己当时用的 repoId，
+    //   所以换绑定不会让旧内容失联。
+    githubRepos: [],
+    githubBindings: {},
 
     // ★ 天气 API 设置：全局服务凭据 + 可复用地点预设
     weatherSettings: {
