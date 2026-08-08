@@ -23,8 +23,10 @@
 //
 // 对外符号（全局函数，classic script 无模块化，靠命名约定区分归属）：
 //   DOUBAO_TTS_ENDPOINT / DOUBAO_TTS_MODEL / DOUBAO_TTS_MAX_TEXT_CHARS
-//   DOUBAO_TTS_FORMATS / DOUBAO_TTS_SAMPLE_RATES / DOUBAO_TTS_TIMEOUT_MS
-//   _normalizeVoiceSettings
+//   DOUBAO_TTS_FORMAT / DOUBAO_TTS_SAMPLE_RATE / DOUBAO_TTS_CONCURRENCY
+//   DOUBAO_TTS_MIME_TYPE / DOUBAO_TTS_TIMEOUT_MS
+//   VOICE_PROVIDERS / voiceProviderLabel
+//   _normalizeVoiceSettings / _normalizeVoicePreset / _newVoicePresetId / getVoicePreset
 //   _voiceTodayKey / _readVoiceQuota / _addVoiceUsage / _reserveVoiceQuota
 //   onVoiceUsageChange
 //   _buildVoiceTextPrompt / _voiceProfileFingerprint / estimateVoiceSeconds
@@ -43,8 +45,18 @@ const DOUBAO_TTS_MAX_PROMPT_CHARS = 2048;
 // 真正的裁剪判据是拼完之后的总长（见 _buildVoiceTextPrompt）。
 const DOUBAO_TTS_MAX_TEXT_CHARS = 500;
 
-const DOUBAO_TTS_FORMATS = ['mp3', 'wav', 'ogg_opus', 'pcm'];
-const DOUBAO_TTS_SAMPLE_RATES = [8000, 16000, 24000, 32000, 44100, 48000];
+// ★ 以下三项刻意定死成常量，不做成设置项。
+//   理由：普通用户没法判断这些该填什么，而每多一个可填字段就多一批我从没测过的组合。
+//   定死等于把测试面积缩到一条路。真需要可配的那天再往外暴露，不用现在预留。
+//
+//   mp3   —— 体积最小，全平台 <audio> 都认
+//   24000 —— 实测这个值 5.615 秒音频 45KB（约 64kbps），人声够用。
+//            再往上只是让 IndexedDB 和归档仓库变胖，16000 会明显发闷。
+//   并发 2 —— 一次合成要 20 秒以上，且并发不缩短单次耗时，开大只是一起变慢。
+const DOUBAO_TTS_FORMAT = 'mp3';
+const DOUBAO_TTS_SAMPLE_RATE = 24000;
+const DOUBAO_TTS_CONCURRENCY = 2;
+const DOUBAO_TTS_MIME_TYPE = 'audio/mpeg';
 
 // ★ 超时必须给得很宽：实测合成 2.75 秒音频花了 23.3 秒，官方 cURL 示例自己写的是
 //   --max-time 300。按常规 10~15 秒设会把几乎所有请求都掐死。
@@ -53,68 +65,126 @@ const DOUBAO_TTS_TIMEOUT_MS = 180000;
 // 服务端单次输出上限 120 秒，超了会被截断而不是报错
 const DOUBAO_TTS_MAX_DURATION = 120;
 
-const DOUBAO_TTS_MIME = {
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg_opus: 'audio/ogg',
-    pcm: 'audio/L16'
-};
+// 目前只有豆包。预设自己带 provider 字段，所以将来加 minimax / 本地 TTS
+// 只是往这里加一条 + 加一个 API 模块，已有预设的数据不用迁移。
+const VOICE_PROVIDERS = [
+    { value: 'doubao', label: '豆包' }
+];
+
+/** 服务商 → 中文名，用于预设列表的显示文案（`小雨 · 豆包`） */
+function voiceProviderLabel(value) {
+    const hit = VOICE_PROVIDERS.find(p => p.value === value);
+    return hit ? hit.label : (value || '未知');
+}
 
 // ============================================================
 // 配置归一化
 // ============================================================
 
+function _newVoicePresetId() {
+    return `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 归一化单条音色预设。
+ * ★ 预设自带 provider —— 服务商是预设的属性，不是全局开关。这样一个角色用豆包、
+ *   另一个用 minimax 可以并存，角色档案只认预设 id，压根不用知道背后是谁。
+ */
+function _normalizeVoicePreset(raw) {
+    const p = raw || {};
+    const r = p.rates || {};
+    const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+    const provider = VOICE_PROVIDERS.some(x => x.value === p.provider) ? p.provider : 'doubao';
+    return {
+        id: p.id || _newVoicePresetId(),
+        name: p.name || '未命名音色',
+        provider,
+        speakerId: String(p.speakerId || '').trim(),
+        description: String(p.description || '').trim(),
+        rates: {
+            // 取值范围来自音频生成接口文档，超范围服务端会直接报参数错
+            speech: clampInt(r.speech, -50, 100),
+            loudness: clampInt(r.loudness, -50, 100),
+            pitch: clampInt(r.pitch, -12, 12)
+        }
+    };
+}
+
 /**
  * 把 db.voiceSettings 归一化成一个字段齐全、类型正确的对象。
  * 所有读配置的地方都要过这一层，别直接摸 db.voiceSettings —— 那可能是 undefined，
  * 也可能是上个版本留下的半截结构。
+ *
+ * ★ 注意这里没有 format / sampleRate / concurrency —— 它们是常量（见文件顶部）。
+ * ★ 也没有 cloud —— 归档仓库挪去 db.githubBindings.voice 了，因为仓库是可被
+ *   备份/语音/图像共用的资源，不该当成语音的私有字段。
  */
 function _normalizeVoiceSettings(raw) {
     const source = raw || {};
-    const pickEnum = (value, allowed, fallback) =>
-        allowed.includes(value) ? value : fallback;
     const posInt = (value, fallback) => {
         const n = Math.floor(Number(value));
         return n > 0 ? n : fallback;
     };
+    // posInt 把 0 和负数都当"没填"回落到默认值，这对有下限的字段是错的：
+    // 用户填 0 是有意图的（"别缓存"），应该给他最接近的可行值，而不是无声跳回默认。
+    // 只有真的没填或填了非数字才回落默认。
+    const intWithFloor = (value, fallback, floor) => {
+        if (value === undefined || value === null || value === '') return fallback;
+        const n = Math.floor(Number(value));
+        return Number.isFinite(n) ? Math.max(floor, n) : fallback;
+    };
 
-    const cloud = source.cloud || {};
+    const presets = Array.isArray(source.voicePresets)
+        ? source.voicePresets.filter(p => p && (p.id || p.speakerId)).map(_normalizeVoicePreset)
+        : [];
+    const defaultId = presets.some(p => p.id === source.defaultVoicePresetId)
+        ? source.defaultVoicePresetId
+        : (presets[0] ? presets[0].id : '');
+
     return {
+        // 总闸和自动合成由 chat-list 侧边栏那个弹窗编辑，不在 API tab 里。
+        // 但数据还是放这一个键 —— UI 在哪不决定数据在哪，两边都用展开合并写回就不会互相冲掉。
         enabled: !!source.enabled,
-        provider: 'doubao',
-        // model / endpoint 落库是为了将来换代不用改老数据，UI 上是只读的
+        autoSynthesize: source.autoSynthesize !== false,   // 默认开
+
+        // model / endpoint 落库是为了将来换代不用改老数据，UI 上不暴露
         model: source.model || DOUBAO_TTS_MODEL,
         endpoint: source.endpoint || DOUBAO_TTS_ENDPOINT,
         apiKey: source.apiKey || '',
 
-        format: pickEnum(source.format, DOUBAO_TTS_FORMATS, 'mp3'),
-        sampleRate: DOUBAO_TTS_SAMPLE_RATES.includes(Number(source.sampleRate))
-            ? Number(source.sampleRate) : 24000,
+        voicePresets: presets,
+        defaultVoicePresetId: defaultId,
 
-        autoSynthesize: source.autoSynthesize !== false,   // 默认开
         maxTextChars: Math.min(
             posInt(source.maxTextChars, 120),
             DOUBAO_TTS_MAX_TEXT_CHARS
         ),
-        concurrency: Math.min(posInt(source.concurrency, 2), 4),
 
-        // 按秒计费，所以配额也按秒。默认 600 秒 ≈ 10 分钟音频/天
-        dailySecondLimit: posInt(source.dailySecondLimit, 600),
+        // 0 = 不限制。豆包是免费额度用完就报错，不像和风那样直接发账单，
+        // 所以硬闸门默认关着。留着它是为了兜住"我自己写的 bug 导致反复重合成"
+        // 这类安静烧额度的故障 —— 数字不对劲时填个上限就能立刻刹住。
+        dailySecondLimit: Number(source.dailySecondLimit) > 0
+            ? Math.floor(Number(source.dailySecondLimit)) : 0,
         dailySecondUsed: Number(source.dailySecondUsed) > 0
             ? Number(source.dailySecondUsed) : 0,
         dailyCountDate: source.dailyCountDate || '',
 
-        cacheLimitMB: posInt(source.cacheLimitMB, 200),
-
-        cloud: {
-            enabled: !!cloud.enabled,
-            token: cloud.token || '',
-            username: cloud.username || '',
-            repo: cloud.repo || '',
-            branch: cloud.branch || 'main',
-            pathPrefix: String(cloud.pathPrefix || 'voice').replace(/^\/+|\/+$/g, '')
-        }
+        // 默认 10MB。手机浏览器的 IndexedDB 配额是全 app 共享的，缓存开大有可能
+        // 把配额挤爆导致消息写入失败 —— 用可再生的缓存挤掉不可再生的聊天记录，不划算。
+        // 下限 1MB：归档关闭时缓存是唯一副本，填 0 会让语音合成完还没点播放就被淘汰。
+        cacheLimitMB: intWithFloor(source.cacheLimitMB, 10, 1)
     };
+}
+
+/**
+ * 按 id 取音色预设；传空则回落到全局默认预设。
+ * @returns {object|null} 归一化后的预设，找不到返回 null（调用方一律先判空）
+ */
+function getVoicePreset(presetId, settings) {
+    const config = _normalizeVoiceSettings(settings || db.voiceSettings);
+    const wanted = String(presetId || '').trim() || config.defaultVoicePresetId;
+    if (!wanted) return null;
+    return config.voicePresets.find(p => p.id === wanted) || null;
 }
 
 // ============================================================
@@ -190,6 +260,12 @@ async function _addVoiceUsage(seconds) {
  */
 async function _reserveVoiceQuota(seconds, { oncePerDay = false } = {}) {
     const quota = _readVoiceQuota();
+    // 上限 0 = 不限制。仍然记账 —— 计数器是"反复重合成"这类安静故障的唯一可见信号，
+    // 关掉闸门不等于关掉仪表盘。
+    if (quota.limit <= 0) {
+        await _addVoiceUsage(seconds);
+        return true;
+    }
     if (quota.used + seconds > quota.limit) {
         if (!oncePerDay || _voiceLimitToastDate !== quota.today) {
             if (oncePerDay) _voiceLimitToastDate = quota.today;
@@ -266,21 +342,40 @@ function _voiceProfileFingerprint(profile) {
     const r = p.rates || {};
     const n = v => Number(v) || 0;
     return [
+        // provider 要进指纹：不同服务商同名音色是完全不同的声音
+        String(p.provider || 'doubao'),
         String(p.speakerId || '').trim(),
         String(p.description || '').trim(),
         n(r.pitch), n(r.speech), n(r.loudness)
     ].join('\u0001');
+    // 注：format / sampleRate 不用进指纹 —— 它们是常量，不可能变。
+    //     哪天真做成可配了，必须记得补进来，否则改格式后旧缓存不会失效。
 }
+
+// 预扣用的估算系数（字/秒）。刻意压得很低 —— 这个数只能偏保守，不能偏乐观。
+//
+// 实测数据点（同一个音色、同一句台词量级，时长差了 2.2 倍）：
+//   16 字 → 2.7481 秒（5.82 字/秒）
+//   15 字 → 5.6150 秒（2.67 字/秒）
+// 字数根本不是个好的预测器：声音描述里写没写"语速偏慢"、模型即兴加的停顿和呼吸，
+// 都会成倍改变时长。所以别试图估准，只保证不估低。
+//
+// ★ 保守估算几乎不花成本：预扣之后马上就用 original_duration 校正回来，
+//   落库的计数始终是准的。多估的那部分只占用一次请求的时间（20 秒上下），
+//   唯一的副作用是贴着上限时会稍微提前拦一次。拿这个换"绝不因为估低而漏账单"，划算。
+const DOUBAO_TTS_CHARS_PER_SECOND = 2;
 
 /**
  * 按字数估合成秒数，供配额预扣用。请求回来后会用 original_duration 校正，
- * 所以这里只要"别估太低"就行 —— 估低了会让超额那一次漏过闸门。
- * 探针实测：16 字中文 → 2.75 秒，约 5.8 字/秒。这里按 4 字/秒算，留出余量。
+ * 所以这里唯一的要求是"宁高不低"。
  */
 function estimateVoiceSeconds(text) {
     const len = String(text || '').trim().length;
     if (!len) return 0;
-    return Math.min(DOUBAO_TTS_MAX_DURATION, Math.max(1, Math.ceil(len / 4)));
+    return Math.min(
+        DOUBAO_TTS_MAX_DURATION,
+        Math.max(1, Math.ceil(len / DOUBAO_TTS_CHARS_PER_SECOND))
+    );
 }
 
 // ============================================================
@@ -348,8 +443,8 @@ function _base64ToBytes(b64) {
  *   也不用操心 url 那 2 小时的有效期。url 分支是防御性的：万一哪天服务端
  *   对长音频只给 url，这里能自动兜住（探针已验证那个 url 可跨源读取）。
  */
-async function _extractVoiceAudio(payload, format) {
-    const mime = DOUBAO_TTS_MIME[format] || 'audio/mpeg';
+async function _extractVoiceAudio(payload) {
+    const mime = DOUBAO_TTS_MIME_TYPE;
 
     if (typeof payload.audio === 'string' && payload.audio) {
         return { bytes: _base64ToBytes(payload.audio), mime, source: 'audio' };
@@ -437,8 +532,8 @@ async function synthesizeVoice({ text, profile, settings, quotaOncePerDay = fals
         text_prompt: prompt,
         references: [{ speaker: speakerId }],
         audio_config: {
-            format: config.format,
-            sample_rate: config.sampleRate,
+            format: DOUBAO_TTS_FORMAT,
+            sample_rate: DOUBAO_TTS_SAMPLE_RATE,
             speech_rate: clamp(rates.speech, -50, 100),
             loudness_rate: clamp(rates.loudness, -50, 100),
             pitch_rate: clamp(rates.pitch, -12, 12)
@@ -513,13 +608,13 @@ async function synthesizeVoice({ text, profile, settings, quotaOncePerDay = fals
     const duration = Number(payload.duration) || originalDuration;
     if (originalDuration > 0) await _addVoiceUsage(originalDuration - estimate);
 
-    const audio = await _extractVoiceAudio(payload, config.format);
+    const audio = await _extractVoiceAudio(payload);
 
     return {
         bytes: audio.bytes,
         mime: audio.mime,
         source: audio.source,
-        format: config.format,
+        format: DOUBAO_TTS_FORMAT,
         duration,
         originalDuration,
         logid,
