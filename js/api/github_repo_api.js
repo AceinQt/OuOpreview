@@ -33,22 +33,21 @@ const GITHUB_BRANCH_DEFAULT = 'main';
 const GITHUB_TIMEOUT_MS = 20000;
 const GITHUB_RETRY_TIMES = 2;
 
-// 用途清单。加一个用途 = 往这里加一条 + 在 screen 里会自动多出一行。
-//   fixedPrefix   —— 目录锁死不给改（改了会让已上传的旧文件失联）
-//   hasAutoBackup —— 这个用途多一个"每日自动"开关
+// 用途清单。加一个用途 = 往这里加一条 + screen 里自动多出一个 select。
+//
+// ★ pathPrefix 定死在这里，不做成设置项。理由和 mp3/24000 那些常量一样：
+//   用户判断不了该填什么，填错了内容会散在奇怪的地方。而且备份文件历来在仓库根目录，
+//   放开让人改，改完旧备份就找不到了。
+// ★ 改这里的默认值**不影响已归档的内容** —— 每条内容记的是自己完整的 cloudPath，
+//   改默认目录只影响之后新上传的。所以这个决定将来想反悔也不用迁数据。
 const GITHUB_PURPOSES = [
-    { key: 'backup', label: '数据备份', defaultPrefix: '',
-      fixedPrefix: true, hasAutoBackup: true,
-      hint: '全量备份文件传到仓库根目录。存储备份页的「云端同步」用的就是这里选的仓库' },
-    { key: 'voice', label: '语音归档', defaultPrefix: 'voice',
+    { key: 'backup', label: '数据备份', pathPrefix: '',
+      hint: '全量备份文件传到仓库根目录。每日自动备份的开关在「存储备份 > 云端同步」里' },
+    { key: 'voice', label: '语音归档', pathPrefix: 'voice',
       hint: '合成好的语音上传到这里，换设备也能听回来' },
-    { key: 'image', label: '图片归档', defaultPrefix: 'image',
+    { key: 'image', label: '图片归档', pathPrefix: 'image',
       hint: '暂未接入，先留位置' }
 ];
-
-function _githubPurpose(key) {
-    return GITHUB_PURPOSES.find(p => p.key === key) || null;
-}
 
 // ============================================================
 // 归一化
@@ -76,25 +75,20 @@ function _normalizeGithubRepos(raw) {
         : [];
 }
 
-/** 路径前缀统一成"没有首尾斜杠"的形式，拼路径的地方就不用各自处理 */
-function _normalizeGithubPrefix(value, fallback) {
-    const cleaned = String(value == null ? '' : value).trim().replace(/^\/+|\/+$/g, '');
-    return cleaned || fallback || '';
-}
-
 function _normalizeGithubBindings(raw) {
     const source = raw || {};
     const out = {};
     GITHUB_PURPOSES.forEach(p => {
         const b = source[p.key] || {};
+        const repoId = String(b.repoId || '').trim();
         out[p.key] = {
-            enabled: !!b.enabled,
-            repoId: String(b.repoId || '').trim(),
-            // fixedPrefix 的用途一律用默认值，忽略存进来的任何值 ——
-            // 备份文件在仓库根目录，改了目录旧备份就找不着了
-            pathPrefix: p.fixedPrefix
-                ? (p.defaultPrefix || '')
-                : _normalizeGithubPrefix(b.pathPrefix, p.defaultPrefix),
+            // ★ enabled 从 repoId 派生，不单独存。select 里的「不使用」就是关闭状态；
+            //   两个字段表达同一件事就会有互相矛盾的可能（绑了仓库但 enabled=false）。
+            enabled: !!repoId,
+            repoId,
+            // 目录一律来自用途定义，忽略存进来的任何值
+            pathPrefix: p.pathPrefix || '',
+            // 每日自动备份。只对 backup 有意义，编辑入口在「存储备份 > 云端同步」弹框
             autoBackup: !!b.autoBackup
         };
     });
@@ -155,10 +149,9 @@ async function migrateLegacyGithubConfig() {
         // 仓库已经在列表里了，只补绑定（用户可能手动建过同一个仓库）
         if (bindings.backup.repoId) return false;
         bindings.backup = {
-            ...bindings.backup,
-            enabled: true, repoId: already.id, autoBackup: !!legacy.autoBackup
+            ...bindings.backup, repoId: already.id, autoBackup: !!legacy.autoBackup
         };
-        db.githubBindings = bindings;
+        db.githubBindings = _normalizeGithubBindings(bindings);
         await saveGlobalKeys(['githubBindings']);
         console.log('[GitHub] 已把备份用途绑到既有仓库', already.name);
         return true;
@@ -173,11 +166,10 @@ async function migrateLegacyGithubConfig() {
     });
     repos.push(migrated);
     bindings.backup = {
-        ...bindings.backup,
-        enabled: true, repoId: migrated.id, autoBackup: !!legacy.autoBackup
+        ...bindings.backup, repoId: migrated.id, autoBackup: !!legacy.autoBackup
     };
     db.githubRepos = repos;
-    db.githubBindings = bindings;
+    db.githubBindings = _normalizeGithubBindings(bindings);
     await saveGlobalKeys(['githubRepos', 'githubBindings']);
     console.log('[GitHub] 已把 localStorage 里的备份仓库配置迁入 db.githubRepos');
     return true;
