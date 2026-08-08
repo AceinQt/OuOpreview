@@ -1926,6 +1926,10 @@
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 19H8a5 5 0 1 1 1.9-9.63A6 6 0 0 1 21 12.5 3.5 3.5 0 0 1 17.5 19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5V3M3.76 6.76 2.34 5.34M12 6l1.42-1.42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>天气</span>
             </button>
+            <button class="api-sidebar-btn" data-api-tab="voice">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>语音</span>
+            </button>
         </div>
 
         <!-- ── 右侧内容区 ── -->
@@ -2221,6 +2225,128 @@
 
                 <div class="bottom-actions api-save-area">
                     <button type="button" class="btn btn-primary action-btn-full" id="api-weather-save-btn">保存天气配置</button>
+                </div>
+            </div>
+
+            <!-- 语音 Tab（豆包音频生成） -->
+            <div class="api-tab-pane" id="api-tab-voice">
+                <div class="api-section-scroll">
+
+                    <div class="form-group">
+                        <label for="api-voice-key">API Key <span class="field-hint">语音技术控制台 &gt; API Key 管理</span></label>
+                        <input type="password" id="api-voice-key" placeholder="请输入豆包语音 API Key" autocomplete="off">
+                    </div>
+
+                    <p class="voice-group-title">音色预设</p>
+
+                    <div class="form-group">
+                        <label for="api-voice-preset-select">选择音色预设</label>
+                        <select id="api-voice-preset-select"></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-preset-name">预设名称（可修改）</label>
+                        <input type="text" id="api-voice-preset-name" placeholder="例如：小雨、低沉男声" maxlength="40">
+                    </div>
+
+                    <div class="form-group form-group-switch">
+                        <label for="api-voice-set-default">设为全局默认音色</label>
+                        <label class="switch">
+                            <input type="checkbox" id="api-voice-set-default">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- 预设管理（同聊天 / 向量 / 天气） -->
+                    <div class="form-group">
+                        <label>预设管理</label>
+                        <div class="api-preset-btns-row">
+                            <button type="button" id="api-voice-add-preset" class="api-icon-btn" title="新增空白预设">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <button type="button" id="api-voice-copy-preset" class="api-icon-btn" title="复制当前预设">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button type="button" id="api-voice-del-preset" class="api-icon-btn" title="删除当前预设">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                            </button>
+                            <button type="button" id="api-voice-import-preset" class="api-icon-btn" title="导入音色预设">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </button>
+                            <button type="button" id="api-voice-export-preset" class="api-icon-btn" title="导出音色预设">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-provider">语音服务商 <span class="field-hint">跟着预设走，不同角色可以用不同服务商</span></label>
+                        <select id="api-voice-provider"></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-speaker">音色 ID <span class="field-hint">官方预置音色或自己复刻的 S_xxx</span></label>
+                        <input type="text" id="api-voice-speaker" placeholder="例如：zh_female_vv_uranus_bigtts" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-desc">声音描述 <span class="field-hint">自然语言，留空则只念文本</span></label>
+                        <textarea id="api-voice-desc" rows="2" placeholder="例如：一位中青年女性，嗓音清冷偏低，语速偏慢" maxlength="200"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-rate-speech">语速 <span class="field-hint">-50 到 100，写「语速偏慢」也会拖慢，两者叠加</span></label>
+                        <input type="number" id="api-voice-rate-speech" min="-50" max="100" step="5" placeholder="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-rate-pitch">音调 <span class="field-hint">-12 到 12</span></label>
+                        <input type="number" id="api-voice-rate-pitch" min="-12" max="12" step="1" placeholder="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-rate-loudness">音量 <span class="field-hint">-50 到 100</span></label>
+                        <input type="number" id="api-voice-rate-loudness" min="-50" max="100" step="5" placeholder="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-preview-text">试听文本 <span class="field-hint">这一发会真实合成并计入用量</span></label>
+                        <div class="voice-inline-row">
+                            <input type="text" id="api-voice-preview-text" placeholder="今天风好大，你出门记得多穿一件" maxlength="200">
+                            <button type="button" class="btn btn-secondary voice-inline-btn" id="api-voice-preview-btn">
+                                <span class="btn-text">试听</span>
+                                <div class="spinner"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="voice-test-result" id="api-voice-test-result" hidden></div>
+                    <audio class="voice-preview-player" id="api-voice-preview-player" controls hidden></audio>
+
+                    <p class="voice-group-title">用量</p>
+
+                    <div class="form-group">
+                        <label for="api-voice-max-chars">单条最长字数 <span class="field-hint">超出则不合成，挡住一条长语音吃掉大把额度</span></label>
+                        <input type="number" id="api-voice-max-chars" min="1" max="500" step="10" placeholder="120">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-daily-limit">每日合成秒数上限 <span class="field-hint">填 0 表示不限制，但仍然记账</span></label>
+                        <input type="number" id="api-voice-daily-limit" min="0" step="60" placeholder="0">
+                        <div class="voice-usage-display" id="api-voice-usage-display">今日已用 0 秒</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-voice-cache-limit">本地缓存上限 <span class="field-hint">MB，满了按最久未播放淘汰。没开归档时这就是唯一副本</span></label>
+                        <input type="number" id="api-voice-cache-limit" min="1" step="10" placeholder="10">
+                    </div>
+
+                    <p class="voice-api-footnote">音频固定 mp3 / 24000Hz，不做成选项——普通用户判断不了该填什么，填错反而出问题。<br><br>用复刻音色（S_xxx）合成会同时消耗两种额度：音频生成的秒数和声音复刻的字符数。上面那个上限只管得住秒数，复刻字符数请自己在火山控制台盯。<br><br>API Key 明文存在这台设备的浏览器里，纯前端没法真正藏住，请勿使用共享的公共 Key。<br><br>总开关和「收到就自动合成」在聊天列表的侧边栏里，归档仓库在设置页的「GitHub 仓库」里。</p>
+                    <div class="api-scroll-spacer"></div>
+                </div>
+
+                <div class="bottom-actions api-save-area">
+                    <button type="button" class="btn btn-primary action-btn-full" id="api-voice-save-btn">保存语音配置</button>
                 </div>
             </div>
 
