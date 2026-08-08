@@ -1455,6 +1455,8 @@ async function saveVoiceApiSettings() {
     await saveGlobalKeys(['voiceSettings']);
     _refreshVoiceUsageUI();
     _clearDirty('voice');
+    // 填了 Key / 建了预设都会改变聊天列表侧边栏那一行的状态文案（"缺 API Key" → "自动合成"）
+    if (typeof refreshChatSidebarVoiceDisplay === 'function') refreshChatSidebarVoiceDisplay();
     showToast('语音配置已保存');
 }
 
