@@ -231,20 +231,26 @@
     display: flex;
 }
 
-/* ── 天气 API 配置 ───────────────────────────────────────────── */
-.weather-inline-row {
+/* ── 天气 / 语音 API 配置 ─────────────────────────────────────── */
+/* 两个 tab 形状一样（输入框旁边跟个按钮、底下一块结果、一行用量、一段脚注），
+   所以共用同一套规则。voice-* 单独列出来只是为了 HTML 里语义清楚，样式完全一致。 */
+.weather-inline-row,
+.voice-inline-row {
     display: flex;
     align-items: stretch;
     gap: 10px;
 }
 
 .weather-inline-row input,
-.weather-inline-row select {
+.weather-inline-row select,
+.voice-inline-row input,
+.voice-inline-row select {
     min-width: 0;
     flex: 1;
 }
 
-.weather-inline-btn {
+.weather-inline-btn,
+.voice-inline-btn {
     width: auto;
     min-width: 96px;
     margin: 0;
@@ -252,7 +258,8 @@
     flex-shrink: 0;
 }
 
-.weather-test-result {
+.weather-test-result,
+.voice-test-result {
     margin-top: 14px;
     padding: 14px;
     border: 1px solid #d9e8ef;
@@ -264,13 +271,15 @@
     white-space: pre-line;
 }
 
-.weather-test-result.is-error {
+.weather-test-result.is-error,
+.voice-test-result.is-error {
     border-color: #f2c7c4;
     background: #fff8f7;
     color: #a53a33;
 }
 
-.weather-api-footnote {
+.weather-api-footnote,
+.voice-api-footnote {
     margin: 14px 2px 0;
     color: #8a9399;
     font-size: 11px;
@@ -278,13 +287,37 @@
 }
 
 /* ── 今日请求用量 ──────────────────────────────────────────── */
-.weather-usage-display {
+.weather-usage-display,
+.voice-usage-display {
     margin-top: 6px;
     color: #8a9399;
     font-size: 12px;
 }
 
-.weather-usage-display.is-over-limit {
+.weather-usage-display.is-over-limit,
+.voice-usage-display.is-over-limit {
     color: #a53a33;
     font-weight: 600;
+}
+
+/* 试听播放器：默认藏起来，拿到音频才显形 */
+.voice-preview-player {
+    width: 100%;
+    margin-top: 12px;
+}
+
+/* 分组小标题（语音 tab 字段多，靠它分「合成」「归档」两段） */
+.voice-group-title {
+    margin: 26px 2px 12px;
+    padding-top: 18px;
+    border-top: 1px solid #e7ecef;
+    color: #44515a;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.voice-group-title:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
 }
