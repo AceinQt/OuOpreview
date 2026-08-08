@@ -520,7 +520,8 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
 
     /**
      * 通用多字段表单弹窗（复用 components.css / api.css 的 .form-group、.switch 样式，不新增 CSS）
-     * @param {Array<{type:'select'|'switch'|'text', key:string, label:string, options?:Array<{value:string,label:string}>, value?:any, placeholder?:string}>} fields
+     * @param {Array<{type:'select'|'switch'|'text'|'note', key:string, label:string, options?:Array<{value:string,label:string}>, value?:any, placeholder?:string, hint?:string}>} fields
+     *        note 类型只展示不可编辑，也不会出现在返回的结果里（给"这个值在别处改"用）
      * @param {object} opts { title, confirmText, cancelText }
      * @returns {Promise<object|null>} 返回 { key: value } 映射；取消返回 null
      */
@@ -557,7 +558,21 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
                 labelEl.innerText = field.label || field.key;
                 row.appendChild(labelEl);
 
-                if (field.type === 'select') {
+                if (field.type === 'note') {
+                    // 只展示、不可编辑、不参与取值。用于"这个值在别处改"这类场景，
+                    // 比如云端同步弹框里显示当前用的仓库并指路去哪改。
+                    const noteEl = document.createElement('div');
+                    noteEl.className = 'appui-note';
+                    noteEl.innerText = field.value == null ? '' : String(field.value);
+                    row.appendChild(noteEl);
+                    if (field.hint) {
+                        const hintEl = document.createElement('div');
+                        hintEl.className = 'appui-note-hint';
+                        hintEl.innerText = field.hint;
+                        row.appendChild(hintEl);
+                    }
+                    // 故意不 readers.set —— note 不该出现在返回值里
+                } else if (field.type === 'select') {
                     const sel = document.createElement('select');
                     sel.className = 'appui-select';
                     (field.options || []).forEach(o => {
