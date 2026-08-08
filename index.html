@@ -260,6 +260,20 @@
           <div class="item-details"><span class="item-name">识图API</span></div>
           <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
+                <!-- 语音消息按钮 -->
+        <div class="settings-item" id="chat-sidebar-voice-btn" style="cursor:pointer;">
+          <div class="setting-icon-box">
+            <!-- 麦克风图标 -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"></path>
+              <path d="M19 11v1a7 7 0 0 1-14 0v-1"></path>
+              <path d="M12 19v2"></path>
+            </svg>
+          </div>
+          <div class="item-details"><span class="item-name">语音消息</span></div>
+          <span id="chat-sidebar-voice-display" class="item-value">未开启</span>
+          <svg class="chevron-icon" style="margin-left:5px;" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
     </div>
   </div>
 </div>
@@ -2280,7 +2294,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="api-voice-key">API Key <span class="field-hint">语音技术控制台 &gt; API Key 管理</span></label>
+                        <label for="api-voice-key">API Key <span class="field-hint">语音技术控制台 &gt; API Key 管理。全局共用，不随预设切换</span></label>
                         <input type="password" id="api-voice-key" placeholder="请输入豆包语音 API Key" autocomplete="off">
                     </div>
 
@@ -2310,7 +2324,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="api-voice-preview-text">试听文本 <span class="field-hint">这一发会真实合成并计入用量</span></label>
+                        <label for="api-voice-preview-text">试听文本 <span class="field-hint">试听会真实合成并计入用量</span></label>
                         <div class="voice-inline-row">
                             <input type="text" id="api-voice-preview-text" placeholder="今天风好大，你出门记得多穿一件" maxlength="200">
                             <button type="button" class="btn btn-secondary voice-inline-btn" id="api-voice-preview-btn">
@@ -2326,12 +2340,12 @@
                     <p class="voice-group-title">用量</p>
 
                     <div class="form-group">
-                        <label for="api-voice-max-chars">单条最长字数 <span class="field-hint">超出则不合成，挡住一条长语音吃掉大把额度</span></label>
+                        <label for="api-voice-max-chars">单条最长字数 <span class="field-hint">超出则不合成，避免一次消耗过多额度</span></label>
                         <input type="number" id="api-voice-max-chars" min="1" max="500" step="10" placeholder="120">
                     </div>
 
                     <div class="form-group">
-                        <label for="api-voice-daily-limit">每日合成秒数上限 <span class="field-hint">填 0 表示不限制，但仍然记账</span></label>
+                        <label for="api-voice-daily-limit">每日合成秒数上限 <span class="field-hint">填 0 表示不限制，但下面的计数照常走</span></label>
                         <input type="number" id="api-voice-daily-limit" min="0" step="60" placeholder="0">
                         <div class="voice-usage-display" id="api-voice-usage-display">今日已用 0 秒</div>
                     </div>
@@ -2341,7 +2355,7 @@
                         <input type="number" id="api-voice-cache-limit" min="1" step="10" placeholder="10">
                     </div>
 
-                    <p class="voice-api-footnote">音频固定 mp3 / 24000Hz，不做成选项——普通用户判断不了该填什么，填错反而出问题。<br><br>用复刻音色（S_xxx）合成会同时消耗两种额度：音频生成的秒数和声音复刻的字符数。上面那个上限只管得住秒数，复刻字符数请自己在火山控制台盯。<br><br>API Key 明文存在这台设备的浏览器里，纯前端没法真正藏住，请勿使用共享的公共 Key。<br><br>总开关和「收到就自动合成」在聊天列表的侧边栏里，归档仓库在设置页的「GitHub 仓库」里。</p>
+                    <p class="voice-api-footnote">注意：用量计数仅供参考，实际用量请在火山官方网站控制台查询。API Key 明文存在这台设备的浏览器里，纯前端没法真正藏住，请勿使用共享的公共 Key。总开关和「收到就自动合成」在聊天列表的侧边栏里，归档仓库在设置页的「GitHub 仓库」里。</p>
                     <div class="api-scroll-spacer"></div>
                 </div>
 
