@@ -352,6 +352,17 @@ async function downloadDataStream(jsonChunkGenerator, filenameSuffix) {
 // 单行就能到 20~40MB，导入时 JSON.parse 这一行照样 OOM），而是每 500 条消息一行，
 // 单行体积始终控制在几百 KB —— 导入端逐行 parse 入库，内存峰值极低。
 // 第一行固定是 meta（_type 必须是第一个 key，导入端靠文件头探测格式）。
+/**
+ * 备份用的推送设置副本：保留 Worker 地址、VAPID 密钥、令牌这些可搬的服务端配置，
+ * 剥掉 subscription（绑定这台设备浏览器的凭证）并把开关置为关。
+ * @see createFullBackupStream 里的注释
+ */
+function _sanitizePushSettingsForBackup(raw) {
+    if (!raw) return raw;
+    const { subscription, ...portable } = raw;
+    return { ...portable, enabled: false, subscription: null };
+}
+
 async function* createFullBackupStream() {
     // ── 1. meta 行：所有小数据（设置、世界书等）──
     const meta = {
@@ -386,8 +397,26 @@ async function* createFullBackupStream() {
         enableBottomSafeArea:   db.enableBottomSafeArea,
         enableScreenAdaptation: db.enableScreenAdaptation,
         enableSwipeBack:        db.enableSwipeBack,
+        enableSystemBack:       db.enableSystemBack,
         studySettings:          db.studySettings,
         globalVisionSettings:   db.globalVisionSettings,
+        // ★ 以下几个原先漏在导出清单外，换设备恢复后会静默丢失：
+        //   weatherSettings   → 和风 Host/Key 和所有地点预设
+        //   embeddingSettings → 向量 API 配置，丢了向量检索直接失效
+        //   globalNotifySettings → 通知开关和保活时长
+        embeddingSettings:      db.embeddingSettings,
+        weatherSettings:        db.weatherSettings,
+        globalNotifySettings:   db.globalNotifySettings,
+        // ★ 推送配置只搬可搬的部分：subscription 是绑定这台设备浏览器的凭证，
+        //   原样恢复到新设备会让 app 以为推送开着、实际推给了旧设备 ——
+        //   静默失效比"要你重新开一次"糟糕得多。所以剥掉订阅并强制关掉开关，
+        //   到新设备上重新打开开关即可拿到新订阅。
+        globalPushSettings:     _sanitizePushSettingsForBackup(db.globalPushSettings),
+        voiceSettings:          db.voiceSettings,
+        // ★ githubRepos 里含访问令牌。必须进备份，否则换设备恢复后
+        //   voiceClips.cloudRepoId 找不到对应凭据，已归档的旧语音就读不回来了。
+        githubRepos:            db.githubRepos             || [],
+        githubBindings:         db.githubBindings          || {},
         studyBanks:             db.studyBanks              || [],
         studyExams:             db.studyExams              || [],
         studyExamRecords:       db.studyExamRecords        || [],
@@ -1432,14 +1461,29 @@ const FILE_NAME_CHATS = 'qchat_backup_chats.ee';   // 旧版分片（仅恢复�
 const FILE_NAME_LEGACY = 'qchat_auto_backup.json'; // ★ 新增:旧版备份文件名
 
 const GitHubService = {
+    /**
+     * 读备份用的仓库配置。
+     *
+     * ★ 仓库定义已经统一收进「设置 > GitHub 仓库」页（db.githubRepos），备份只是
+     *   其中一个"用途"。这里改成先读新数据源、读不到再回落 localStorage，
+     *   好处是下面 8 个调用点（含 main.js 的每日自动备份）一行都不用改。
+     * ★ localStorage 那份老配置迁移后**不删**，作为保险留着。回落分支也因此保留。
+     */
     getConfig: () => {
+        if (typeof getGithubBinding === 'function') {
+            const bound = getGithubBinding('backup');
+            if (bound) {
+                const bindings = _normalizeGithubBindings(db.githubBindings);
+                return {
+                    token: bound.repo.token,
+                    username: bound.repo.username,
+                    repo: bound.repo.repo,
+                    autoBackup: !!bindings.backup.autoBackup
+                };
+            }
+        }
+        // 还没迁移过的老用户走这里
         try { return JSON.parse(localStorage.getItem(GH_CONFIG_KEY)); } catch (e) { return null; }
-    },
-
-    saveConfig: (token, username, repo, autoBackup) => {
-        const config = { token, username, repo, autoBackup };
-        localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(config));
-        return config;
     },
 
     getFileInfo: async (config, fileName) => {
@@ -1504,42 +1548,61 @@ const GitHubService = {
         }
     },
 
+    /**
+     * 云端同步配置对话框：只选仓库 + 是否每日自动备份。
+     *
+     * ★ 令牌/用户名/仓库名的输入框从这里去掉了 —— 仓库定义统一在
+     *   「设置 > GitHub 仓库」页。两个地方都能填仓库会让同一个仓库的令牌存两处、
+     *   改一次要改两遍。这里只是引用它。
+     */
+    openConfigDialog: async () => {
+        const repos = _normalizeGithubRepos(db.githubRepos);
+        if (!repos.length) {
+            await AppUI.alert('还没有可用的仓库。请先到「设置 > GitHub 仓库」添加一个，再回来选。');
+            return;
+        }
+        const bindings = _normalizeGithubBindings(db.githubBindings);
+        const current = bindings.backup;
+
+        const result = await AppUI.form([
+            {
+                type: 'select', key: 'repoId', label: '备份仓库',
+                options: [{ value: '', label: '不使用云端备份' }].concat(
+                    repos.map(r => ({
+                        value: r.id,
+                        label: describeGithubRepo(r) ? `${r.name}（${describeGithubRepo(r)}）` : r.name
+                    }))),
+                value: repos.some(r => r.id === current.repoId) ? current.repoId : ''
+            },
+            { type: 'switch', key: 'autoBackup', label: '每日自动备份', value: current.autoBackup }
+        ], { title: '云端同步', confirmText: '保存', cancelText: '取消' });
+        if (!result) return;
+
+        // 展开合并：这个键里还有语音/图片的绑定，不能整体覆盖
+        db.githubBindings = _normalizeGithubBindings({
+            ...bindings,
+            backup: {
+                ...current,
+                enabled: !!result.repoId,
+                repoId: result.repoId,
+                autoBackup: !!result.autoBackup
+            }
+        });
+        await saveGlobalKeys(['githubBindings']);
+        GitHubService.updateUIState(!!GitHubService.getConfig());
+        if (typeof refreshGithubReposSummary === 'function') refreshGithubReposSummary();
+        showToast(result.repoId ? '云端同步已配置' : '已关闭云端备份');
+    },
+
     initUI: () => {
         const btnConfig = document.getElementById('btn-gh-config');
         const btnUpload = document.getElementById('btn-gh-upload');
         const btnDownload = document.getElementById('btn-gh-download');
-        const modal = document.getElementById('github-settings-modal');
         const lastSync = document.getElementById('github-last-sync');
-        
+
         GitHubService.updateUIState(!!GitHubService.getConfig());
 
-        btnConfig.onclick = () => {
-            modal.classList.add('visible');
-            const currentConfig = GitHubService.getConfig();
-            if (currentConfig) {
-                document.getElementById('gh-token-input').value = currentConfig.token || '';
-                document.getElementById('gh-username-input').value = currentConfig.username || '';
-                document.getElementById('gh-repo-input').value = currentConfig.repo || '';
-                document.getElementById('gh-auto-backup-switch').checked = !!currentConfig.autoBackup;
-            }
-        };
-
-        document.getElementById('btn-gh-cancel').onclick = () => modal.classList.remove('visible');
-        document.getElementById('btn-gh-save').onclick = async () => {
-            const token = document.getElementById('gh-token-input').value.trim();
-            const username = document.getElementById('gh-username-input').value.trim();
-            const repo = document.getElementById('gh-repo-input').value.trim();
-            const auto = document.getElementById('gh-auto-backup-switch').checked;
-
-            if (!token || !username || !repo) {
-                await AppUI.alert("请填写完整信息");
-                return;
-            }
-            GitHubService.saveConfig(token, username, repo, auto);
-            modal.classList.remove('visible');
-            GitHubService.updateUIState(true);
-            showToast("GitHub 配置已保存");
-        };
+        btnConfig.onclick = () => GitHubService.openConfigDialog();
 
         btnUpload.onclick = async () => {
             if(await AppUI.confirm("将覆盖原有云端备份数据,确定要备份到云端吗?", "系统提示", "确认", "取消")) {
