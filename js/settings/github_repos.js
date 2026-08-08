@@ -141,6 +141,7 @@ async function _ghDeleteRepo() {
 
     _ghDraft.repos = _ghDraft.repos.filter(r => r.id !== repo.id);
     // 引用它的绑定一起清掉，避免留下指向不存在仓库的悬空 id
+    // （enabled 是从 repoId 派生的，清了 repoId 它自然就是 false）
     GITHUB_PURPOSES.forEach(p => {
         if (_ghDraft.bindings[p.key] && _ghDraft.bindings[p.key].repoId === repo.id) {
             _ghDraft.bindings[p.key].repoId = '';
@@ -188,8 +189,16 @@ async function testGithubRepoConnection() {
 // ============================================================
 
 /**
- * 按 GITHUB_PURPOSES 渲染用途行。每行是「开关 + 选仓库 + 路径前缀」，
- * 关掉时把下半截收起来 —— 比灰掉更明确地表达"这行没在用"。
+ * 按 GITHUB_PURPOSES 渲染用途行。每行就是「用途名 + 一个仓库下拉」，没别的。
+ *
+ * ★ 刻意只有一个 select：
+ *   · 没有启用开关 —— 下拉里的「不使用」就是关闭状态。两个控件表达同一件事
+ *     就会有互相矛盾的可能（绑了仓库但开关是关的）
+ *   · 没有目录输入框 —— 目录在 GITHUB_PURPOSES 里定死了
+ *   · 没有「每日自动备份」—— 那个归「存储备份 > 云端同步」弹框管，
+ *     两个地方都能改同一个开关就是重复
+ *   这样"一个用途只对应一个仓库"这件事，看一眼就能确认，不需要猜。
+ *
  * 每次仓库列表变动都要重渲染，否则下拉里还留着已删掉的仓库。
  */
 function _ghRenderPurposes() {
@@ -198,70 +207,29 @@ function _ghRenderPurposes() {
     host.innerHTML = '';
 
     GITHUB_PURPOSES.forEach(p => {
-        const binding = _ghDraft.bindings[p.key] || { enabled: false, repoId: '', pathPrefix: '' };
+        const binding = _ghDraft.bindings[p.key] || {};
 
         const row = document.createElement('div');
         row.className = 'gh-purpose';
 
-        const head = document.createElement('div');
-        head.className = 'gh-purpose-head';
-        const nameEl = document.createElement('span');
+        const nameEl = document.createElement('div');
         nameEl.className = 'gh-purpose-name';
         nameEl.textContent = p.label;
-        head.appendChild(nameEl);
+        row.appendChild(nameEl);
 
-        const sw = document.createElement('label');
-        sw.className = 'switch';
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.checked = !!binding.enabled;
-        const slider = document.createElement('span');
-        slider.className = 'slider round';
-        sw.appendChild(box);
-        sw.appendChild(slider);
-        head.appendChild(sw);
-        row.appendChild(head);
-
-        const hint = document.createElement('p');
-        hint.className = 'gh-purpose-hint';
-        hint.textContent = p.hint || '';
-        row.appendChild(hint);
-
-        const bodyEl = document.createElement('div');
-        bodyEl.className = 'gh-purpose-body';
-        bodyEl.hidden = !binding.enabled;
-
-        // 「每日自动」开关（目前只有数据备份有）
-        let autoBox = null;
-        if (p.hasAutoBackup) {
-            const autoGroup = document.createElement('div');
-            autoGroup.className = 'form-group form-group-switch';
-            const autoLabel = document.createElement('label');
-            autoLabel.textContent = '每日自动备份';
-            autoGroup.appendChild(autoLabel);
-            const autoSw = document.createElement('label');
-            autoSw.className = 'switch';
-            autoBox = document.createElement('input');
-            autoBox.type = 'checkbox';
-            autoBox.checked = !!binding.autoBackup;
-            const autoSlider = document.createElement('span');
-            autoSlider.className = 'slider round';
-            autoSw.appendChild(autoBox);
-            autoSw.appendChild(autoSlider);
-            autoGroup.appendChild(autoSw);
-            bodyEl.appendChild(autoGroup);
+        if (p.hint) {
+            const hint = document.createElement('p');
+            hint.className = 'gh-purpose-hint';
+            hint.textContent = p.hint;
+            row.appendChild(hint);
         }
 
-        // 仓库下拉
-        const repoGroup = document.createElement('div');
-        repoGroup.className = 'form-group';
-        const repoLabel = document.createElement('label');
-        repoLabel.textContent = '使用仓库';
-        repoGroup.appendChild(repoLabel);
+        const group = document.createElement('div');
+        group.className = 'form-group gh-purpose-select';
         const repoSel = document.createElement('select');
         const emptyOpt = document.createElement('option');
         emptyOpt.value = '';
-        emptyOpt.textContent = '— 未选择 —';
+        emptyOpt.textContent = '不使用';
         repoSel.appendChild(emptyOpt);
         _ghDraft.repos.forEach(r => {
             const opt = document.createElement('option');
@@ -270,51 +238,21 @@ function _ghRenderPurposes() {
             opt.textContent = where ? `${r.name}（${where}）` : r.name;
             repoSel.appendChild(opt);
         });
-        // 绑定的仓库可能刚被删了 —— 那就落回"未选择"，不留悬空 id
+        // 绑定的仓库可能刚被删了 —— 那就落回"不使用"，不留悬空 id
         repoSel.value = _ghDraft.repos.some(r => r.id === binding.repoId) ? binding.repoId : '';
-        repoGroup.appendChild(repoSel);
-        bodyEl.appendChild(repoGroup);
-
-        // 路径前缀。fixedPrefix 的用途不给改 —— 备份文件在仓库根目录，
-        // 放开让人改，改完旧备份就找不着了。
-        let pathInput = null;
-        if (!p.fixedPrefix) {
-            const pathGroup = document.createElement('div');
-            pathGroup.className = 'form-group';
-            const pathLabel = document.createElement('label');
-            pathLabel.textContent = '目录';
-            const pathHint = document.createElement('span');
-            pathHint.className = 'field-hint';
-            pathHint.textContent = '内容存在仓库里的哪个目录下';
-            pathLabel.appendChild(document.createTextNode(' '));
-            pathLabel.appendChild(pathHint);
-            pathGroup.appendChild(pathLabel);
-            pathInput = document.createElement('input');
-            pathInput.type = 'text';
-            pathInput.autocomplete = 'off';
-            pathInput.placeholder = p.defaultPrefix || '';
-            pathInput.value = binding.pathPrefix || '';
-            pathGroup.appendChild(pathInput);
-            bodyEl.appendChild(pathGroup);
-        }
-
-        row.appendChild(bodyEl);
+        group.appendChild(repoSel);
+        row.appendChild(group);
         host.appendChild(row);
 
-        // 就地写回草稿，不用等保存时再回来扫 DOM
-        const write = () => {
+        // 就地写回草稿，不用等保存时再回来扫 DOM。
+        // autoBackup 原样带过去 —— 它不在这个页面编辑，但也不能被这里抹掉。
+        repoSel.addEventListener('change', () => {
             _ghDraft.bindings[p.key] = {
-                enabled: box.checked,
+                ...binding,
                 repoId: repoSel.value,
-                // 目录锁死的用途保持原值（归一化时会强制成默认值）
-                pathPrefix: pathInput ? pathInput.value.trim() : binding.pathPrefix,
-                autoBackup: autoBox ? autoBox.checked : !!binding.autoBackup
+                enabled: !!repoSel.value
             };
-        };
-        box.addEventListener('change', () => { write(); bodyEl.hidden = !box.checked; });
-        repoSel.addEventListener('change', write);
-        if (pathInput) pathInput.addEventListener('input', write);
-        if (autoBox) autoBox.addEventListener('change', write);
+        });
     });
 }
 
@@ -345,14 +283,8 @@ async function saveGithubRepos() {
     if (broken.length) {
         return showToast(`仓库「${broken[0].name}」还没填全令牌、用户名和仓库名`);
     }
-    // 开了用途但没选仓库同理
-    const unbound = GITHUB_PURPOSES.filter(p => {
-        const b = _ghDraft.bindings[p.key];
-        return b && b.enabled && !b.repoId;
-    });
-    if (unbound.length) {
-        return showToast(`「${unbound[0].label}」已开启但还没选仓库`);
-    }
+    // 注：不用再校验"开了但没选仓库" —— enabled 是从 repoId 派生的，
+    //     没选仓库就等于没开，构造不出这种半开状态。
 
     db.githubRepos = _normalizeGithubRepos(_ghDraft.repos);
     db.githubBindings = _normalizeGithubBindings(_ghDraft.bindings);

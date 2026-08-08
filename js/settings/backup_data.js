@@ -1556,23 +1556,21 @@ const GitHubService = {
      *   改一次要改两遍。这里只是引用它。
      */
     openConfigDialog: async () => {
-        const repos = _normalizeGithubRepos(db.githubRepos);
-        if (!repos.length) {
-            await AppUI.alert('还没有可用的仓库。请先到「设置 > GitHub 仓库」添加一个，再回来选。');
-            return;
-        }
         const bindings = _normalizeGithubBindings(db.githubBindings);
         const current = bindings.backup;
+        const repo = getGithubRepo(current.repoId);
 
+        // 仓库只展示不可改 —— 换仓库要去「设置 > GitHub 仓库」。
+        // 同一个设置只在一个地方能改，否则改了这边不知道那边是什么状态。
+        const where = repo
+            ? `${repo.name}（${describeGithubRepo(repo)}）`
+            : '尚未选择';
         const result = await AppUI.form([
             {
-                type: 'select', key: 'repoId', label: '备份仓库',
-                options: [{ value: '', label: '不使用云端备份' }].concat(
-                    repos.map(r => ({
-                        value: r.id,
-                        label: describeGithubRepo(r) ? `${r.name}（${describeGithubRepo(r)}）` : r.name
-                    }))),
-                value: repos.some(r => r.id === current.repoId) ? current.repoId : ''
+                type: 'note', key: 'repoNote', label: '备份仓库', value: where,
+                hint: repo
+                    ? '要换仓库请到「设置 > GitHub 仓库」，在「数据备份」那一项里选'
+                    : '请先到「设置 > GitHub 仓库」添加仓库，并在「数据备份」那一项里选中它'
             },
             { type: 'switch', key: 'autoBackup', label: '每日自动备份', value: current.autoBackup }
         ], { title: '云端同步', confirmText: '保存', cancelText: '取消' });
@@ -1581,17 +1579,12 @@ const GitHubService = {
         // 展开合并：这个键里还有语音/图片的绑定，不能整体覆盖
         db.githubBindings = _normalizeGithubBindings({
             ...bindings,
-            backup: {
-                ...current,
-                enabled: !!result.repoId,
-                repoId: result.repoId,
-                autoBackup: !!result.autoBackup
-            }
+            backup: { ...current, autoBackup: !!result.autoBackup }
         });
         await saveGlobalKeys(['githubBindings']);
         GitHubService.updateUIState(!!GitHubService.getConfig());
         if (typeof refreshGithubReposSummary === 'function') refreshGithubReposSummary();
-        showToast(result.repoId ? '云端同步已配置' : '已关闭云端备份');
+        showToast(repo ? '云端同步已保存' : '已保存，但还没选备份仓库');
     },
 
     initUI: () => {
