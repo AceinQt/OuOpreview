@@ -20,7 +20,11 @@ const globalSettingKeys =[
     // ★ 识图 API 设置（图片转文字描述专用；空 = 跟随各聊天自己的 API）
     'globalVisionSettings',
     // ★ 天气 API 设置（用户自行配置，供后续聊天上下文读取）
-    'weatherSettings'
+    'weatherSettings',
+    // ★ 语音合成设置（豆包音频生成：Key / 格式 / 按秒配额 / 本地缓存上限 / 云端归档仓库）
+    //   注：必须在这个白名单里，否则 saveGlobalKeys 写得进去、loadData 读不回来，
+    //   表现为"配置和今日用量每次重启都归零"。
+    'voiceSettings'
 ];
 
 // 2. 初始化内存数据库对象 (db) -> 唯一来源

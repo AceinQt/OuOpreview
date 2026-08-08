@@ -762,3 +762,19 @@ function findGroupMemberById(group, senderId) {
         || null;
 }
 window.findGroupMemberById = findGroupMemberById;
+
+// ================================================================
+// === getRandomValue: 多 Key 轮换（逗号分隔时随机取一个）===
+//   Gemini 等按 Key 限流的服务商可以在设置里填多个 Key 摊平配额。
+//   调用方：chat_ai_service.js、chat_feature_basic.js、chat_feature_proactive.js、
+//           settings/api_settings.js 的拉取模型。原先住在那个文件里，
+//           但它跟"API 设置页"无关，是纯工具函数，故归到 core。
+// ================================================================
+function getRandomValue(str) {
+    if (str.includes(',')) {
+        const arr = str.split(',').map(s => s.trim());
+        return arr[Math.floor(Math.random() * arr.length)];
+    }
+    return str;
+}
+window.getRandomValue = getRandomValue;
