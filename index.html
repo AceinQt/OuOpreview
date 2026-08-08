@@ -1756,6 +1756,17 @@
                 </div>
                 <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </div>
+            <!-- GitHub 仓库 -->
+            <div class="settings-item" data-target="github-repos-screen">
+                <div class="setting-icon-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 4.44-2.05 4.44-5.61A4.65 4.65 0 0 0 18.5 4.1a4.31 4.31 0 0 0-.12-3.2s-1.13-.35-3.7 1.4a11 11 0 0 0-5.36 0C6.75.55 5.62.9 5.62.9a4.31 4.31 0 0 0-.12 3.2A4.65 4.65 0 0 0 4.5 9.91c0 3.53 1.3 5.23 4.44 5.61a3.37 3.37 0 0 0-.94 2.58V22"></path></svg>
+                </div>
+                <div class="item-details">
+                    <span class="item-name">GitHub 仓库</span>
+                </div>
+                <span id="github-repos-summary" class="item-value"></span>
+                <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
             <!-- 教程与更新 -->
             <div class="settings-item" data-target="tutorial-screen">
                 <div class="setting-icon-box">
@@ -2364,6 +2375,95 @@
                 </div>
             </div>
 
+        </div>
+    </main>
+</div>
+
+<!-- GitHub 仓库页面 -->
+<div id="github-repos-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="settings-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">GitHub 仓库</h1>
+        </div>
+        <div class="placeholder"></div>
+    </header>
+    <main class="content">
+
+        <!-- ── 仓库定义 ── -->
+        <div class="gh-section">
+            <p class="gh-section-title">仓库</p>
+            <p class="gh-section-desc">在这里定义仓库和令牌，下面的各项用途只是引用它。同一个仓库可以被多个用途共用，改令牌只用改这一处。</p>
+
+            <div class="form-group">
+                <label for="gh-repo-select">选择仓库</label>
+                <select id="gh-repo-select"></select>
+            </div>
+
+            <div class="form-group">
+                <label>仓库管理</label>
+                <div class="gh-btns-row">
+                    <button type="button" id="gh-add-repo" class="api-icon-btn" title="新增仓库">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                    <button type="button" id="gh-copy-repo" class="api-icon-btn" title="复制当前仓库">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                    <button type="button" id="gh-del-repo" class="api-icon-btn" title="删除当前仓库">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="gh-repo-name">备注名 <span class="field-hint">只给你自己看，用途里靠它区分</span></label>
+                <input type="text" id="gh-repo-name" placeholder="例如：语音仓库" maxlength="40" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="gh-repo-token">访问令牌 <span class="field-hint">细粒度 PAT，只给这一个仓库的 Contents 读写权限</span></label>
+                <input type="password" id="gh-repo-token" placeholder="github_pat_..." autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="gh-repo-username">用户名</label>
+                <input type="text" id="gh-repo-username" placeholder="你的 GitHub 用户名" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="gh-repo-repo">仓库名 <span class="field-hint">建议单独建一个私有仓库</span></label>
+                <input type="text" id="gh-repo-repo" placeholder="例如：ouo-voice" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="gh-repo-branch">分支</label>
+                <div class="voice-inline-row">
+                    <input type="text" id="gh-repo-branch" placeholder="main" autocomplete="off">
+                    <button type="button" class="btn btn-secondary voice-inline-btn" id="gh-test-btn">
+                        <span class="btn-text">测试连接</span>
+                        <div class="spinner"></div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="gh-test-result" id="gh-test-result" hidden></div>
+        </div>
+
+        <!-- ── 用途绑定（按 GITHUB_PURPOSES 动态渲染）── -->
+        <div class="gh-section">
+            <p class="gh-section-title">用途</p>
+            <p class="gh-section-desc">每项用途选一个仓库和目录。关掉则该内容只留在本机，清缓存或换设备就没了。</p>
+            <div id="gh-purpose-list"></div>
+        </div>
+
+        <p class="gh-footnote">令牌明文存在这台设备的浏览器里，也会一起进备份文件——备份必须含令牌，否则换设备恢复后已归档的旧内容会因为拿不到凭据而读不回来。所以请用细粒度 PAT 且只给目标仓库的写权限，并且别把备份文件随手发给别人。<br><br>已归档的每条内容都会记下它当时用的仓库，所以之后换绑定或加新仓库都不会让旧内容失联；但删掉仓库定义会连着它的令牌一起没，那些旧内容就读不到了——删除前会提示。</p>
+
+        <div class="bottom-actions">
+            <button type="button" class="btn btn-primary action-btn-full" id="gh-save-btn">保存仓库配置</button>
         </div>
     </main>
 </div>
@@ -6842,38 +6942,9 @@
         </div>
     </div>
     
-    <!-- GitHub 配置弹窗 -->
-<div id="github-settings-modal" class="modal-overlay">
-    <div class="modal-content" style="padding: 20px; width: 85%; max-width: 320px;">
-        <h3 style="margin-top:0; margin-bottom:15px;">GitHub 连接配置</h3>
-        
-        <div class="input-group" style="margin-bottom: 10px;">
-            <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Token (以 ghp_ 开头)</label>
-            <input type="password" id="gh-token-input" class="modal-input" placeholder="ghp_xxxx..." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;">
-        </div>
-
-        <div class="input-group" style="margin-bottom: 10px;">
-            <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">用户名 (GitHub Username)</label>
-            <input type="text" id="gh-username-input" class="modal-input" placeholder="例如: yourname" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;">
-        </div>
-
-        <div class="input-group" style="margin-bottom: 15px;">
-            <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">仓库名 (Repository)</label>
-            <input type="text" id="gh-repo-input" class="modal-input" placeholder="例如: my-backup" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;">
-            <div style="font-size:10px; color:#999; margin-top:4px;">* 建议使用私有仓库 (Private)</div>
-        </div>
-
-        <div style="margin-bottom: 15px; display:flex; align-items:center; gap:8px;">
-             <input type="checkbox" id="gh-auto-backup-switch">
-             <label for="gh-auto-backup-switch" style="font-size:13px;">开启自动备份（每日打开时备份）</label>
-        </div>
-
-        <div class="modal-actions" style="display:flex; justify-content: flex-end; gap: 10px;">
-            <button id="btn-gh-save"  class="btn btn-primary">保存并连接</button>
-            <button id="btn-gh-cancel" class="btn btn-neutral">取消</button>            
-        </div>
-    </div>
-</div>
+    <!-- 原 GitHub 连接配置弹窗已移除：仓库定义统一在「设置 > GitHub 仓库」页，
+         存储备份页的「云端同步」只负责从那里挑一个仓库（GitHubService.openConfigDialog，
+         复用 AppUI.form，不需要专门的 modal HTML）。 -->
 
        <!-- 主页弹窗 -->
     <!-- INS Widget Avatar Modal -->
@@ -6984,6 +7055,7 @@
 <!-- API 层：凭据 / 额度 / 请求封装。必须排在 settings 和 chat 之前，两边都依赖它 -->
     <script src="js/api/weather_api.js"></script>
     <script src="js/api/doubao_tts_api.js"></script>
+    <script src="js/api/github_repo_api.js"></script>
 
 <!-- 设置页面 -->
     <script src="js/settings/api_settings.js"></script>
@@ -7082,6 +7154,7 @@
 
     <script src="js/settings/backup_data.js"></script>
     <script src="js/settings/data_storage.js"></script>
+    <script src="js/settings/github_repos.js"></script>
 
     <script src="js/home.js"></script>
     <script src="js/main.js"></script>
