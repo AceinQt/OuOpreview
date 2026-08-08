@@ -121,8 +121,8 @@ let _currentApiTab = 'chat';
 
 // ── 每个 tab 的编辑态：脏数据 / 暂存预设 / 已加载预设原始名 ──────
 // 按 tab 名存成字典，加类型时不用再各处补一行。
-// 天气 tab 不走预设引擎，但它也要脏数据标记，所以额外带一个 weather 键。
-const _API_STATE_KEYS = [...API_TAB_TYPES, 'weather'];
+// 天气 / 语音 tab 不走预设引擎，但它们也要脏数据标记，所以额外带两个键。
+const _API_STATE_KEYS = [...API_TAB_TYPES, 'weather', 'voice'];
 let _apiDirty            = {};
 let _stagedPresets    = {};
 let _loadedPresetName = {};
@@ -1098,6 +1098,398 @@ function initWeatherApiTab() {
 }
 
 // ============================================================
+// 语音 API 设置 Tab（豆包音频生成）
+// ============================================================
+// 凭据、请求、错误码转人话、按秒配额记账都在 js/api/doubao_tts_api.js，
+// 本段只管这个 tab 的表单读写和试听。聊天里怎么用语音见
+// js/chat/chat_voice_service.js —— 两边都只依赖 api 层，互不依赖。
+//
+// 这个 tab 不走 API_TAB_DEFS 那套预设引擎（那是给"URL + Key + 模型"三件套设计的），
+// 但它自己有一套音色预设，形状和天气的地点预设一模一样，所以照天气那份手写。
+//
+// ★ 音频格式 / 采样率 / 并发不在这里 —— 它们是 doubao_tts_api.js 里的常量。
+// ★ 总开关和「收到就自动合成」不在这里 —— 在聊天列表侧边栏的语音弹窗里。
+//   但它们的数据同样存在 db.voiceSettings，所以 _readVoiceForm 必须把这两个字段
+//   从现有配置原样带过去，否则保存这个 tab 会把总开关关掉。
+// ★ 归档仓库不在这里 —— 在设置页的「GitHub 仓库」screen（db.githubBindings.voice）。
+
+let _voiceDraft = null;
+let _voiceLoadedPresetId = '';
+
+/** 语音 Tab 上的今日用量（由 api 层的用量回调驱动） */
+function _refreshVoiceUsageUI() {
+    const el = document.getElementById('api-voice-usage-display');
+    if (!el) return;
+    const { limit, used } = _readVoiceQuota();
+    // 秒数是小数，显示取一位；配额本身按 0.01 秒记账，这里只是好看
+    el.textContent = limit > 0
+        ? `今日已用 ${used.toFixed(1)} / 上限 ${limit} 秒`
+        : `今日已用 ${used.toFixed(1)} 秒（未设上限）`;
+    el.classList.toggle('is-over-limit', limit > 0 && used >= limit);
+}
+
+/**
+ * 把表单读成一份完整配置。
+ * ★ 这四个字段不是本 tab 的表单项，必须从现有配置原样带过去，否则一保存就被清掉：
+ *   dailySecondUsed / dailyCountDate（用量计数器，清零则配额形同虚设）
+ *   enabled / autoSynthesize（归聊天列表那个弹窗管，清掉等于悄悄把语音关了）
+ */
+function _readVoiceForm() {
+    const quota = _readVoiceQuota();
+    const current = _normalizeVoiceSettings(db.voiceSettings);
+    return _normalizeVoiceSettings({
+        enabled: current.enabled,
+        autoSynthesize: current.autoSynthesize,
+        apiKey: _getVal('api-voice-key').trim(),
+        maxTextChars: parseInt(_getVal('api-voice-max-chars'), 10),
+        dailySecondLimit: parseInt(_getVal('api-voice-daily-limit'), 10),
+        cacheLimitMB: parseInt(_getVal('api-voice-cache-limit'), 10),
+        dailySecondUsed: quota.used,
+        dailyCountDate: quota.used > 0 ? quota.today : '',
+        voicePresets: (_voiceDraft && _voiceDraft.voicePresets) || [],
+        defaultVoicePresetId: (_voiceDraft && _voiceDraft.defaultVoicePresetId) || ''
+    });
+}
+
+// ── 音色预设 ─────────────────────────────────────────────────
+
+function _populateVoiceProviderSelect() {
+    const select = document.getElementById('api-voice-provider');
+    if (!select || select.options.length) return;   // 只填一次
+    VOICE_PROVIDERS.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.value;
+        option.textContent = p.label;
+        select.appendChild(option);
+    });
+}
+
+function _populateVoicePresetSelect(selectedId) {
+    const select = document.getElementById('api-voice-preset-select');
+    if (!select || !_voiceDraft) return;
+    select.innerHTML = '<option value="">— 选择音色预设 —</option>';
+    _voiceDraft.voicePresets.forEach(preset => {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        // 带上服务商，否则一堆预设分不清哪个是哪家的
+        option.textContent = `${preset.name} · ${voiceProviderLabel(preset.provider)}`;
+        select.appendChild(option);
+    });
+    select.value = selectedId || _voiceLoadedPresetId || _voiceDraft.defaultVoicePresetId || '';
+}
+
+function _applyVoicePresetToForm(presetId) {
+    const preset = _voiceDraft && _voiceDraft.voicePresets.find(p => p.id === presetId);
+    _voiceLoadedPresetId = preset ? preset.id : '';
+    _setVal('api-voice-preset-name', preset ? preset.name : '');
+    _setChecked('api-voice-set-default',
+        !!preset && preset.id === _voiceDraft.defaultVoicePresetId);
+    _setVal('api-voice-provider', preset ? preset.provider : 'doubao');
+    _setVal('api-voice-speaker', preset ? preset.speakerId : '');
+    _setVal('api-voice-desc', preset ? preset.description : '');
+    _setVal('api-voice-rate-speech', preset ? preset.rates.speech : 0);
+    _setVal('api-voice-rate-pitch', preset ? preset.rates.pitch : 0);
+    _setVal('api-voice-rate-loudness', preset ? preset.rates.loudness : 0);
+    _populateVoicePresetSelect(_voiceLoadedPresetId);
+}
+
+/** 从表单读出当前正在编辑的那条预设（不落库，只是取值） */
+function _readVoicePresetFromForm() {
+    return _normalizeVoicePreset({
+        id: _voiceLoadedPresetId,
+        name: _getVal('api-voice-preset-name').trim(),
+        provider: _getVal('api-voice-provider'),
+        speakerId: _getVal('api-voice-speaker').trim(),
+        description: _getVal('api-voice-desc').trim(),
+        rates: {
+            speech: parseInt(_getVal('api-voice-rate-speech'), 10),
+            pitch: parseInt(_getVal('api-voice-rate-pitch'), 10),
+            loudness: parseInt(_getVal('api-voice-rate-loudness'), 10)
+        }
+    });
+}
+
+/**
+ * 把表单上的编辑写回草稿。切换预设、新增、删除、保存前都要先调它，
+ * 否则用户改完某条预设直接切走，改动就丢了。
+ */
+function _syncVoicePresetFromForm() {
+    if (!_voiceDraft) return;
+    const edited = _readVoicePresetFromForm();
+
+    // 表单里填了音色但还没挂到任何预设：自动建一条（第一次用的时候会走到这儿）
+    if (!_voiceLoadedPresetId && edited.speakerId) {
+        const preset = { ...edited, id: _newVoicePresetId(), name: edited.name || '音色预设1' };
+        _voiceDraft.voicePresets.push(preset);
+        _voiceLoadedPresetId = preset.id;
+        if (!_voiceDraft.defaultVoicePresetId || _getChecked('api-voice-set-default')) {
+            _voiceDraft.defaultVoicePresetId = preset.id;
+        }
+        _populateVoicePresetSelect(preset.id);
+        _setVal('api-voice-preset-name', preset.name);
+        _setChecked('api-voice-set-default', preset.id === _voiceDraft.defaultVoicePresetId);
+        return;
+    }
+
+    const index = _voiceDraft.voicePresets.findIndex(p => p.id === _voiceLoadedPresetId);
+    if (index < 0) return;
+    const old = _voiceDraft.voicePresets[index];
+    _voiceDraft.voicePresets[index] = { ...edited, name: edited.name || old.name };
+
+    if (_getChecked('api-voice-set-default')) {
+        _voiceDraft.defaultVoicePresetId = old.id;
+    } else if (_voiceDraft.defaultVoicePresetId === old.id && _voiceDraft.voicePresets.length > 1) {
+        // 取消当前预设的默认身份时，默认位得让给别人，不能空着
+        _voiceDraft.defaultVoicePresetId =
+            _voiceDraft.voicePresets.find(p => p.id !== old.id).id;
+    }
+}
+
+function _addVoicePreset(copyCurrent = false) {
+    _syncVoicePresetFromForm();
+    const source = copyCurrent && _voiceDraft.voicePresets.find(p => p.id === _voiceLoadedPresetId);
+    const baseName = source ? source.name : '音色预设';
+    const taken = _voiceDraft.voicePresets.map(p => p.name);
+    let suffix = source ? 2 : 1;
+    let name = `${baseName}${suffix}`;
+    while (taken.includes(name)) name = `${baseName}${++suffix}`;
+    const preset = source
+        ? { ...source, id: _newVoicePresetId(), name }
+        : _normalizeVoicePreset({ id: _newVoicePresetId(), name });
+    _voiceDraft.voicePresets.push(preset);
+    if (!_voiceDraft.defaultVoicePresetId) _voiceDraft.defaultVoicePresetId = preset.id;
+    _applyVoicePresetToForm(preset.id);
+    _markDirty('voice');
+}
+
+async function _deleteVoicePreset() {
+    if (!_voiceLoadedPresetId) return showToast('请先选择要删除的音色预设');
+    const preset = _voiceDraft.voicePresets.find(p => p.id === _voiceLoadedPresetId);
+    if (!preset) return;
+
+    // 有角色正在用这条预设的话，删了它们就没声音了 —— 先说清楚有几个
+    const inUse = (db.characters || []).filter(c => c && c.voicePresetId === preset.id).length;
+    const warn = inUse
+        ? `\n\n有 ${inUse} 个角色正在使用它，删除后这些角色会退回全局默认音色。`
+        : '';
+    const ok = await AppUI.confirm(
+        `确定删除音色预设「${preset.name}」？${warn}`, '删除音色预设', '删除', '取消');
+    if (!ok) return;
+
+    _voiceDraft.voicePresets = _voiceDraft.voicePresets.filter(p => p.id !== preset.id);
+    if (_voiceDraft.defaultVoicePresetId === preset.id) {
+        _voiceDraft.defaultVoicePresetId = (_voiceDraft.voicePresets[0] || {}).id || '';
+    }
+    _applyVoicePresetToForm(
+        _voiceDraft.defaultVoicePresetId || (_voiceDraft.voicePresets[0] || {}).id);
+    _markDirty('voice');
+}
+
+function exportVoicePresets() {
+    _syncVoicePresetFromForm();
+    const presets = (_voiceDraft && _voiceDraft.voicePresets) || [];
+    if (!presets.length) return showToast('暂无音色预设可导出');
+    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'api_voice_presets.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+function importVoicePresets() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = function (event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function () {
+            try {
+                const data = JSON.parse(reader.result);
+                if (!Array.isArray(data)) return await AppUI.alert('文件格式不正确');
+                _syncVoicePresetFromForm();
+                let count = 0;
+                data.forEach(item => {
+                    const normalized = _normalizeVoicePreset(item);
+                    if (!normalized.speakerId) return;   // 没音色 ID 的条目没意义
+                    normalized.id = _newVoicePresetId();
+                    const taken = _voiceDraft.voicePresets.map(p => p.name);
+                    if (taken.includes(normalized.name)) {
+                        let suffix = 2;
+                        let name = `${normalized.name}${suffix}`;
+                        while (taken.includes(name)) name = `${normalized.name}${++suffix}`;
+                        normalized.name = name;
+                    }
+                    _voiceDraft.voicePresets.push(normalized);
+                    count++;
+                });
+                if (!count) return await AppUI.alert('文件中没有可用的音色预设');
+                if (!_voiceDraft.defaultVoicePresetId) {
+                    _voiceDraft.defaultVoicePresetId = _voiceDraft.voicePresets[0].id;
+                }
+                _applyVoicePresetToForm(
+                    _voiceDraft.voicePresets[_voiceDraft.voicePresets.length - 1].id);
+                _markDirty('voice');
+                showToast(`已导入 ${count} 个音色预设，请保存语音配置`);
+            } catch (error) {
+                await AppUI.alert('导入失败：' + error.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+/** 把已保存配置铺回表单（每次打开页面调用） */
+function _refreshVoiceTabUI() {
+    _voiceDraft = _normalizeVoiceSettings(db.voiceSettings);
+    _populateVoiceProviderSelect();
+    _setVal('api-voice-key', _voiceDraft.apiKey);
+    _setVal('api-voice-max-chars', _voiceDraft.maxTextChars);
+    _setVal('api-voice-daily-limit', _voiceDraft.dailySecondLimit);
+    _setVal('api-voice-cache-limit', _voiceDraft.cacheLimitMB);
+    _refreshVoiceUsageUI();
+    _applyVoicePresetToForm(
+        _voiceDraft.defaultVoicePresetId || (_voiceDraft.voicePresets[0] || {}).id);
+    _setVoiceTestResult('', false, true);
+    _clearDirty('voice');
+}
+
+function _setVoiceButtonLoading(id, loading) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('loading', loading);
+    btn.disabled = loading;
+}
+
+function _setVoiceTestResult(message, isError = false, hidden = false) {
+    const el = document.getElementById('api-voice-test-result');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('is-error', !!isError);
+    el.hidden = !!hidden || !message;
+}
+
+// 上一次试听生成的 blob URL。必须留着句柄，不然每试听一次就漏一个 URL，
+// 页面不刷新的话这些 blob 永远不会被回收。
+let _voicePreviewUrl = '';
+
+function _clearVoicePreviewAudio() {
+    const player = document.getElementById('api-voice-preview-player');
+    if (player) {
+        player.pause();
+        player.removeAttribute('src');
+        player.hidden = true;
+    }
+    if (_voicePreviewUrl) {
+        URL.revokeObjectURL(_voicePreviewUrl);
+        _voicePreviewUrl = '';
+    }
+}
+
+/**
+ * 试听。用表单里的草稿配置发请求（不要求先保存），这样改完参数能立刻听效果。
+ * ★ 这是一次真实合成，同样计入配额、同样受上限约束 —— 走 synthesizeVoice
+ *   内部那道闸门，这里不自己扣。
+ */
+async function previewVoiceSynthesis() {
+    const settings = _readVoiceForm();
+    // 试听用表单上正在编辑的那条预设，不要求先保存，改完立刻能听
+    const preset = _readVoicePresetFromForm();
+    const text = _getVal('api-voice-preview-text').trim();
+
+    if (!settings.apiKey) return showToast('请先填写语音 API Key');
+    if (!preset.speakerId) return showToast('请先填写音色 ID');
+    if (!text) return showToast('请先填写试听文本');
+
+    _clearVoicePreviewAudio();
+    _setVoiceButtonLoading('api-voice-preview-btn', true);
+    _setVoiceTestResult('正在合成，一次要 20 秒以上，请稍等…');
+
+    try {
+        const result = await synthesizeVoice({ text, profile: preset, settings });
+
+        const kb = (result.bytes.byteLength / 1024).toFixed(1);
+        _setVoiceTestResult(
+            `合成成功：${result.originalDuration.toFixed(2)} 秒 / ${kb} KB\n` +
+            `实际发给模型的提示词：\n${result.prompt}`
+        );
+
+        _voicePreviewUrl = URL.createObjectURL(new Blob([result.bytes], { type: result.mime }));
+        const player = document.getElementById('api-voice-preview-player');
+        if (player) {
+            player.src = _voicePreviewUrl;
+            player.hidden = false;
+            player.play().catch(() => { /* 浏览器拦了自动播放就让用户自己点 */ });
+        }
+    } catch (error) {
+        // 超额被拦时 api 层已经弹过 toast 了，这里只补一行说明，不重复报错
+        _setVoiceTestResult(
+            error.quotaBlocked ? '已达今日合成上限，试听取消' : error.message,
+            true
+        );
+    } finally {
+        _setVoiceButtonLoading('api-voice-preview-btn', false);
+    }
+}
+
+async function saveVoiceApiSettings() {
+    _syncVoicePresetFromForm();
+    const settings = _readVoiceForm();
+
+    if (!settings.apiKey) return showToast('请填写语音 API Key');
+    // 允许零预设保存（用户可能只想先把 Key 存下来），但有预设就必须填音色 ID，
+    // 否则会存下一条永远合成失败的预设，而失败要等到聊天里才暴露
+    const broken = settings.voicePresets.filter(p => !p.speakerId);
+    if (broken.length) {
+        return showToast(`音色预设「${broken[0].name}」还没填音色 ID`);
+    }
+
+    db.voiceSettings = settings;
+    _voiceDraft = _normalizeVoiceSettings(settings);
+    await saveGlobalKeys(['voiceSettings']);
+    _refreshVoiceUsageUI();
+    _clearDirty('voice');
+    showToast('语音配置已保存');
+}
+
+function initVoiceApiTab() {
+    _refreshVoiceTabUI();
+    // 用量显示交给 api 层通知：聊天里后台自动合成记的账也能让这一行跟着变，
+    // 而 api 层不需要知道"设置页有个 span"
+    onVoiceUsageChange(_refreshVoiceUsageUI);
+    _on('api-voice-preview-btn', previewVoiceSynthesis);
+    _on('api-voice-save-btn', saveVoiceApiSettings);
+    _on('api-voice-add-preset', () => _addVoicePreset(false));
+    _on('api-voice-copy-preset', () => _addVoicePreset(true));
+    _on('api-voice-del-preset', _deleteVoicePreset);
+    _on('api-voice-import-preset', importVoicePresets);
+    _on('api-voice-export-preset', exportVoicePresets);
+
+    // 切预设前先把当前编辑写回草稿，否则改完直接切走改动就丢了
+    const presetSelect = document.getElementById('api-voice-preset-select');
+    if (presetSelect) presetSelect.addEventListener('change', () => {
+        _syncVoicePresetFromForm();
+        _applyVoicePresetToForm(presetSelect.value);
+        _clearVoicePreviewAudio();
+        _setVoiceTestResult('', false, true);
+        _clearDirty('voice');
+    });
+
+    _watchDirty('voice', [
+        'api-voice-key', 'api-voice-preset-name', 'api-voice-set-default',
+        'api-voice-provider', 'api-voice-speaker', 'api-voice-desc',
+        'api-voice-rate-speech', 'api-voice-rate-pitch', 'api-voice-rate-loudness',
+        'api-voice-max-chars', 'api-voice-daily-limit', 'api-voice-cache-limit'
+    ]);
+}
+
+// ============================================================
 // Tab 刷新 / 事件绑定（chat、embedding…… 共用同一套）
 // ============================================================
 
@@ -1226,6 +1618,7 @@ function setupApiSettingsApp() {
 
     API_TAB_TYPES.forEach(_initApiTab);
     initWeatherApiTab();               // 天气 tab 形状不同，走自己的一套
+    initVoiceApiTab();                 // 语音 tab 同理
 }
 
 // ============================================================
@@ -1241,6 +1634,9 @@ function openApiSettingsScreen() {
     // 各 Tab 都刷新回已保存状态
     API_TAB_TYPES.forEach(_refreshApiTabUI);
     _refreshWeatherTabUI();
+    _refreshVoiceTabUI();
+    // 上次留在播放器里的试听音频跟着页面一起清掉，顺手回收 blob URL
+    _clearVoicePreviewAudio();
 }
 
 // ============================================================
