@@ -144,8 +144,14 @@ function _normalizeVoiceSettings(raw) {
     return {
         // 总闸和自动合成由 chat-list 侧边栏那个弹窗编辑，不在 API tab 里。
         // 但数据还是放这一个键 —— UI 在哪不决定数据在哪，两边都用展开合并写回就不会互相冲掉。
-        enabled: !!source.enabled,
-        autoSynthesize: source.autoSynthesize !== false,   // 默认开
+        //
+        // ★ 两个默认值方向相反，都是有意的：
+        //   enabled 默认开 —— 配好 Key 和音色就能直接用，不用再想起来回侧边栏开一次。
+        //     它开着但没配 Key / 没建预设时不会产生任何请求，所以默认开是安全的。
+        //   autoSynthesize 默认关 —— 自动合成会在消息一到达就产生费用。装好就默默开始
+        //     计费是不能接受的，让用户主动开。默认值要偏保守那一边。
+        enabled: source.enabled !== false,
+        autoSynthesize: !!source.autoSynthesize,
 
         // model / endpoint 落库是为了将来换代不用改老数据，UI 上不暴露
         model: source.model || DOUBAO_TTS_MODEL,
