@@ -27,6 +27,7 @@
 //   DOUBAO_TTS_MIME_TYPE / DOUBAO_TTS_TIMEOUT_MS
 //   VOICE_PROVIDERS / voiceProviderLabel
 //   _normalizeVoiceSettings / _normalizeVoicePreset / _newVoicePresetId / getVoicePreset
+//   VOICE_PRESET_OFF / getVoicePresetOptions / resolveVoicePreset
 //   _voiceTodayKey / _readVoiceQuota / _addVoiceUsage / _reserveVoiceQuota
 //   onVoiceUsageChange
 //   _buildVoiceTextPrompt / _voiceProfileFingerprint / estimateVoiceSeconds
@@ -137,10 +138,12 @@ function _normalizeVoiceSettings(raw) {
     const presets = Array.isArray(source.voicePresets)
         ? source.voicePresets.filter(p => p && (p.id || p.speakerId)).map(_normalizeVoicePreset)
         : [];
-    const defaultId = presets.some(p => p.id === source.defaultVoicePresetId)
-        ? source.defaultVoicePresetId
-        : (presets[0] ? presets[0].id : '');
-
+    // ★ 刻意没有"全局默认音色"这个概念。
+    //   语音跟文字 API 不一样：文字 API 不配就整个功能不能用，所以必须有个默认；
+    //   而语音天生有"不使用"这个合法状态。有默认值只会带来一种后果 ——
+    //   用户没给某个角色选音色，点播放（而点播放是必然的，要看文字内容就得点）
+    //   却听到一个自己没选过的声音，甚至不知道这个角色被打开了语音。
+    //   所以角色不选就是不出声，想用自然会去选。
     return {
         // 总闸和自动合成由 chat-list 侧边栏那个弹窗编辑，不在 API tab 里。
         // 但数据还是放这一个键 —— UI 在哪不决定数据在哪，两边都用展开合并写回就不会互相冲掉。
@@ -159,7 +162,6 @@ function _normalizeVoiceSettings(raw) {
         apiKey: source.apiKey || '',
 
         voicePresets: presets,
-        defaultVoicePresetId: defaultId,
 
         maxTextChars: Math.min(
             posInt(source.maxTextChars, 120),
@@ -183,14 +185,51 @@ function _normalizeVoiceSettings(raw) {
 }
 
 /**
- * 按 id 取音色预设；传空则回落到全局默认预设。
+ * 按 id 取音色预设。
+ * ★ 没有"传空回落默认"这回事 —— 不存在全局默认音色（原因见 _normalizeVoiceSettings）。
  * @returns {object|null} 归一化后的预设，找不到返回 null（调用方一律先判空）
  */
 function getVoicePreset(presetId, settings) {
+    const wanted = String(presetId || '').trim();
+    if (!wanted || wanted === VOICE_PRESET_OFF) return null;
     const config = _normalizeVoiceSettings(settings || db.voiceSettings);
-    const wanted = String(presetId || '').trim() || config.defaultVoicePresetId;
-    if (!wanted) return null;
     return config.voicePresets.find(p => p.id === wanted) || null;
+}
+
+// 角色身上 voicePresetId 表示"不使用语音"的值。
+// ★ 用显式哨兵而不是空串，因为 <select> 拿到的空值和字段压根不存在在 JS 里
+//   几乎分不开，混起来必然出 bug。预设 id 形如 voice-<时间戳>-<随机>，不会撞。
+// ★ 这也是**默认值** —— 没设过音色的角色就是不出声。
+const VOICE_PRESET_OFF = 'off';
+
+/**
+ * 音色下拉的选项数据。只给数据不碰 DOM —— 私聊侧栏、群成员编辑等多处都要用，
+ * 各自渲染，但"有哪些选项、怎么标注"只在这里定义一次。
+ * 第一项固定是"不使用语音"，它同时是默认选中项。
+ * @returns {Array<{value: string, label: string}>}
+ */
+function getVoicePresetOptions(settings) {
+    const config = _normalizeVoiceSettings(settings || db.voiceSettings);
+    return [
+        { value: VOICE_PRESET_OFF, label: '不使用语音' },
+        ...config.voicePresets.map(p => ({
+            value: p.id,
+            label: `${p.name} · ${voiceProviderLabel(p.provider)}`
+        }))
+    ];
+}
+
+/**
+ * 把角色身上存的 voicePresetId 解析成真正要用的预设。
+ *
+ * 两态：
+ *   字段不存在 / 'off' / 空 → 不给这个角色配音（这是默认）
+ *   '<预设 id>'             → 用指定的那个；预设被删掉了也当没有
+ *
+ * @returns {object|null} null = 这个角色不该出语音
+ */
+function resolveVoicePreset(voicePresetId, settings) {
+    return getVoicePreset(voicePresetId, settings);
 }
 
 // ============================================================
@@ -436,13 +475,6 @@ function _describeDoubaoTtsError(code, rawMessage, logid) {
 // 响应归一化：audio(base64) 和 url 两种形态都要能拿到字节
 // ============================================================
 
-function _base64ToBytes(b64) {
-    const bin = atob(b64);
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return u8;
-}
-
 /**
  * 从响应体里取出音频字节。
  * ★ 实测该接口 audio 和 url 都会给，所以优先 audio —— 省一次请求，
@@ -453,7 +485,8 @@ async function _extractVoiceAudio(payload) {
     const mime = DOUBAO_TTS_MIME_TYPE;
 
     if (typeof payload.audio === 'string' && payload.audio) {
-        return { bytes: _base64ToBytes(payload.audio), mime, source: 'audio' };
+        // base64ToBytes 在 js/core/utils.js —— 上传下载也要用，放 core 避免各写一份
+        return { bytes: base64ToBytes(payload.audio), mime, source: 'audio' };
     }
 
     if (typeof payload.url === 'string' && payload.url) {

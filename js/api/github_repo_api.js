@@ -22,7 +22,9 @@
 //   GITHUB_PURPOSES / GITHUB_BRANCH_DEFAULT
 //   _newGithubRepoId / _normalizeGithubRepo / _normalizeGithubRepos / _normalizeGithubBindings
 //   getGithubRepo / getGithubBinding / describeGithubRepo
+//   migrateLegacyGithubConfig
 //   _ghFetch / checkGithubRepo
+//   uploadGithubFile / downloadGithubFile
 // ============================================================
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -342,4 +344,96 @@ async function checkGithubRepo(rawRepo) {
         message: `连接成功：${cfg.username}/${cfg.repo}（${visibility}）· 分支 ${cfg.branch}`
             + (info.private ? '' : '\n注意这是公开仓库，上传的音频任何人都能访问')
     };
+}
+
+// ============================================================
+// 文件读写
+// ============================================================
+
+/** 拼 Contents API 的路径。路径段要逐段编码，斜杠本身不能编码掉 */
+function _ghContentsPath(repo, filePath) {
+    const encoded = String(filePath || '').split('/').filter(Boolean)
+        .map(encodeURIComponent).join('/');
+    return `/repos/${encodeURIComponent(repo.username)}/${encodeURIComponent(repo.repo)}`
+         + `/contents/${encoded}`;
+}
+
+/**
+ * 上传（或覆盖）一个文件。
+ *
+ * ★ 这里是 backup_data.js 里 GitHubService.uploadBlob 那个缺陷的正确写法：
+ *   它把 getFileInfo 的**所有**异常都 catch 成"新建文件"，于是 401 或断网时
+ *   sha 拿不到却照样 PUT，GitHub 因为缺 sha 拒掉，报出误导性的 409/422。
+ *   这里只有**真 404** 才等于"文件不存在、无需 sha"，其他异常一律中止并原样抛出。
+ *
+ * @param {object} repo     { username, repo, token, branch }
+ * @param {string} filePath 仓库内路径，如 voice/ab/xxx.mp3
+ * @param {Uint8Array} bytes
+ * @param {object} [opts]   { message, signal }
+ * @returns {Promise<{path: string, sha: string}>}
+ */
+async function uploadGithubFile(repo, filePath, bytes, { message, signal } = {}) {
+    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+    if (!filePath) throw _githubError('没有指定上传路径');
+
+    const apiPath = _ghContentsPath(repo, filePath);
+
+    // 已存在就得带上 sha 才能覆盖。allow404 让"文件不存在"走正常返回 null，
+    // 其余异常（401/断网/5xx）会直接抛出来，不会被误当成新文件。
+    const existing = await _ghFetch(
+        `${apiPath}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`,
+        { token: repo.token, allow404: true, signal });
+
+    const body = {
+        message: message || `Add ${filePath}`,
+        content: bytesToBase64(bytes),
+        branch: repo.branch || GITHUB_BRANCH_DEFAULT
+    };
+    if (existing && existing.sha) body.sha = existing.sha;
+
+    const result = await _ghFetch(apiPath, {
+        token: repo.token, method: 'PUT', body, signal,
+        // 上传不重试：PUT 不是幂等的（sha 可能已经变了），失败让上层重新走一遍
+        // 取 sha 再传，比盲目重试安全
+        retry: 0
+    });
+    return {
+        path: filePath,
+        sha: (result && result.content && result.content.sha) || ''
+    };
+}
+
+/**
+ * 下载一个文件的字节。
+ * @returns {Promise<Uint8Array|null>} null = 文件确实不存在（真 404）
+ * @throws {Error} 其他失败原样抛出，附 retryable 标记
+ */
+async function downloadGithubFile(repo, filePath, { signal } = {}) {
+    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+    if (!filePath) throw _githubError('没有指定下载路径');
+
+    const info = await _ghFetch(
+        `${_ghContentsPath(repo, filePath)}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`,
+        { token: repo.token, allow404: true, signal });
+    if (!info) return null;   // 真 404：云端那份被删了
+
+    // 1MB 以内 Contents API 直接把 base64 塞在 content 里，省一次请求。
+    // 超过就只给 download_url，得再去取一次。语音片段通常几十 KB，走前者。
+    if (info.content && info.encoding === 'base64') {
+        return base64ToBytes(String(info.content).replace(/\s/g, ''));
+    }
+    if (!info.download_url) {
+        throw _githubError('GitHub 没有返回文件内容，也没给下载地址');
+    }
+    let response;
+    try {
+        response = await fetch(info.download_url, { signal });
+    } catch (error) {
+        throw _githubError(`下载文件失败：${error.message}`, { retryable: true });
+    }
+    if (!response.ok) {
+        throw _githubError(`下载文件返回 HTTP ${response.status}`,
+            { retryable: response.status >= 500 });
+    }
+    return new Uint8Array(await response.arrayBuffer());
 }
