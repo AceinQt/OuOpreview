@@ -372,29 +372,168 @@
     position: relative;
 }
 
+/* 旧版静态三角，仅气泡外观预览页还在用 */
 .voice-bubble .play-icon {
     width: 22px;
     height: 22px;
     flex-shrink: 0;
-    flex:2;
-}
-
-.voice-bubble .duration {
-    font-size: 14px;
-    margin: 0 4px;
-    white-space: nowrap;
-    flex:3;
+    flex: 2;
 }
 
 .message-wrapper.sent .play-icon {
     transform: scaleX(-1);
 }
 
-.voice-bubble svg {
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
-    flex:2;
+.voice-bubble .duration {
+    font-size: 14px;
+    margin: 0 4px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+/* ── 播放键 ───────────────────────────────────────────────────
+   真的 <button>：可聚焦、可键盘触发、带 aria-label。
+   四种视觉（播放/停止/失败/转圈）都摆在按钮里，靠 data-voice-state 切显隐，
+   这样切状态不用重建 DOM，也不会闪。 */
+.voice-play-btn {
+    position: relative;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease, transform 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.voice-play-btn:active {
+    transform: scale(0.92);
+}
+
+.voice-play-btn:disabled {
+    cursor: default;
+}
+
+.voice-play-btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.voice-play-btn svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    display: none;
+}
+
+/* 三角略微右移，视觉重心才在圆心上（三角形的几何中心偏左） */
+.voice-play-btn .vp-icon-play {
+    margin-left: 2px;
+}
+
+.voice-play-btn[data-voice-state="idle"] .vp-icon-play,
+.voice-play-btn[data-voice-state="ready"] .vp-icon-play { display: block; }
+.voice-play-btn[data-voice-state="playing"] .vp-icon-stop { display: block; }
+.voice-play-btn[data-voice-state="failed"] .vp-icon-fail  { display: block; }
+
+/* 还没合成过：按钮压暗一点，暗示点下去要等（而且要花钱） */
+.voice-play-btn[data-voice-state="idle"] {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.voice-play-btn[data-voice-state="failed"] {
+    background: rgba(214, 84, 74, 0.22);
+}
+
+.vp-spinner {
+    display: none;
+    width: 15px;
+    height: 15px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: vp-spin 0.7s linear infinite;
+}
+
+.voice-play-btn[data-voice-state="loading"] .vp-spinner { display: block; }
+
+@keyframes vp-spin { to { transform: rotate(360deg); } }
+
+/* ── 波形 / 进度 ──────────────────────────────────────────────
+   原来那个音波 SVG 有两条 path 写错了（H6 应为 H15 和 H3），实际只画出两条竖线。
+   改成 CSS 竖条：好看、能随进度点亮、还省一个 SVG。
+   进度靠 --voice-progress 这个百分比变量驱动，播放器用 rAF 更新它。 */
+.voice-wave {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 18px;
+    min-width: 40px;
+    margin: 0 8px;
+    --voice-progress: 0%;
+}
+
+.voice-wave i {
+    flex: 1 1 auto;
+    min-width: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.32;
+    transition: opacity 0.15s linear;
+}
+
+/* 高矮错落，看着像真的波形而不是柱状图 */
+.voice-wave i:nth-child(1)  { height: 30%; }
+.voice-wave i:nth-child(2)  { height: 55%; }
+.voice-wave i:nth-child(3)  { height: 85%; }
+.voice-wave i:nth-child(4)  { height: 45%; }
+.voice-wave i:nth-child(5)  { height: 100%; }
+.voice-wave i:nth-child(6)  { height: 65%; }
+.voice-wave i:nth-child(7)  { height: 90%; }
+.voice-wave i:nth-child(8)  { height: 40%; }
+.voice-wave i:nth-child(9)  { height: 70%; }
+.voice-wave i:nth-child(10) { height: 35%; }
+
+/* 已就绪：整条亮一档，跟"还没合成"区分开 */
+.voice-bubble[data-voice-state="ready"] .voice-wave i,
+.voice-bubble[data-voice-state="playing"] .voice-wave i {
+    opacity: 0.5;
+}
+
+/* 播放进度：用一层渐变盖上去，比逐条改 opacity 省事且不掉帧 */
+.voice-bubble[data-voice-state="playing"] .voice-wave {
+    position: relative;
+}
+
+.voice-bubble[data-voice-state="playing"] .voice-wave::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: var(--voice-progress);
+    background: currentColor;
+    opacity: 0.85;
+    /* 让覆盖层只出现在竖条上，缝隙里不填色 */
+    -webkit-mask-image: linear-gradient(90deg, #000 0 0);
+    mask-image: linear-gradient(90deg, #000 0 0);
+    mix-blend-mode: normal;
+    pointer-events: none;
+    border-radius: 1px;
+    transition: width 0.08s linear;
+}
+
+/* 发送方气泡整体镜像，但播放键和波形不该跟着翻 */
+.message-wrapper.sent .voice-bubble .voice-play-btn,
+.message-wrapper.sent .voice-bubble .voice-wave {
+    transform: none;
 }
 
 .voice-transcript {
