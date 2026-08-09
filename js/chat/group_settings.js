@@ -268,6 +268,21 @@ function setupGroupChatSystem() {
             member.realName = document.getElementById('edit-member-real-name').value;
             member.persona = document.getElementById('edit-member-persona').value;
 
+            // 音色：关联了角色就写进角色库（播放时是按 originalCharId 回查角色的，
+            // 写在成员副本上读不到）；没关联才退回写在成员身上
+            const voiceSel = document.getElementById('edit-member-voice-preset');
+            if (voiceSel && voiceSel.value) {
+                const linkedChar = member.originalCharId
+                    ? (db.characters || []).find(c => c.id === member.originalCharId)
+                    : null;
+                if (linkedChar) {
+                    linkedChar.voicePresetId = voiceSel.value;
+                    await saveSingleChat(linkedChar.id, 'private');
+                } else {
+                    member.voicePresetId = voiceSel.value;
+                }
+            }
+
             if (oldNickname !== newNickname) {
                 // 只有真正改了昵称并发送通知时才触发时间跳过
                 await processTimePerception(group, currentChatId, 'group');
@@ -806,6 +821,30 @@ function openGroupMemberEditModal(memberId) {
         personaInput.disabled = false;
         personaInput.placeholder = "详细描述角色的性格、背景等。";
         if (avatarPreview) avatarPreview.style.pointerEvents = 'auto';
+    }
+
+    // 音色下拉。★ 关联角色时读写的是**角色库**那份 voicePresetId，不是成员副本 ——
+    //   群聊播放时按 senderId → originalCharId → 角色 解析，存到成员上根本读不到。
+    //   没关联角色的成员（角色被删了，或直接在群里建的）才退回存在成员自己身上。
+    const voiceSel = document.getElementById('edit-member-voice-preset');
+    const voiceHint = document.getElementById('edit-member-voice-hint');
+    if (voiceSel && typeof getVoicePresetOptions === 'function') {
+        voiceSel.innerHTML = '';
+        getVoicePresetOptions().forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.label;
+            voiceSel.appendChild(opt);
+        });
+        const source = isLinkedCharacter ? originalChar : member;
+        const want = (source && source.voicePresetId) || VOICE_PRESET_OFF;
+        voiceSel.value = [...voiceSel.options].some(o => o.value === want)
+            ? want : VOICE_PRESET_OFF;
+        if (voiceHint) {
+            voiceHint.textContent = isLinkedCharacter
+                ? '与角色库同步，改这里也会影响该角色的私聊'
+                : '该成员没有关联角色，音色只在这个群里生效';
+        }
     }
 
     editGroupMemberModal.classList.add('visible');

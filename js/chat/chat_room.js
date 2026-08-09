@@ -225,9 +225,21 @@ function setupChatRoom() {
             // 3. 普通模式下的点击事件
             const voiceBubble = e.target.closest('.voice-bubble');
             if (voiceBubble) {
-                const transcript = voiceBubble.closest('.message-wrapper').querySelector('.voice-transcript');
-                if (transcript) {
-                    transcript.classList.toggle('active');
+                // ★ 两个动作分给两个目标：点播放键出声，点气泡其他地方切换文字稿。
+                //   文字稿照旧独立于音频 —— 有没有声音都不影响看文字。
+                if (e.target.closest('.voice-play-btn')) {
+                    if (typeof handleVoiceBubbleClick === 'function') {
+                        const wrapper = voiceBubble.closest('.message-wrapper');
+                        const chat = (currentChatType === 'group' ? db.groups : db.characters)
+                            .find(c => c.id === currentChatId);
+                        handleVoiceBubbleClick(voiceBubble, chat, currentChatType,
+                            wrapper && wrapper.dataset.senderId);
+                    }
+                } else {
+                    const transcript = voiceBubble.closest('.message-wrapper').querySelector('.voice-transcript');
+                    if (transcript) {
+                        transcript.classList.toggle('active');
+                    }
                 }
             }
             

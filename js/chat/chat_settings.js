@@ -386,6 +386,22 @@ function loadSettingsToSidebar() {
             apiPresetSel.value = e.chatApiPreset || '';
         }
 
+        // 音色：预设在「API 设置 > 语音」里建，这里只选一个
+        const voiceSel = document.getElementById('setting-chat-voice-preset');
+        if (voiceSel && typeof getVoicePresetOptions === 'function') {
+            voiceSel.innerHTML = '';
+            getVoicePresetOptions().forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = o.value;
+                opt.textContent = o.label;
+                voiceSel.appendChild(opt);
+            });
+            // 没设过 = 不使用；指定的预设被删掉了也落回不使用，不留悬空选项
+            const want = e.voicePresetId || VOICE_PRESET_OFF;
+            voiceSel.value = [...voiceSel.options].some(o => o.value === want)
+                ? want : VOICE_PRESET_OFF;
+        }
+
         // 天气：隐藏 input 暂存，侧栏只显示文案，具体设置走弹窗
         const weatherModeInput = document.getElementById('setting-chat-weather-mode');
         if (weatherModeInput) {
@@ -454,6 +470,11 @@ async function saveSettingsFromSidebar() {
         const apiPresetSel = document.getElementById('setting-chat-api-preset');
         if (apiPresetSel) {
             e.chatApiPreset = apiPresetSel.value;
+        }
+
+        const voiceSel = document.getElementById('setting-chat-voice-preset');
+        if (voiceSel && voiceSel.value) {
+            e.voicePresetId = voiceSel.value;
         }
 
         const weatherModeInput = document.getElementById('setting-chat-weather-mode');

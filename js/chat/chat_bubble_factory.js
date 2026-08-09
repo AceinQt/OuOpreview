@@ -216,7 +216,13 @@ function createMessageBubbleElement(message) {
     // 兼容全角和半角冒号，兼容前后空格
     const unifiedStickerRegex = /\[(.*?)的表情包[:：]\s*(.*?)\]/;
     const legacyReceivedStickerRegex = /\[(?:.+?)发送的表情包[:：]\s*([\s\S]+?)\]/i;
-    const voiceRegex = /\[(?:.+?)的语音[:：]\s*([\s\S]+?)\]/;
+    // ★ 语音正则统一取 js/chat/chat_voice_service.js 里那一份 ——
+    //   这里原先另写了一份，两处各写必然漂移：改了一处忘了另一处，就会出现
+    //   "气泡画成语音条但合成层不认"或者反过来的鬼故事。
+    //   service 万一没加载上就退回内联的同一个模式，不让气泡直接崩。
+    const voiceRegex = typeof VOICE_MESSAGE_REGEX !== 'undefined'
+        ? VOICE_MESSAGE_REGEX
+        : /\[(?:.+?)的语音[:：]\s*([\s\S]+?)\]/;
     const photoVideoRegex = /\[(?:.+?)发来的照片\/视频[:：]\s*([\s\S]+?)\]/;
     
     // 转账超级宽容版：允许中英文分号、逗号；允许只写金额不写备注；兼容各种乱加空格
@@ -334,21 +340,54 @@ function createMessageBubbleElement(message) {
                 </div>`;
         }
     } else if (voiceMatch) {
+        const voiceText = voiceMatch[1].trim();
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'voice-bubble';
         bubbleElement.style.backgroundColor = bubbleTheme.bg;
         bubbleElement.style.color = bubbleTheme.text;
 
+        // 合成前只能按字数估个占位（实测同字数时长能差一倍），
+        // 真的播过一次之后播放器会用 original_duration 替掉它
         let duration = "0";
         if (typeof calculateVoiceDuration === 'function') {
-            duration = calculateVoiceDuration(voiceMatch[1].trim());
+            duration = calculateVoiceDuration(voiceText);
         }
 
-        bubbleElement.innerHTML = `<svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg><svg class="voice-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h2V9H6z"></path><path d="M7 7v10h2V7h-2z"></path><path d="M11 5v14h2V5h-2z"></path><path d="M15 9v6h2V9H6z"></path></svg><span class="duration">${duration}"</span>`;
+        // 播放器要靠这几个 data 属性找回原文和归属，别删
+        bubbleElement.dataset.voiceRaw = content || '';
+        bubbleElement.dataset.voiceMsgId = id || '';
+        bubbleElement.dataset.voiceChatId = currentChatId || '';
+        bubbleElement.dataset.voiceState = 'idle';
+
+        // ★ 播放键是真的 <button>：能聚焦、能键盘触发、有 aria-label。
+        //   原先只是个静态三角 SVG，点整个气泡才有反应。
+        //   波形改用 CSS 竖条 —— 原来那个 SVG 有两条 path 写错了（H6 应为 H15/H3），
+        //   实际只画得出两条竖线。竖条同时兼任播放进度条。
+        bubbleElement.innerHTML =
+            `<button type="button" class="voice-play-btn" data-voice-state="idle"`
+            + ` aria-label="播放语音（首次需要合成，约 20 秒）">`
+            + `<svg class="vp-icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`
+            + `<svg class="vp-icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>`
+            + `<svg class="vp-icon-fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6"/><path d="M12 16.5v.5"/></svg>`
+            + `<span class="vp-spinner" aria-hidden="true"></span>`
+            + `</button>`
+            + `<span class="voice-wave" aria-hidden="true">`
+            + '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>'
+            + `</span>`
+            + `<span class="duration">${duration}"</span>`;
+
         const transcriptDiv = document.createElement('div');
         transcriptDiv.className = 'voice-transcript';
-        transcriptDiv.textContent = voiceMatch[1].trim();
+        transcriptDiv.textContent = voiceText;
         wrapper.appendChild(transcriptDiv);
+
+        // ★ 已有音频的话把按钮标成"可播"。放在这里而不是各个渲染入口 ——
+        //   createMessageBubbleElement 有 7 个调用点，逐个接必然漏一两个。
+        //   不 await：只查缓存不发请求，慢一点也不该拖住气泡创建。
+        if (typeof refreshVoiceBubbleState === 'function') {
+            refreshVoiceBubbleState(bubbleElement, chat, currentChatType, senderId)
+                .catch(() => {});
+        }
     } else if (photoVideoMatch) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'pv-card';

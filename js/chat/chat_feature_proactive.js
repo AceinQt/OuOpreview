@@ -701,6 +701,34 @@ let generationTimeoutId = null;
 const keepAliveAudioSrc = "./audio/keepalive.mp3";
 
 // ==========================================
+// ==========================================
+// 播放语音消息时临时让位
+// ==========================================
+// iOS 上同时播两个 audio，后启的那个可能把前一个掐掉。保活这个元素一旦被掐，
+// _paPlaying 变 false、媒体会话丢失，防杀就失效了。所以播语音前先主动让位、播完恢复。
+//
+// ★ 不碰 mediaSession —— 上面那套元数据是刻意伪装成音乐播放器用的，
+//   语音播放器去改它会把通知栏那张卡片顶掉。让位只是 pause/play。
+// ★ 只在前台（用户刚点了播放）才会走到这里，短暂丢一下媒体焦点没有被杀风险。
+let _keepAliveSuspended = false;
+
+function suspendKeepAliveForPlayback() {
+    if (!bgAudioElement || !bgAudioElement._paPlaying) return;
+    _keepAliveSuspended = true;
+    bgAudioElement.pause();
+}
+
+function resumeKeepAliveAfterPlayback() {
+    if (!_keepAliveSuspended || !bgAudioElement) return;
+    _keepAliveSuspended = false;
+    // 恢复失败就算了 —— 用户下次在前台点任何地方，那套 touchstart/click 解锁会重新起播
+    bgAudioElement.play().catch(() => {});
+    try { navigator.mediaSession.playbackState = 'playing'; } catch (_) {}
+}
+
+window.suspendKeepAliveForPlayback = suspendKeepAliveForPlayback;
+window.resumeKeepAliveAfterPlayback = resumeKeepAliveAfterPlayback;
+
 // 【新增修复】：彻底销毁音频和通知栏播放卡片
 // ==========================================
 function killKeepAliveAudio() {
