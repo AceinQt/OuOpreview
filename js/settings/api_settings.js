@@ -1146,8 +1146,7 @@ function _readVoiceForm() {
         cacheLimitMB: parseInt(_getVal('api-voice-cache-limit'), 10),
         dailySecondUsed: quota.used,
         dailyCountDate: quota.used > 0 ? quota.today : '',
-        voicePresets: (_voiceDraft && _voiceDraft.voicePresets) || [],
-        defaultVoicePresetId: (_voiceDraft && _voiceDraft.defaultVoicePresetId) || ''
+        voicePresets: (_voiceDraft && _voiceDraft.voicePresets) || []
     });
 }
 
@@ -1175,15 +1174,13 @@ function _populateVoicePresetSelect(selectedId) {
         option.textContent = `${preset.name} · ${voiceProviderLabel(preset.provider)}`;
         select.appendChild(option);
     });
-    select.value = selectedId || _voiceLoadedPresetId || _voiceDraft.defaultVoicePresetId || '';
+    select.value = selectedId || _voiceLoadedPresetId || (_voiceDraft.voicePresets[0] || {}).id || '';
 }
 
 function _applyVoicePresetToForm(presetId) {
     const preset = _voiceDraft && _voiceDraft.voicePresets.find(p => p.id === presetId);
     _voiceLoadedPresetId = preset ? preset.id : '';
     _setVal('api-voice-preset-name', preset ? preset.name : '');
-    _setChecked('api-voice-set-default',
-        !!preset && preset.id === _voiceDraft.defaultVoicePresetId);
     _setVal('api-voice-provider', preset ? preset.provider : 'doubao');
     _setVal('api-voice-speaker', preset ? preset.speakerId : '');
     _setVal('api-voice-desc', preset ? preset.description : '');
@@ -1222,12 +1219,8 @@ function _syncVoicePresetFromForm() {
         const preset = { ...edited, id: _newVoicePresetId(), name: edited.name || '音色预设1' };
         _voiceDraft.voicePresets.push(preset);
         _voiceLoadedPresetId = preset.id;
-        if (!_voiceDraft.defaultVoicePresetId || _getChecked('api-voice-set-default')) {
-            _voiceDraft.defaultVoicePresetId = preset.id;
-        }
         _populateVoicePresetSelect(preset.id);
         _setVal('api-voice-preset-name', preset.name);
-        _setChecked('api-voice-set-default', preset.id === _voiceDraft.defaultVoicePresetId);
         return;
     }
 
@@ -1235,14 +1228,6 @@ function _syncVoicePresetFromForm() {
     if (index < 0) return;
     const old = _voiceDraft.voicePresets[index];
     _voiceDraft.voicePresets[index] = { ...edited, name: edited.name || old.name };
-
-    if (_getChecked('api-voice-set-default')) {
-        _voiceDraft.defaultVoicePresetId = old.id;
-    } else if (_voiceDraft.defaultVoicePresetId === old.id && _voiceDraft.voicePresets.length > 1) {
-        // 取消当前预设的默认身份时，默认位得让给别人，不能空着
-        _voiceDraft.defaultVoicePresetId =
-            _voiceDraft.voicePresets.find(p => p.id !== old.id).id;
-    }
 }
 
 function _addVoicePreset(copyCurrent = false) {
@@ -1257,7 +1242,6 @@ function _addVoicePreset(copyCurrent = false) {
         ? { ...source, id: _newVoicePresetId(), name }
         : _normalizeVoicePreset({ id: _newVoicePresetId(), name });
     _voiceDraft.voicePresets.push(preset);
-    if (!_voiceDraft.defaultVoicePresetId) _voiceDraft.defaultVoicePresetId = preset.id;
     _applyVoicePresetToForm(preset.id);
     _markDirty('voice');
 }
@@ -1267,21 +1251,23 @@ async function _deleteVoicePreset() {
     const preset = _voiceDraft.voicePresets.find(p => p.id === _voiceLoadedPresetId);
     if (!preset) return;
 
-    // 有角色正在用这条预设的话，删了它们就没声音了 —— 先说清楚有几个
-    const inUse = (db.characters || []).filter(c => c && c.voicePresetId === preset.id).length;
+    // 有角色正在用这条预设的话，删了就直接不出声了（没有默认音色可以退回）—— 先说清楚
+    // 群成员里没关联角色的那些音色存在成员自己身上，也要数进来
+    let inUse = (db.characters || []).filter(c => c && c.voicePresetId === preset.id).length;
+    (db.groups || []).forEach(g => {
+        (g.members || []).forEach(m => {
+            if (m && !m.originalCharId && m.voicePresetId === preset.id) inUse++;
+        });
+    });
     const warn = inUse
-        ? `\n\n有 ${inUse} 个角色正在使用它，删除后这些角色会退回全局默认音色。`
+        ? `\n\n有 ${inUse} 个角色/成员正在使用它，删除后他们将不再出语音。`
         : '';
     const ok = await AppUI.confirm(
         `确定删除音色预设「${preset.name}」？${warn}`, '删除音色预设', '删除', '取消');
     if (!ok) return;
 
     _voiceDraft.voicePresets = _voiceDraft.voicePresets.filter(p => p.id !== preset.id);
-    if (_voiceDraft.defaultVoicePresetId === preset.id) {
-        _voiceDraft.defaultVoicePresetId = (_voiceDraft.voicePresets[0] || {}).id || '';
-    }
-    _applyVoicePresetToForm(
-        _voiceDraft.defaultVoicePresetId || (_voiceDraft.voicePresets[0] || {}).id);
+    _applyVoicePresetToForm((_voiceDraft.voicePresets[0] || {}).id);
     _markDirty('voice');
 }
 
@@ -1329,9 +1315,6 @@ function importVoicePresets() {
                     count++;
                 });
                 if (!count) return await AppUI.alert('文件中没有可用的音色预设');
-                if (!_voiceDraft.defaultVoicePresetId) {
-                    _voiceDraft.defaultVoicePresetId = _voiceDraft.voicePresets[0].id;
-                }
                 _applyVoicePresetToForm(
                     _voiceDraft.voicePresets[_voiceDraft.voicePresets.length - 1].id);
                 _markDirty('voice');
@@ -1354,8 +1337,7 @@ function _refreshVoiceTabUI() {
     _setVal('api-voice-daily-limit', _voiceDraft.dailySecondLimit);
     _setVal('api-voice-cache-limit', _voiceDraft.cacheLimitMB);
     _refreshVoiceUsageUI();
-    _applyVoicePresetToForm(
-        _voiceDraft.defaultVoicePresetId || (_voiceDraft.voicePresets[0] || {}).id);
+    _applyVoicePresetToForm((_voiceDraft.voicePresets[0] || {}).id);
     _setVoiceTestResult('', false, true);
     _clearDirty('voice');
 }
@@ -1484,7 +1466,7 @@ function initVoiceApiTab() {
     });
 
     _watchDirty('voice', [
-        'api-voice-key', 'api-voice-preset-name', 'api-voice-set-default',
+        'api-voice-key', 'api-voice-preset-name',
         'api-voice-provider', 'api-voice-speaker', 'api-voice-desc',
         'api-voice-rate-speech', 'api-voice-rate-pitch', 'api-voice-rate-loudness',
         'api-voice-max-chars', 'api-voice-daily-limit', 'api-voice-cache-limit'

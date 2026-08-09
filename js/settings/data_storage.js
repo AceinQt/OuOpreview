@@ -8,6 +8,7 @@ const dataStorage = {
         memory:          '#1080E6',
         peek:            '#2590EE',
         study:           '#3A9EF6',
+        voice:           '#59AEF8',
         forum:           '#7EBEFB',
         rpg:             '#BADBFC',
         personalization: '#E0EDFE'
@@ -17,8 +18,9 @@ const dataStorage = {
         characters:      '角色与聊天',
         worldBooks:      '世界书',
         memory:          '记忆与向量',
-        peek:            '偷看手机',
+        peek:            '角色手机数据',
         study:           '学习',
+        voice:           '语音缓存',
         forum:           '喵坛',
         rpg:             '游戏',
         personalization: '个性化',
@@ -46,6 +48,7 @@ const dataStorage = {
             memory: 0,
             peek: 0,
             study: 0,
+            voice: 0,
             forum: 0,
             rpg: 0,
             personalization: 0,
@@ -176,6 +179,15 @@ if (typeof dexieDB !== 'undefined') {
         allCoreadMsgs.forEach(r => categorizedSizes.study += stringify(r));
         allBookSummaries.forEach(r => categorizedSizes.study += stringify(r));
     } catch(e) {}
+}
+
+// ★ 9. 语音缓存（音频字节在独立表，用元数据里的 size 累加 ——
+//   绝不能 stringify 那张表，几兆音频读进内存只为算个大小）
+if (typeof getVoiceCacheStats === 'function') {
+    try {
+        const voiceStats = await getVoiceCacheStats();
+        categorizedSizes.voice += voiceStats.cachedBytes;
+    } catch (e) { console.warn('[storage] 语音缓存统计失败:', e); }
 }
 
             const totalSize = Object.values(categorizedSizes).reduce((sum, size) => sum + size, 0);

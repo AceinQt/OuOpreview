@@ -152,18 +152,10 @@ async function _ghDeleteRepo() {
     _ghRenderPurposes();
 }
 
-/**
- * 数一下有多少条已归档内容指向这个仓库。
- * voiceClips 表要到存储层那一步才建，所以这里对"表还不存在"是容错的 ——
- * 现在返回 0，等表建好之后同一段代码自动就有数了。
- */
+/** 数一下有多少条已归档内容指向这个仓库（目前只有语音会归档） */
 async function _ghCountArchivedIn(repoId) {
-    try {
-        if (typeof dexieDB === 'undefined' || !dexieDB.voiceClips) return 0;
-        return await dexieDB.voiceClips.where('cloudRepoId').equals(repoId).count();
-    } catch (_) {
-        return 0;
-    }
+    if (typeof countVoiceClipsInRepo !== 'function') return 0;
+    return await countVoiceClipsInRepo(repoId);
 }
 
 async function testGithubRepoConnection() {
