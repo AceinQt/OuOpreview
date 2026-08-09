@@ -793,3 +793,35 @@ function getRandomValue(str) {
     return str;
 }
 window.getRandomValue = getRandomValue;
+
+// ================================================================
+// === base64 <-> 字节：语音合成、GitHub 上传下载都要用 ===
+//   放在 core 是因为 js/api/doubao_tts_api.js 和 js/api/github_repo_api.js
+//   都需要它。让后者去调前者的私有函数会形成"仓库模块依赖 TTS 模块"的
+//   反向依赖 —— 仓库模块压根不该知道语音的存在。
+// ================================================================
+
+/** base64 字符串 → Uint8Array */
+function base64ToBytes(b64) {
+    const bin = atob(String(b64 || ''));
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+}
+window.base64ToBytes = base64ToBytes;
+
+/**
+ * Uint8Array → base64 字符串。
+ * ★ 必须分块。String.fromCharCode.apply 一次传太多参数会爆调用栈
+ *   （几十万个参数就炸），而音频动辄几百 KB。
+ */
+function bytesToBase64(bytes) {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+    const CHUNK = 0x8000;   // 32K 个字符一批，实测安全
+    let binary = '';
+    for (let i = 0; i < u8.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+window.bytesToBase64 = bytesToBase64;

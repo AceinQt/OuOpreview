@@ -266,6 +266,29 @@ dexieDB.version(14).stores({
     });
 });
 
+// ★★★ Version 15（语音消息：元数据与音频字节分两张表）★★★
+// voiceClips     — 元数据。体积极小，永久保留
+// voiceClipData  — 音频字节。这一张才是可淘汰的本地缓存
+//
+// 为什么拆两张：LRU 淘汰和存储统计都要遍历所有 clip，如果字节和元数据在一张表里，
+// 为了算个总大小就得把几兆音频全读进内存。跟 studyBooks / studyBookContents 同一个道理。
+//
+// ★ 立起来的不变式：「voiceClips 里有、voiceClipData 里没有」= 云端有副本。
+//   淘汰已归档的 clip 时只删字节、留元数据（里面有 cloudRepoId 和 cloudPath），
+//   下次播放就能从云端拉回来。没归档的 clip 淘汰时元数据一起删 ——
+//   留着会让上层以为"能从云端下载"，然后失败。
+//
+// 索引说明：
+//   lastPlayedAt —— LRU 淘汰要按最久未播放取
+//   cloudRepoId  —— 删仓库前要数"有多少条内容归档在这个仓库里"
+//   chatId/msgId —— 删聊天 / 删消息时级联清理
+dexieDB.version(15).stores({
+    voiceClips:    '&voiceKey, chatId, msgId, lastPlayedAt, cloudRepoId',
+    voiceClipData: '&voiceKey',
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 15 (voiceClips / voiceClipData tables added)...");
+});
+
 window.loadData = async () => {
     try {
         console.log("📦 正在加载数据...");
