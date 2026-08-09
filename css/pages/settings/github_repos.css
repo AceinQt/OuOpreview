@@ -4,9 +4,20 @@
    仓库定义（凭据）和用途绑定（谁用哪个仓库）分两段。
    表单控件本身复用 components.css / api.css 里的 .form-group、.switch，
    这里只补这个页面特有的分段标题、用途行和测试结果块。 */
+#github-repos-screen {
+    background-color: var(--gray-color);  /* 与存储页面一致的浅灰色背景 */   
+}
+
+#github-repos-screen .app-header {
+    background-color: var(--white-color); 
+}
+
+#github-repos-screen .content {
+    padding: 15px; /* 上下左右留出间距 */
+}
 
 .gh-section {
-    margin: 0 14px 18px;
+    margin: 0 0 15px;
     padding: 16px;
     background: #fff;
     border-radius: 14px;
