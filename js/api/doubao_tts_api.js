@@ -30,7 +30,7 @@
 //   VOICE_PRESET_OFF / getVoicePresetOptions / resolveVoicePreset
 //   _voiceTodayKey / _readVoiceQuota / _addVoiceUsage / _reserveVoiceQuota
 //   onVoiceUsageChange
-//   _buildVoiceTextPrompt / _voiceProfileFingerprint / estimateVoiceSeconds
+//   _buildVoiceTextPrompt / estimateVoiceSeconds
 //   synthesizeVoice
 // ============================================================
 
@@ -382,20 +382,10 @@ function _buildVoiceTextPrompt(text, description) {
  * key 变、自动重新合成，不需要任何显式的缓存失效逻辑。
  * ★ 只收录真会进请求体的字段。多收（比如 enabled）会让无关的开关动作把缓存全冲掉。
  */
-function _voiceProfileFingerprint(profile) {
-    const p = profile || {};
-    const r = p.rates || {};
-    const n = v => Number(v) || 0;
-    return [
-        // provider 要进指纹：不同服务商同名音色是完全不同的声音
-        String(p.provider || 'doubao'),
-        String(p.speakerId || '').trim(),
-        String(p.description || '').trim(),
-        n(r.pitch), n(r.speech), n(r.loudness)
-    ].join('\u0001');
-    // 注：format / sampleRate 不用进指纹 —— 它们是常量，不可能变。
-    //     哪天真做成可配了，必须记得补进来，否则改格式后旧缓存不会失效。
-}
+// 注：这里原先有个 _voiceProfileFingerprint（把音色 ID/描述/语速等压成指纹），
+//     曾用于算语音缓存键。已删除 —— 缓存键改成只认预设 id 了，理由见
+//     js/chat/chat_voice_store.js 的 computeVoiceKey：语音是又贵又慢的资源，
+//     调一下语速就让已付费的音频作废重合成是浪费。别再把它加回来。
 
 // 预扣用的估算系数（字/秒）。刻意压得很低 —— 这个数只能偏保守，不能偏乐观。
 //
