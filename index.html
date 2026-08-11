@@ -1737,7 +1737,7 @@
         <div class="placeholder"></div>
     </header>
     <main class="content">        
-        <!-- 第一组：系统 (API, 存储, 教程) -->
+        <!-- 第一组：系统 (API, 存储) -->
         <div class="settings-group-title">系统</div>
         <div class="settings-card">
             <!-- API 设置 -->
@@ -1766,7 +1766,10 @@
             <!-- GitHub 仓库 -->
             <div class="settings-item" data-target="github-repos-screen">
                 <div class="setting-icon-box">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 4.44-2.05 4.44-5.61A4.65 4.65 0 0 0 18.5 4.1a4.31 4.31 0 0 0-.12-3.2s-1.13-.35-3.7 1.4a11 11 0 0 0-5.36 0C6.75.55 5.62.9 5.62.9a4.31 4.31 0 0 0-.12 3.2A4.65 4.65 0 0 0 4.5 9.91c0 3.53 1.3 5.23 4.44 5.61a3.37 3.37 0 0 0-.94 2.58V22"></path></svg>
+<svg width="24px" height="24px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" version="1.1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3">
+<path d="m5.75 14.25s-.5-2 .5-3c0 0-2 0-3.5-1.5s-1-4.5 0-5.5c-.5-1.5.5-2.5.5-2.5s1.5 0 2.5 1c1-.5 3.5-.5 4.5 0 1-1 2.5-1 2.5-1s1 1 .5 2.5c1 1 1.5 4 0 5.5s-3.5 1.5-3.5 1.5c1 1 .5 3 .5 3"/>
+<path d="m5.25 13.75c-1.5.5-3-.5-3.5-1"/>
+</svg>
                 </div>
                 <div class="item-details">
                     <span class="item-name">GitHub 仓库</span>
@@ -1774,6 +1777,20 @@
                 <span id="github-repos-summary" class="item-value"></span>
                 <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </div>
+        <!-- 开发者控制台入口 -->
+            <div class="settings-item" data-target="dev-console-screen">
+                <div class="setting-icon-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-terminal"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                </div>
+                <div class="item-details">
+                    <span class="item-name">系统日志</span>
+                </div>
+                <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
+        </div>
+                    <!-- 第二组：系统 (教程，操作等) -->
+        <div class="settings-group-title">操作</div>
+        <div class="settings-card">
             <!-- 教程与更新 -->
             <div class="settings-item" data-target="tutorial-screen">
                 <div class="setting-icon-box">
@@ -1781,16 +1798,6 @@
                 </div>
                 <div class="item-details">
                     <span class="item-name">教程与更新</span>
-                </div>
-                <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </div>
-                        <!-- ★ 新增：开发者控制台入口 -->
-            <div class="settings-item" data-target="dev-console-screen">
-                <div class="setting-icon-box">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-terminal"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                </div>
-                <div class="item-details">
-                    <span class="item-name">系统日志</span>
                 </div>
                 <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </div>
@@ -1828,7 +1835,7 @@
         </div>
         
 
-        <!-- 第二组：外观 (壁纸, 字体, 自定义, 主题) -->
+        <!-- 第三组：外观 (壁纸, 字体, 自定义, 主题) -->
         <div class="settings-group-title">外观</div>
         <div class="settings-card">
         <!-- 屏幕等比自适应 (Toggle) -->
@@ -1962,6 +1969,10 @@
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>语音</span>
             </button>
+            <button class="api-sidebar-btn" data-api-tab="image">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 15l-5-5L5 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>图像</span>
+            </button>
         </div>
 
         <!-- ── 右侧内容区 ── -->
@@ -2025,7 +2036,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="api-chat-url">API 地址 <span class="field-hint">后缀不用添加 /v1</span></label>
+                        <label for="api-chat-url">API 地址 <span class="field-hint">填域名、带 /v3 或完整接口路径均可</span></label>
                         <input type="url" id="api-chat-url" placeholder="选择服务商可自动填写">
                     </div>
                     <div class="form-group">
@@ -2371,6 +2382,114 @@
 
                 <div class="bottom-actions api-save-area">
                     <button type="button" class="btn btn-primary action-btn-full" id="api-voice-save-btn">保存语音配置</button>
+                </div>
+            </div>
+            
+            <!-- 图像 Tab (生图 API) -->
+            <div class="api-tab-pane" id="api-tab-image">
+                <div class="api-section-scroll">
+
+                    <div class="form-group">
+                        <label for="api-image-preset-select">选择生图预设</label>
+                        <select id="api-image-preset-select"></select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-image-preset-name">预设名称（可修改）</label>
+                        <input type="text" id="api-image-preset-name" placeholder="例如：默认绘画、高清壁纸" maxlength="40">
+                    </div>
+
+                    <div class="form-group">
+                        <label>预设管理</label>
+                        <div class="api-preset-btns-row">
+                            <button type="button" id="api-image-add-preset" class="api-icon-btn" title="新增空白预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                            <button type="button" id="api-image-copy-preset" class="api-icon-btn" title="复制当前预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                            <button type="button" id="api-image-del-preset" class="api-icon-btn" title="删除当前预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+                            <button type="button" id="api-image-import-preset" class="api-icon-btn" title="导入预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                            <button type="button" id="api-image-export-preset" class="api-icon-btn" title="导出预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></button>
+                        </div>
+                    </div>
+                    
+                                        <div class="form-group">
+                        <label for="api-image-provider">API 服务商</label>
+                        <select id="api-image-provider">
+                            <!-- 选项将由 JS 自动渲染填入 -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-image-url">API 地址 <span class="field-hint">OpenAI格式，不含 /v1</span></label>
+                        <input type="url" id="api-image-url" placeholder="例如：https://api.openai.com" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-image-key">API Key <span class="field-hint">随预设切换</span></label>
+                        <input type="password" id="api-image-key" placeholder="请输入 API Key" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-image-model">模型名称 <span class="field-hint">dall-e-3, dall-e-2, midjourney等</span></label>
+                        <input type="text" id="api-image-model" placeholder="dall-e-3" autocomplete="off">
+                    </div>
+
+                    <div class="form-group" style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label for="api-image-size">图片尺寸</label>
+                            <select id="api-image-size">
+                                <option value="1024x1024">1024x1024 (1:1)</option>
+                                <option value="1024x1792">1024x1792 (9:16)</option>
+                                <option value="1792x1024">1792x1024 (16:9)</option>
+                                <option value="512x512">512x512 (适用于 DALL-E 2)</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;">
+                            <label for="api-image-quality">画面质量</label>
+                            <select id="api-image-quality">
+                                <option value="standard">标准 (Standard)</option>
+                                <option value="hd">高清 (HD)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-image-style">画面风格 <span class="field-hint">仅 DALL-E 3 有效</span></label>
+                        <select id="api-image-style">
+                            <option value="vivid">生动 / 夸张色彩 (Vivid)</option>
+                            <option value="natural">自然 / 写实 (Natural)</option>
+                        </select>
+                    </div>
+
+<div class="form-group">
+                        <label for="api-image-preview-text">测试提示词 <span class="field-hint">支持长文本描述</span></label>
+                        <!-- 改成了 textarea，取消了 200 字限制，设为 2000 -->
+                        <textarea id="api-image-preview-text" rows="4" placeholder="例如：一只戴着墨镜的猫在喝咖啡，赛博朋克风格，霓虹灯背景，高细节，8k分辨率..." maxlength="2000"></textarea>
+                    </div>
+
+                    <!-- 按钮组：测试生成 + 下载保存 -->
+                    <div class="btn-group" style="margin-top: 0;">
+                        <button type="button" class="btn btn-secondary" id="api-image-preview-btn" style="margin-bottom: 0;">
+                            <span class="btn-text">测试生成</span>
+                            <div class="spinner"></div>
+                        </button>
+                        <!-- 下载按钮默认是 neutral(灰色) 和 disabled(禁用) 状态 -->
+                        <button type="button" class="btn btn-neutral" id="api-image-download-btn" disabled style="margin-bottom: 0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span class="btn-text">保存图片</span>
+                        </button>
+                    </div>
+
+                    <!-- 状态提示与图片展示区 -->
+                    <div class="voice-test-result" id="api-image-test-result" hidden></div>
+                    <div id="api-image-preview-container" class="image-preview-box" hidden>
+                        <img id="api-image-preview-img" src="" alt="生成的图片">
+                    </div>
+
+                    <p class="voice-api-footnote">注意：图片生成通常需要数秒到半分钟，请耐心等待。部分第三方中转站的 Midjourney 模型可能不兼容 Quality 或 Style 参数，若报错可尝试更换模型。</p>
+                    <div class="api-scroll-spacer"></div>
+                </div>
+
+                <div class="bottom-actions api-save-area">
+                    <button type="button" class="btn btn-primary action-btn-full" id="api-image-save-btn">保存图像配置</button>
                 </div>
             </div>
 
@@ -7065,6 +7184,7 @@
     <script src="js/chat/chat_voice_service.js"></script>
 <!-- 语音功能里唯一认识 DOM 的模块，必须排在 chat_room / chat_bubble_factory 之前 -->
     <script src="js/chat/chat_voice_player.js"></script>
+    <script src="js/api/image_generation_api.js"></script>
 
 <!-- 设置页面 -->
     <script src="js/settings/api_settings.js"></script>
