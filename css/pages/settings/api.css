@@ -321,3 +321,29 @@
     padding-top: 0;
     border-top: 0;
 }
+
+/* 生图测试预览容器 */
+.image-preview-box {
+    margin-top: 14px;
+    width: 100%;
+    border-radius: 12px;
+    background: #fbfdfe;
+    border: 1px solid #d9e8ef;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    padding: 12px; /* 给图片留一点内边距，更好看 */
+    box-sizing: border-box;
+}
+
+.image-preview-box img {
+    max-width: 100%;
+    max-height: 250px; /* ★ 魔法在此：强制最大高度不超过 250px */
+    width: auto;
+    height: auto;
+    display: block;
+    object-fit: contain; /* 保证图片等比例缩放，不会被拉伸变形 */
+    border-radius: 8px;  /* 让图片本身也有一点圆角 */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05); /* 加一点淡淡的阴影 */
+}
