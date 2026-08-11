@@ -122,7 +122,7 @@ let _currentApiTab = 'chat';
 // ── 每个 tab 的编辑态：脏数据 / 暂存预设 / 已加载预设原始名 ──────
 // 按 tab 名存成字典，加类型时不用再各处补一行。
 // 天气 / 语音 tab 不走预设引擎，但它们也要脏数据标记，所以额外带两个键。
-const _API_STATE_KEYS = [...API_TAB_TYPES, 'weather', 'voice'];
+const _API_STATE_KEYS = [...API_TAB_TYPES, 'weather', 'voice', 'image'];
 let _apiDirty            = {};
 let _stagedPresets    = {};
 let _loadedPresetName = {};
@@ -1474,6 +1474,336 @@ function initVoiceApiTab() {
 }
 
 // ============================================================
+// 图像 API 设置 Tab (UI 交互及表单读写)
+// ============================================================
+
+let _imageDraft = null;
+let _imageLoadedPresetId = '';
+let _currentPreviewImageUrl = '';
+
+function _populateImageProviderSelect() {
+    const select = document.getElementById('api-image-provider');
+    if (!select || select.options.length) return; 
+    IMAGE_PROVIDERS.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.value;
+        option.textContent = p.label;
+        select.appendChild(option);
+    });
+}
+
+function _populateImagePresetSelect(selectedId) {
+    const select = document.getElementById('api-image-preset-select');
+    if (!select || !_imageDraft) return;
+    select.innerHTML = '<option value="">— 选择生图预设 —</option>';
+    _imageDraft.imagePresets.forEach(preset => {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = `${preset.name} · ${imageProviderLabel(preset.provider)}`;
+        select.appendChild(option);
+    });
+    select.value = selectedId || _imageLoadedPresetId || _imageDraft.defaultPresetId || '';
+}
+
+function _applyImagePresetToForm(presetId) {
+    const preset = _imageDraft && _imageDraft.imagePresets.find(p => p.id === presetId);
+    _imageLoadedPresetId = preset ? preset.id : '';
+    
+    _setVal('api-image-preset-name', preset ? preset.name : '');
+    const providerEl = document.getElementById('api-image-provider');
+    if (providerEl) providerEl.value = preset ? preset.provider : 'openai';
+    
+    // API URL 和 Key 直接从预设里读出，赋给表单
+    _setVal('api-image-url', preset ? preset.apiUrl : '');
+    _setVal('api-image-key', preset ? preset.apiKey : '');
+    
+    _setVal('api-image-model', preset ? preset.model : 'dall-e-3');
+    _setVal('api-image-size', preset ? preset.size : '1024x1024');
+    _setVal('api-image-quality', preset ? preset.quality : 'standard');
+    _setVal('api-image-style', preset ? preset.style : 'vivid');
+    
+    _populateImagePresetSelect(_imageLoadedPresetId);
+}
+
+function _readImagePresetFromForm() {
+    return _normalizeImagePreset({
+        id: _imageLoadedPresetId,
+        name: _getVal('api-image-preset-name').trim(),
+        provider: _getVal('api-image-provider') || 'openai',
+        // URL 和 Key 一并保存进预设里
+        apiUrl: _getVal('api-image-url').trim(),
+        apiKey: _getVal('api-image-key').trim(),
+        model: _getVal('api-image-model').trim(),
+        size: _getVal('api-image-size'),
+        quality: _getVal('api-image-quality'),
+        style: _getVal('api-image-style')
+    });
+}
+
+function _syncImagePresetFromForm() {
+    if (!_imageDraft) return;
+    const edited = _readImagePresetFromForm();
+
+    // 自动建第一条预设
+    if (!_imageLoadedPresetId && edited.model) {
+        const preset = { ...edited, id: _newImagePresetId(), name: edited.name || '默认生图' };
+        _imageDraft.imagePresets.push(preset);
+        _imageLoadedPresetId = preset.id;
+        _populateImagePresetSelect(preset.id);
+        _setVal('api-image-preset-name', preset.name);
+        return;
+    }
+
+    const index = _imageDraft.imagePresets.findIndex(p => p.id === _imageLoadedPresetId);
+    if (index < 0) return;
+    _imageDraft.imagePresets[index] = { ...edited, name: edited.name || _imageDraft.imagePresets[index].name };
+}
+
+function _addImagePreset(copyCurrent = false) {
+    _syncImagePresetFromForm();
+    const source = copyCurrent && _imageDraft.imagePresets.find(p => p.id === _imageLoadedPresetId);
+    const baseName = source ? source.name : '生图预设';
+    const taken = _imageDraft.imagePresets.map(p => p.name);
+    let suffix = source ? 2 : 1;
+    let name = `${baseName}${suffix}`;
+    while (taken.includes(name)) name = `${baseName}${++suffix}`;
+    
+    const preset = source 
+        ? { ...source, id: _newImagePresetId(), name }
+        : _normalizeImagePreset({ id: _newImagePresetId(), name });
+        
+    _imageDraft.imagePresets.push(preset);
+    _applyImagePresetToForm(preset.id);
+    _markDirty('image');
+}
+
+async function _deleteImagePreset() {
+    if (!_imageLoadedPresetId) return showToast('请先选择要删除的预设');
+    const preset = _imageDraft.imagePresets.find(p => p.id === _imageLoadedPresetId);
+    if (!preset) return;
+    
+    const ok = await AppUI.confirm(`确定删除预设「${preset.name}」？`, '删除预设', '删除', '取消');
+    if (!ok) return;
+    
+    _imageDraft.imagePresets = _imageDraft.imagePresets.filter(p => p.id !== preset.id);
+    _applyImagePresetToForm((_imageDraft.imagePresets[0] || {}).id);
+    _markDirty('image');
+}
+
+function _refreshImageTabUI() {
+    _imageDraft = _normalizeImageSettings(db.imageSettings);
+    _populateImageProviderSelect(); 
+    // 不再从根节点加载 url 和 key，交给 _applyImagePresetToForm 按预设填充
+    _applyImagePresetToForm(_imageDraft.defaultPresetId || (_imageDraft.imagePresets[0] || {}).id);
+    
+    _setImageTestResult('', false, true);
+    const imgContainer = document.getElementById('api-image-preview-container');
+    if(imgContainer) imgContainer.hidden = true;
+    _clearDirty('image');
+
+    _currentPreviewImageUrl = '';
+    const dlBtn = document.getElementById('api-image-download-btn');
+    if (dlBtn) {
+        dlBtn.disabled = true;
+        dlBtn.classList.add('btn-neutral');
+        dlBtn.classList.remove('btn-secondary');
+    }
+}
+
+function _setImageTestResult(message, isError = false, hidden = false) {
+    const el = document.getElementById('api-image-test-result');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('is-error', !!isError);
+    el.hidden = !!hidden || !message;
+}
+
+/** 测试预览（委托到底层 API，UI 层只管显示 loading 和图片） */
+async function previewImageGeneration() {
+    _syncImagePresetFromForm();
+    const preset = _readImagePresetFromForm();
+    const prompt = _getVal('api-image-preview-text').trim();
+
+    if (!preset.apiKey) return showToast('请填写生图 API Key');
+    if (!preset.model) return showToast('请填写模型名称');
+    if (!prompt) return showToast('请输入测试提示词');
+
+    const btn = document.getElementById('api-image-preview-btn');
+    const dlBtn = document.getElementById('api-image-download-btn'); 
+    const imgContainer = document.getElementById('api-image-preview-container');
+    const imgEl = document.getElementById('api-image-preview-img');
+
+    btn.classList.add('loading');
+    btn.disabled = true;
+    
+    _currentPreviewImageUrl = '';
+    if (dlBtn) {
+        dlBtn.disabled = true;
+        dlBtn.classList.add('btn-neutral');
+        dlBtn.classList.remove('btn-secondary');
+    }
+    
+    _setImageTestResult('正在生成图像，通常需要 10~30 秒，请稍候...');
+    imgContainer.hidden = true;
+    imgEl.src = '';
+
+    try {
+        const imageUrl = await generateImage({
+            prompt: prompt,
+            preset: preset
+        });
+        
+        _setImageTestResult('生成成功！');
+        imgEl.src = imageUrl;
+        imgContainer.hidden = false;
+        
+        _currentPreviewImageUrl = imageUrl;
+        if (dlBtn) {
+            dlBtn.disabled = false;
+            dlBtn.classList.remove('btn-neutral');
+            dlBtn.classList.add('btn-secondary'); 
+        }
+
+    } catch (error) {
+        _setImageTestResult(`生图失败: ${error.message}`, true);
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }
+}
+
+async function saveImageApiSettings() {
+    _syncImagePresetFromForm();
+    
+    if (!_imageDraft.imagePresets.length && _getVal('api-image-model')) {
+        _addImagePreset(false);
+    }
+
+    const currentPreset = _readImagePresetFromForm();
+
+    const finalSettings = {
+        // 同步一份当前的 URL/Key 到外层兜底
+        apiUrl: currentPreset.apiUrl,
+        apiKey: currentPreset.apiKey,
+        imagePresets: _imageDraft.imagePresets,
+        defaultPresetId: _imageLoadedPresetId || (_imageDraft.imagePresets[0] && _imageDraft.imagePresets[0].id) || ''
+    };
+
+    // 检查是否所有预设都没填 Key
+    if (!_imageDraft.imagePresets.some(p => p.apiKey)) return showToast('请至少为一个预设填写 API Key');
+
+    db.imageSettings = finalSettings;
+    await saveGlobalKeys(['imageSettings']);
+    _imageDraft = _normalizeImageSettings(finalSettings);
+    _clearDirty('image');
+    showToast('图像配置已保存');
+}
+
+function initImageApiTab() {
+    _refreshImageTabUI();
+    
+    _on('api-image-preview-btn', previewImageGeneration);
+    _on('api-image-download-btn', async () => {
+        if (!_currentPreviewImageUrl) return;
+        
+        try {
+            if (_currentPreviewImageUrl.startsWith('data:')) {
+                // 如果是 Base64，直接触发下载
+                const a = document.createElement('a');
+                a.href = _currentPreviewImageUrl;
+                a.download = `生成图片_${Date.now()}.png`;
+                a.click();
+            } else {
+                // 如果是 URL，由于 CORS 限制，用 <a> 标签的 download 属性可能不管用（只会打开新标签）
+                // 我们通过 fetch 把它转成 blob 强制触发下载
+                showToast('正在获取图片文件...');
+                const res = await fetch(_currentPreviewImageUrl);
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `生成图片_${Date.now()}.png`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(blobUrl);
+            }
+        } catch (e) {
+            // 如果遇到强硬的跨域限制（Cors Blocked），降级为在新标签页打开图片
+            console.warn('图片跨域下载失败，在新标签页打开：', e);
+            window.open(_currentPreviewImageUrl, '_blank');
+        }
+    });
+    _on('api-image-save-btn', saveImageApiSettings);
+    _on('api-image-add-preset', () => _addImagePreset(false));
+    _on('api-image-copy-preset', () => _addImagePreset(true));
+    _on('api-image-del-preset', _deleteImagePreset);
+
+    // 极简版导入导出
+    _on('api-image-export-preset', () => {
+        _syncImagePresetFromForm();
+        if (!_imageDraft.imagePresets.length) return showToast('无预设可导出');
+        const blob = new Blob([JSON.stringify(_imageDraft.imagePresets, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'api_image_presets.json'; a.click();
+    });
+    
+    _on('api-image-import-preset', () => {
+        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json';
+        inp.onchange = (e) => {
+            const f = e.target.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = () => {
+                try {
+                    const data = JSON.parse(r.result);
+                    if (!Array.isArray(data)) throw new Error('格式不对');
+                    data.forEach(p => { p.id = _newImagePresetId(); _imageDraft.imagePresets.push(p); });
+                    _applyImagePresetToForm(_imageDraft.imagePresets[_imageDraft.imagePresets.length-1].id);
+                    _markDirty('image'); showToast('导入成功');
+                } catch(ex) { AppUI.alert('导入失败: ' + ex.message); }
+            }; r.readAsText(f);
+        }; inp.click();
+    });
+
+    const presetSelect = document.getElementById('api-image-preset-select');
+    if (presetSelect) presetSelect.addEventListener('change', () => {
+        _syncImagePresetFromForm();
+        _applyImagePresetToForm(presetSelect.value);
+        _setImageTestResult('', false, true);
+        document.getElementById('api-image-preview-container').hidden = true;
+        _clearDirty('image');
+
+        _currentPreviewImageUrl = '';
+        const dlBtn = document.getElementById('api-image-download-btn');
+        if (dlBtn) {
+            dlBtn.disabled = true;
+            dlBtn.classList.add('btn-neutral');
+            dlBtn.classList.remove('btn-secondary');
+        }
+    });
+
+    // ★ 新增：监听服务商切换，自动填充对应的默认 URL
+    const providerSelect = document.getElementById('api-image-provider');
+    if (providerSelect) providerSelect.addEventListener('change', () => {
+        const urlInput = document.getElementById('api-image-url');
+        if (urlInput && !urlInput.value.trim()) {
+            if (providerSelect.value === 'openai') {
+                urlInput.value = 'https://api.openai.com';
+            }
+
+            // 触发脏数据标记
+            urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    });
+
+    // 监控表单改动，点亮底部的未保存提示
+    _watchDirty('image', [
+        'api-image-url', 'api-image-key', 'api-image-preset-name', 'api-image-provider',
+        'api-image-model', 'api-image-size', 'api-image-quality', 'api-image-style'
+    ]);
+}
+
+// ============================================================
 // Tab 刷新 / 事件绑定（chat、embedding…… 共用同一套）
 // ============================================================
 
@@ -1603,6 +1933,7 @@ function setupApiSettingsApp() {
     API_TAB_TYPES.forEach(_initApiTab);
     initWeatherApiTab();               // 天气 tab 形状不同，走自己的一套
     initVoiceApiTab();                 // 语音 tab 同理
+    initImageApiTab();
 }
 
 // ============================================================
@@ -1620,6 +1951,7 @@ function openApiSettingsScreen() {
     _refreshWeatherTabUI();
     _refreshVoiceTabUI();
     // 上次留在播放器里的试听音频跟着页面一起清掉，顺手回收 blob URL
+    _refreshImageTabUI();
     _clearVoicePreviewAudio();
 }
 
