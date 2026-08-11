@@ -1522,14 +1522,6 @@ function formatSmartTime(timestamp) {
                         icon: `<svg viewBox="0 0 24 24"><path d="M22,12V20A2,2 0 0,1 20,22H4A2,2 0 0,1 2,20V12A1,1 0 0,1 1,11V8A2,2 0 0,1 3,6H6.17C6.06,5.69 6,5.35 6,5A3,3 0 0,1 9,2C10,2 10.88,2.5 11.43,3.24V3.23L12,4L12.57,3.23V3.24C13.12,2.5 14,2 15,2A3,3 0 0,1 18,5C18,5.35 17.94,5.69 17.83,6H21A2,2 0 0,1 23,8V11A1,1 0 0,1 22,12M4,20H11V12H4V20M20,20V12H13V20H20M9,4A1,1 0 0,0 8,5A1,1 0 0,0 9,6A1,1 0 0,0 10,5A1,1 0 0,0 9,4M15,4A1,1 0 0,0 14,5A1,1 0 0,0 15,6A1,1 0 0,0 16,5A1,1 0 0,0 15,4M3,8V10H11V8H3M13,8V10H21V8H13Z" /></svg>`
                     },
                     {
-                        id: 'send-location-modal',
-                        name: '发送位置',
-                        icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M12 21.5C12 21.5 19 15.6 19 10C19 6.1 15.9 3 12 3C8.1 3 5 6.1 5 10C5 15.6 12 21.5 12 21.5Z" stroke="#555" stroke-width="2" fill="none" stroke-linejoin="round"/>
-<circle cx="12" cy="10" r="2.6" stroke="#555" stroke-width="2"/>
-</svg>`
-                    },
-                    {
                         id: 'time-skip-modal',
                         name: '剧情旁白',
                         icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1551,6 +1543,14 @@ function formatSmartTime(timestamp) {
                         icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M8 12H8.009M11.991 12H12M15.991 12H16" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04346 16.4525C3.22094 16.8088 3.28001 17.2161 3.17712 17.6006L2.58151 19.8267C2.32295 20.793 3.20701 21.677 4.17335 21.4185L6.39939 20.8229C6.78393 20.72 7.19121 20.7791 7.54753 20.9565C8.88837 21.6244 10.4003 22 12 22Z" stroke="#555" stroke-width="2" fill="none"/>
+</svg>`
+                    },
+                    {
+                        id: 'send-location-modal',
+                        name: '发送位置',
+                        icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 21.5C12 21.5 19 15.6 19 10C19 6.1 15.9 3 12 3C8.1 3 5 6.1 5 10C5 15.6 12 21.5 12 21.5Z" stroke="#555" stroke-width="2" fill="none" stroke-linejoin="round"/>
+<circle cx="12" cy="10" r="2.6" stroke="#555" stroke-width="2"/>
 </svg>`
                     },
                     {

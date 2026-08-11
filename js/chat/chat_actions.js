@@ -157,6 +157,20 @@ function createContextMenu(items, x, y) {
                 }
                     }
 
+                    // 语音消息：重新生成音频
+                    // ★ 缓存键只认预设 id 不认预设内容，所以调语速/改描述/换音色都不会
+                    //   让已有音频自动作废（免得每次微调都白花一次合成的钱）。
+                    //   这里是那个策略必需的手动出口。
+                    const isVoiceMessage = typeof parseVoiceMessage === 'function'
+                        && !!parseVoiceMessage(message.content)
+                        && message.role !== 'user';
+                    if (isVoiceMessage && typeof regenerateVoiceClip === 'function') {
+                        menuItems.push({
+                            label: '重新生成语音',
+                            action: () => regenerateVoiceClip(messageId, chat, currentChatType)
+                        });
+                    }
+
                     // 图片消息：转文字描述（省 token）
                     if (isImageRecognitionMsg) {
                         const isConverting = (typeof isImageConverting === 'function') && isImageConverting(messageId);

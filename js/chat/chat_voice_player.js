@@ -16,7 +16,7 @@
 //
 // 对外符号：
 //   handleVoiceBubbleClick / refreshVoiceBubbleState
-//   stopVoicePlayback
+//   stopVoicePlayback / regenerateVoiceClip
 // ============================================================
 
 // ── 播放器单例 ────────────────────────────────────────────────
@@ -250,4 +250,61 @@ async function handleVoiceBubbleClick(bubble, chat, chatType, senderId) {
         // 极少见：解锁没生效。告诉用户再点一次就好，别让他以为功能坏了
         showToast('浏览器拦下了自动播放，再点一次播放键');
     }
+}
+
+// ============================================================
+// 重新生成
+// ============================================================
+
+/**
+ * 删掉一条消息已合成的语音，让它下次播放时重新合成。
+ *
+ * ★ 为什么需要这个入口：缓存键只认预设 id，不认预设内容（见 computeVoiceKey）。
+ *   所以调语速、改描述、换音色 ID 都**不会**让已有音频作废 —— 那是刻意的，
+ *   免得每次微调都白花一次合成的钱。代价是"觉得现在这条不好听"时得有个手动出口，
+ *   就是这里。
+ *
+ * ★ 重新合成会算出同一个 key，所以归档上传会覆盖云端同一个文件，不留孤儿。
+ *
+ * @param {string} messageId
+ * @param {object} chat
+ * @param {string} chatType
+ */
+async function regenerateVoiceClip(messageId, chat, chatType) {
+    const bubble = document.querySelector(
+        `.voice-bubble[data-voice-msg-id="${messageId}"]`);
+    if (!bubble) return;
+
+    const parsed = typeof parseVoiceMessage === 'function'
+        ? parseVoiceMessage(bubble.dataset.voiceRaw || '') : null;
+    if (!parsed) return;
+
+    const wrapper = bubble.closest('.message-wrapper');
+    const profile = _voiceProfileForBubble(
+        bubble, chat, chatType, wrapper && wrapper.dataset.senderId);
+    if (!profile) {
+        showToast('这条消息没有可用的音色');
+        return;
+    }
+
+    const voiceKey = computeVoiceKey(parsed.text, profile);
+    const existing = await getVoiceClip(voiceKey);
+    if (!existing) {
+        showToast('这条语音还没生成过，直接点播放键就行');
+        return;
+    }
+
+    // 重新生成要再花一次额度（20 秒起），值得先问一句
+    const go = await AppUI.confirm(
+        '删掉已生成的音频，下次点播放时用当前音色重新生成？\n\n重新生成会消耗一次合成额度。',
+        '重新生成语音', '删除并重新生成', '取消');
+    if (!go) return;
+
+    // 正在播这一条就先停下，否则 blob 会挂在已删的片段上
+    const btn = bubble.querySelector('.voice-play-btn');
+    if (btn && btn.dataset.voiceState === 'playing') stopVoicePlayback();
+
+    await deleteVoiceClip(voiceKey);
+    if (btn) _setVoiceBubbleState(btn, 'idle');
+    showToast('已删除，点播放键会用当前音色重新生成');
 }

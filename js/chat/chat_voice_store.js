@@ -18,7 +18,7 @@
 //   否则上层会以为能下载，然后拿到一个 404。
 //
 // 对外符号：
-//   VOICE_KEY_VERSION / computeVoiceKey
+//   VOICE_KEY_VERSION / computeVoiceKey / migrateVoiceKeysToV2
 //   getVoiceClip / getVoiceClipBytes / hasVoiceClipBytes
 //   putVoiceClip / touchVoiceClip / markVoiceClipArchived / markVoiceClipCloudFailed
 //   deleteVoiceClip / deleteVoiceClipsByChat / deleteVoiceClipsByMessage
@@ -27,7 +27,8 @@
 
 // ★ 改动 text_prompt 的拼法之后，把这个版本号 +1 —— 同一段文字会合成出不同的音频，
 //   旧缓存必须整体失效。这是唯一的失效手段，别指望别处会自动处理。
-const VOICE_KEY_VERSION = 'v1';
+// v1 → v2：key 从"预设内容指纹"改成"预设 id"（见 computeVoiceKey）。
+const VOICE_KEY_VERSION = 'v2';
 
 /**
  * 把一段字符串压成 64 位十六进制。
@@ -51,21 +52,74 @@ function _voiceHash(str) {
 }
 
 /**
- * 算一段语音的缓存键。
- * ★ 所有"会影响输出音频"的东西都必须进这个键 —— 音色档案指纹（音色 ID、声音描述、
- *   语速音调音量、服务商）加上台词本身。任何一项变了，键就变、缓存自然失效，
- *   不需要在别处写任何显式的失效逻辑。
+ * 算一段语音的缓存键 = hash(预设 id + 台词)。
+ *
+ * ★ 刻意**只用预设 id**，不用预设内容的指纹。
+ *   `presetId` 是"哪个声音"的身份，预设里的音色 ID / 描述 / 语速音调音量是可变的配置。
+ *   早先的版本把这些内容也拌进 key，好处是"改了参数缓存自动失效"，
+ *   但语音是又贵又慢的资源 —— 已经付过钱的音频，因为把语速从 0 调到 -5 就作废重合成，
+ *   纯属浪费。生成过的就留着；觉得不合适由用户主动删掉重生成。
+ *
+ *   同时它还是安全的：不同角色用不同预设 → key 不同 → 不会串音；
+ *   两个角色用同一预设说同一句话 → 同一个 key → 复用，这是对的。
+ *
+ * ★ 会让缓存失效的只剩两件事：改台词，或者删掉预设重建（id 变了）。
+ *
  * @param {string} text    要说的那句话
- * @param {object} profile 音色预设（或任何 {provider, speakerId, description, rates} 形状）
+ * @param {object} profile 音色预设，只取它的 id
  */
 function computeVoiceKey(text, profile) {
     const line = String(text || '').trim();
-    const fingerprint = typeof _voiceProfileFingerprint === 'function'
-        ? _voiceProfileFingerprint(profile)
-        : JSON.stringify(profile || {});
+    const presetId = String((profile && profile.id) || '').trim();
     // 把长度也拌进去：两段不同内容凑出同一个哈希的同时还得长度相同，难度再高一档
-    const payload = `${fingerprint}\u0001${line.length}\u0001${line}`;
+    const payload = `${presetId}\u0001${line.length}\u0001${line}`;
     return `${VOICE_KEY_VERSION}_${_voiceHash(payload)}`;
+}
+
+/**
+ * 一次性迁移：把 v1 的片段搬到 v2 的 key 下。
+ *
+ * v1 的 key 含预设内容指纹，v2 只含预设 id。公式变了，老片段会全部对不上号 ——
+ * 但元数据里存着 text 和 presetId，足够算出它的新 key，所以能原地搬过去，
+ * 不用重新花钱合成。cloudPath 原样保留（云端文件名是老 key，但路径跟 key 不需要一致）。
+ *
+ * 幂等：搬完就没有 v1_ 开头的行了，再跑一次是空操作。
+ * @returns {Promise<number>} 搬了几条
+ */
+async function migrateVoiceKeysToV2() {
+    try {
+        if (typeof dexieDB === 'undefined' || !dexieDB.voiceClips) return 0;
+        const clips = await dexieDB.voiceClips.toArray();
+        const old = clips.filter(c => c && /^v1_/.test(c.voiceKey));
+        if (!old.length) return 0;
+
+        let moved = 0;
+        for (const clip of old) {
+            // 没记预设 id 的算不出新 key。硬编成 hash('' + text) 会让不同角色的
+            // 同一句话撞成一个 key（串音），宁可留着当孤儿等淘汰。
+            if (!clip.presetId || !clip.text) continue;
+            const newKey = computeVoiceKey(clip.text, { id: clip.presetId });
+            if (newKey === clip.voiceKey) continue;
+
+            const bytes = await getVoiceClipBytes(clip.voiceKey);
+            await dexieDB.transaction('rw', dexieDB.voiceClips, dexieDB.voiceClipData, async () => {
+                // 新 key 已经有了（两条老片段映到同一个新 key）就只删旧的，别覆盖
+                const exists = await dexieDB.voiceClips.get(newKey);
+                if (!exists) {
+                    await dexieDB.voiceClips.put({ ...clip, voiceKey: newKey });
+                    if (bytes) await dexieDB.voiceClipData.put({ voiceKey: newKey, bytes });
+                }
+                await dexieDB.voiceClips.delete(clip.voiceKey);
+                await dexieDB.voiceClipData.delete(clip.voiceKey);
+            });
+            moved++;
+        }
+        if (moved) console.log(`[语音] 已把 ${moved} 条已合成片段迁移到新的缓存键`);
+        return moved;
+    } catch (error) {
+        console.warn('[语音] 缓存键迁移失败（老片段会被当孤儿淘汰，不影响使用）：', error);
+        return 0;
+    }
 }
 
 // ============================================================
