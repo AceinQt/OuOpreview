@@ -25,6 +25,7 @@ const globalSettingKeys =[
     //   注：必须在这个白名单里，否则 saveGlobalKeys 写得进去、loadData 读不回来，
     //   表现为"配置和今日用量每次重启都归零"。
     'voiceSettings',
+    'imageSettings',
     // ★ GitHub 仓库定义（凭据在这里，可被语音/图片等多个用途共享）
     'githubRepos',
     // ★ 用途绑定（哪个功能用哪个仓库、存哪个目录）。和上面拆开是因为仓库是共享资源，
@@ -100,6 +101,12 @@ window.db = {
         dailyLimit: 800,
         dailyCount: 0,
         dailyCountDate: ''
+    },
+    imageSettings: {
+        apiUrl: '',
+        apiKey: '',
+        imagePresets: [],
+        defaultPresetId: ''
     },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
