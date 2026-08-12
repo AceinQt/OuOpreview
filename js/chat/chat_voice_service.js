@@ -24,6 +24,7 @@
 //   resolveVoicePresetForSender
 //   ensureVoiceClip / peekVoiceClip
 //   retryVoiceArchive / getVoiceArchiveTarget
+//   prepareVoiceForMessages / isVoiceSynthPending / onVoiceClipReady
 // ============================================================
 
 // ============================================================
@@ -37,15 +38,24 @@
 // ★ 不要改这个模式，存量消息全靠它解析。
 const VOICE_MESSAGE_REGEX = /\[(?:.+?)的语音[:：]\s*([\s\S]+?)\]/;
 
+// 说话人名字单独用一条正则取。
+// ★ 为什么不把上面那条改成两个捕获组：气泡工厂靠 match[1] 拿台词，
+//   加一个捕获组会让 [1] 变成名字，气泡里就会显示成角色名 —— 而且是静默的。
+//   识别用的模式仍然只有上面那一条，这条只负责补个名字。
+const VOICE_MESSAGE_SPEAKER_REGEX = /\[(.+?)的语音[:：]/;
+
 /**
  * 把一条消息内容解析成语音消息。
- * @returns {{text: string}|null} null = 这不是语音消息
+ * @returns {{text: string, speaker: string}|null} null = 这不是语音消息
  */
 function parseVoiceMessage(content) {
-    const match = String(content || '').match(VOICE_MESSAGE_REGEX);
+    const raw = String(content || '');
+    const match = raw.match(VOICE_MESSAGE_REGEX);
     if (!match) return null;
     const text = match[1].trim();
-    return text ? { text } : null;
+    if (!text) return null;
+    const speaker = raw.match(VOICE_MESSAGE_SPEAKER_REGEX);
+    return { text, speaker: speaker ? speaker[1].trim() : '' };
 }
 
 /**
@@ -90,6 +100,27 @@ function resolveVoicePresetForSender(chat, chatType, senderId) {
 // ★ 没有这个的话，一次群聊回复里两条相同文本的语音会各自合成一遍 ——
 //   花两份钱，而且两个写入互相覆盖。
 const _voiceInflight = new Map();
+
+/** 这段语音是不是正在合成/下载中。气泡据此显示转圈而不是假装"待播放" */
+function isVoiceSynthPending(voiceKey) {
+    return !!voiceKey && _voiceInflight.has(voiceKey);
+}
+
+// 片段就绪的订阅者。后台预合成完成时，界面上可能已经有这条消息的气泡了 ——
+// 它得从"转圈"翻成"可播"。用订阅者模式而不是让 service 去戳 DOM：
+// 这一层不认识 DOM，播放器自己来登记（同 weather_api 的 onWeatherUsageChange）。
+const _voiceReadyListeners = [];
+
+/** @param {Function} fn 收到 voiceKey，异常会被吞掉不影响合成主流程 */
+function onVoiceClipReady(fn) {
+    if (typeof fn === 'function') _voiceReadyListeners.push(fn);
+}
+
+function _emitVoiceClipReady(voiceKey) {
+    _voiceReadyListeners.forEach(fn => {
+        try { fn(voiceKey); } catch (error) { console.warn('语音就绪回调失败：', error); }
+    });
+}
 
 // 合成并发闸门。一次合成 20 秒以上且并发不缩短单次耗时，开大只是一起变慢，
 // 所以上限来自常量而不是设置项（见 doubao_tts_api.js 的 DOUBAO_TTS_CONCURRENCY）。
@@ -302,9 +333,92 @@ async function ensureVoiceClip({ text, profile, chatId, msgId,
 
     _voiceInflight.set(voiceKey, task);
     try {
-        return await task;
+        const result = await task;
+        // 通知界面：这条可以播了。后台预合成时气泡可能已经在屏幕上转圈
+        if (result && result.bytes) _emitVoiceClipReady(voiceKey);
+        return result;
     } finally {
         // 无论成败都要清掉，否则失败过一次的 key 会永久返回那个被拒的 Promise
         _voiceInflight.delete(voiceKey);
+    }
+}
+
+// ============================================================
+// 后台预合成
+// ============================================================
+
+/** 群聊里按说话人名字找 senderId（和打字机循环里的口径一致） */
+function _findVoiceSenderId(chat, chatType, speakerName) {
+    if (chatType !== 'group' || !speakerName) return null;
+    const hit = ((chat && chat.members) || []).find(
+        m => m.realName === speakerName || m.groupNickname === speakerName);
+    return hit ? hit.id : null;
+}
+
+// 等待合成的上限。超了就放行，让消息先出来 —— 合成还在后台跑，
+// 完成后气泡会通过 onVoiceClipReady 自己翻成可播。
+// 定这个数：单条实测 23 秒，并发 2，所以 4 条语音约两轮 ≈ 50 秒。
+// 120 秒能覆盖绝大多数正常情况，又不至于在出故障时把回复永远压住。
+const VOICE_PREPARE_TIMEOUT_MS = 120000;
+
+/**
+ * 把一批新回复里的语音**全部合成好**，然后才让打字机开始逐条推送。
+ *
+ * ★ 调用点在打字机循环之前，而且要 await。
+ *   为什么整批等完再开始，而不是边演边合成：发请求前界面上就已经挂着
+ *   「"某某"正在输入中…」（chat_ai_service.js 里那个 typingIndicator），
+ *   合成期间它一直显示，所以多等这一会儿看起来就是"他在输入"，很自然。
+ *   反过来，如果边演边等，会在气泡弹出几条之后突然卡住 —— 那才像坏了。
+ *   代价是用户多等 20 秒上下，但换来"气泡一出现就能点播放"。
+ *
+ * ★ 只在「收到就自动合成」开着时才等。关着的话立刻返回，气泡照常秒出，
+ *   用户点播放键时再合成。
+ *
+ * ★ 绝不抛异常、绝不无限等。TTS 挂了或者慢得离谱，最多压 120 秒就放行，
+ *   回复照常展示和落库。
+ *
+ * @param {Array<{content: string}>} messages 打字机即将逐条播放的那个列表
+ * @param {object} chat
+ * @param {string} chatType 'private' | 'group'
+ */
+async function prepareVoiceForMessages(messages, chat, chatType) {
+    try {
+        if (!Array.isArray(messages) || !messages.length || !chat) return;
+        const config = _normalizeVoiceSettings(db.voiceSettings);
+        // 总闸关着、没开自动合成、没填 Key 都不动手
+        if (!config.enabled || !config.autoSynthesize || !config.apiKey) return;
+
+        const jobs = [];
+        messages.forEach(item => {
+            const parsed = parseVoiceMessage(item && item.content);
+            if (!parsed) return;
+            // 太长的不自动合成 —— 一条长语音能吃掉大把额度，让用户自己点
+            if (parsed.text.length > config.maxTextChars) return;
+
+            const senderId = _findVoiceSenderId(chat, chatType, parsed.speaker);
+            const profile = resolveVoicePresetForSender(chat, chatType, senderId);
+            if (!profile) return;
+
+            // quotaOncePerDay：这条路每条消息都会走，超额提示当天只弹一次
+            // 单条的失败在这里咽掉 —— 一条合成不出来不该把整批都卡住，
+            // 那条气泡出来时会是 idle/failed，点一下能重试
+            jobs.push(ensureVoiceClip({
+                text: parsed.text, profile,
+                chatId: chat.id || '', msgId: '',
+                quotaOncePerDay: true
+            }).catch(() => null));
+        });
+
+        if (!jobs.length) return;
+
+        // 并发上限由 ensureVoiceClip 内部的闸门管，这里只负责"等齐"
+        let timer;
+        await Promise.race([
+            Promise.all(jobs),
+            new Promise(resolve => { timer = setTimeout(resolve, VOICE_PREPARE_TIMEOUT_MS); })
+        ]);
+        clearTimeout(timer);
+    } catch (error) {
+        console.warn('[语音] 合成调度失败，消息照常展示：', error);
     }
 }

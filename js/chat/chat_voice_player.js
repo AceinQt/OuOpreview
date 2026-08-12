@@ -143,11 +143,37 @@ async function refreshVoiceBubbleState(bubble, chat, chatType, senderId) {
             : '这个角色还没设置音色（聊天设置里选一个）';
         return;
     }
+    // 记下 key：后台预合成完成时靠它找到该更新哪些气泡
+    const voiceKey = computeVoiceKey(parsed.text, profile);
+    bubble.dataset.voiceKey = voiceKey;
+
+    // ★ 正在后台合成就显示转圈。少了这一步，预合成期间气泡显示成 idle，
+    //   等于告诉用户"什么都没发生"，而实际上已经在跑了。
+    if (typeof isVoiceSynthPending === 'function' && isVoiceSynthPending(voiceKey)) {
+        _setVoiceBubbleState(btn, 'loading');
+        return;
+    }
+
     try {
         const hit = await peekVoiceClip(parsed.text, profile);
         // 已经有音频了就标 ready，并用真实时长替掉按字数估的那个占位
         if (hit) _setVoiceBubbleState(btn, 'ready', { duration: hit.duration });
     } catch (_) { /* 查缓存失败就当没有，保持 idle */ }
+}
+
+// 后台预合成完成 → 把屏幕上对应的气泡从"转圈"翻成"可播"。
+// 一条 key 可能对应多个气泡（同一预设说过同样的话），所以查的是全部匹配项。
+if (typeof onVoiceClipReady === 'function') {
+    onVoiceClipReady(voiceKey => {
+        document.querySelectorAll(`.voice-bubble[data-voice-key="${voiceKey}"]`)
+            .forEach(bubble => {
+                const btn = bubble.querySelector('.voice-play-btn');
+                // 正在播的那个别动，否则会把 playing 顶掉
+                if (btn && btn.dataset.voiceState !== 'playing') {
+                    _setVoiceBubbleState(btn, 'ready');
+                }
+            });
+    });
 }
 
 /** 自己发的消息（右侧气泡） */

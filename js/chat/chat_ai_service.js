@@ -321,6 +321,18 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 messages = getMixedContent(processedResponse).filter(item => item.content.trim() !== '');
             }
 
+            // ★ 语音合成：整批合成完，才让打字机开始逐条推送。
+            //   这样气泡一出现就能点播放，不会出现"点了再等 20 秒"。
+            //   为什么可以这么等：发请求前上面已经把「"某某"正在输入中…」打出来了
+            //   （typingIndicator，见本文件 :674 与 :961），合成期间它一直挂着，
+            //   所以多等这一会儿看起来就是"他在输入"。
+            //   反过来如果边演边等，会在弹出几条之后突然卡住 —— 那才像坏了。
+            //   只在「收到就自动合成」开着时才等；内部有 120 秒上限且不抛异常，
+            //   TTS 挂了或者慢得离谱都不会把回复压住。
+            if (typeof prepareVoiceForMessages === 'function') {
+                await prepareVoiceForMessages(messages, chat, targetChatType);
+            }
+
             let isFirstMsg = true;
 
             for (const item of messages) {

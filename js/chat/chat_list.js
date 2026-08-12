@@ -259,7 +259,14 @@ async function openChatSidebarVoiceDialog() {
     const current = _normalizeVoiceSettings(db.voiceSettings);
     const result = await AppUI.form([
         { type: 'switch', key: 'enabled', label: '启用语音消息', value: current.enabled },
-        { type: 'switch', key: 'autoSynthesize', label: '收到后自动合成', value: current.autoSynthesize }
+        { type: 'switch', key: 'autoSynthesize', label: '收到后自动合成', value: current.autoSynthesize },
+        {
+            type: 'note', key: 'autoHint', label: '',
+            value: '开启后：语音全部合成好，消息才开始逐条出现。'
+                 + '合成一条约 20 秒，这段时间聊天页会一直显示"正在输入中"，'
+                 + '好处是语音气泡一出现就能点播放。\n\n'
+                 + '关闭后：消息立刻出现，点播放键时才合成，需要现场等约 20 秒。'
+        }
     ], { title: '语音消息', confirmText: '保存', cancelText: '取消' });
     if (!result) return;
     await saveChatSidebarVoiceSettings(result);
