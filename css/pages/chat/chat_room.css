@@ -509,25 +509,29 @@
     opacity: 0.5;
 }
 
-/* 播放进度：用一层渐变盖上去，比逐条改 opacity 省事且不掉帧 */
+/* 播放进度：使用 mask-image 遮罩，让进度只在有柱子(<i>)的地方显示，完美避开缝隙 */
 .voice-bubble[data-voice-state="playing"] .voice-wave {
     position: relative;
+    /* 核心：用 CSS 遮罩根据进度改变整体透明度。左侧(已播放) 0.85，右侧(未播放) 0.5 */
+    /* 因为缝隙本身没有内容，所以遮罩不会在缝隙处产生任何颜色 */
+    -webkit-mask-image: linear-gradient(to right,
+        rgba(0, 0, 0, 0.85) 0%,
+        rgba(0, 0, 0, 0.85) var(--voice-progress),
+        rgba(0, 0, 0, 0.5) var(--voice-progress),
+        rgba(0, 0, 0, 0.5) 100%
+    );
+    mask-image: linear-gradient(to right,
+        rgba(0, 0, 0, 0.85) 0%,
+        rgba(0, 0, 0, 0.85) var(--voice-progress),
+        rgba(0, 0, 0, 0.5) var(--voice-progress),
+        rgba(0, 0, 0, 0.5) 100%
+    );
 }
 
-.voice-bubble[data-voice-state="playing"] .voice-wave::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: var(--voice-progress);
-    background: currentColor;
-    opacity: 0.85;
-    /* 让覆盖层只出现在竖条上，缝隙里不填色 */
-    -webkit-mask-image: linear-gradient(90deg, #000 0 0);
-    mask-image: linear-gradient(90deg, #000 0 0);
-    mix-blend-mode: normal;
-    pointer-events: none;
-    border-radius: 1px;
-    transition: width 0.08s linear;
+/* 播放时，柱子本身设为完全不透明，最终透明度完全由上面的 mask 遮罩控制 */
+.voice-bubble[data-voice-state="playing"] .voice-wave i {
+    opacity: 1 !important; 
+    transition: none; /* 取消原本的渐变过渡效果，让进度切断得更干脆利落 */
 }
 
 /* 发送方气泡整体镜像，但播放键和波形不该跟着翻 */
