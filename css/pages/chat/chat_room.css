@@ -365,7 +365,7 @@
 
 .message-wrapper.sent .voice-bubble {
     position: relative;
-    flex-direction: row-reverse;
+    flex-direction: row; 
 }
 
 .message-wrapper.received .voice-bubble {
@@ -378,10 +378,6 @@
     height: 22px;
     flex-shrink: 0;
     flex: 2;
-}
-
-.message-wrapper.sent .play-icon {
-    transform: scaleX(-1);
 }
 
 .voice-bubble .duration {
@@ -404,7 +400,7 @@
     margin: 0;
     border: 0;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(200, 200, 200, 0.28);
     color: inherit;
     cursor: pointer;
     display: flex;
@@ -432,6 +428,19 @@
     height: 18px;
     flex: 0 0 auto;
     display: none;
+}
+
+/* 扩大语音播放按钮的隐形点击热区 */
+.voice-play-btn::after {
+    content: '';
+    position: absolute;
+    /* 向四周各外扩 10px，将原本 30x30 的点击区域放大到 50x50 */
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    /* 确保透明，不影响视觉 */
+    background: transparent; 
 }
 
 /* 三角略微右移，视觉重心才在圆心上（三角形的几何中心偏左） */
@@ -532,12 +541,6 @@
 .voice-bubble[data-voice-state="playing"] .voice-wave i {
     opacity: 1 !important; 
     transition: none; /* 取消原本的渐变过渡效果，让进度切断得更干脆利落 */
-}
-
-/* 发送方气泡整体镜像，但播放键和波形不该跟着翻 */
-.message-wrapper.sent .voice-bubble .voice-play-btn,
-.message-wrapper.sent .voice-bubble .voice-wave {
-    transform: none;
 }
 
 .voice-transcript {
