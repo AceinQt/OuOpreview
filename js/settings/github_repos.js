@@ -4,12 +4,16 @@
 // 凭据归一化、请求、错误转人话、连通性检查都在 js/api/github_repo_api.js，
 // 本文件只管这个 screen 的表单读写。
 //
-// 页面分两段，对应两层数据：
+// 页面分「仓库配置」和「用途配置」两段，对应两层数据：
 //   db.githubRepos    —— 仓库定义（含令牌）。同一个仓库能被多个用途共用
 //   db.githubBindings —— 用途绑定（哪个功能用哪个仓库、存哪个目录）
 // 拆开的理由见 github_repo_api.js 顶部：仓库是共享资源，凭据不该跟着用途复制好几份。
 //
 // ★ 用途行是按 GITHUB_PURPOSES 动态渲染的，加一个用途不用改这个文件。
+//
+// ★ 版式和说明文字：版式沿用 notification-settings-screen 的
+//   settings-group-title + settings-card（类在 css/pages/settings/settings_screen.css），
+//   说明一律不铺在页面上，注册到 AppHelp（js/core/utils.js）后由问号弹出。
 //
 // 对外符号：
 //   openGithubReposScreen（main.js 的 pageActions 调用）
@@ -19,6 +23,65 @@
 // 页面上的编辑草稿。点保存前所有改动只在这里，不碰 db。
 let _ghDraft = null;
 let _ghLoadedRepoId = '';
+
+// ============================================================
+// 问号说明
+// ============================================================
+// 这页原本把注意事项全铺在页面上，结果说明比设置项还长。现在一律收进问号：
+//   header 右上角 → page（整页）
+//   「仓库配置」旁 → repo
+//   「用途配置」旁 → purpose
+// 弹窗机制是公共的，在 js/core/utils.js 的 AppHelp 里；这里只放文案。
+//
+// ★ 正文经 AppUI.alert → innerText 输出，换行只能用 \n，写 <br> 会原样显示。
+// ★ purpose 那条用函数而不是字符串：各用途的说明来自 GITHUB_PURPOSES，
+//   点开时才拼，这样加/改用途不用回来同步文案。
+AppHelp.register('github', {
+    page: {
+        title: '关于 GitHub 仓库',
+        content:
+            '这页把「仓库」和「用途」分成两层：\n'
+            + '仓库配置里存的是一个个仓库和它的令牌，用途配置只是挑一个仓库来用。'
+            + '所以同一个仓库能被多个用途共用，换令牌也只用改一处。\n\n'
+            + '【令牌放在哪】\n'
+            + '令牌明文存在这台设备的浏览器里，也会一起进备份文件——备份必须含令牌，'
+            + '否则换设备恢复后已归档的旧内容会因为拿不到凭据而读不回来。'
+            + '所以请用细粒度 PAT 且只给目标仓库的写权限，并且别把备份文件随手发给别人。\n\n'
+            + '【改绑定会不会弄丢旧内容】\n'
+            + '不会。已归档的每条内容都记着它当时用的仓库，之后换绑定或加新仓库都不影响它。'
+            + '但删掉仓库定义会连令牌一起没，那些旧内容就读不到了——删除前会提示。\n\n'
+            + '改完记得点底部的「保存仓库配置」。'
+    },
+    repo: {
+        title: '仓库配置说明',
+        content:
+            '这一段定义仓库和令牌，下面的用途只是引用它。同一个仓库可以被多个用途共用。\n\n'
+            + '【选择仓库】\n'
+            + '右边三个按钮依次是：新增一个空仓库、以当前仓库为模板复制一份、删除当前仓库。'
+            + '切换下拉时当前填的内容会自动留住，不会丢。\n\n'
+            + '【备注名】\n'
+            + '只给你自己看，用途配置里靠它区分是哪个仓库。\n\n'
+            + '【访问令牌】\n'
+            + '建议用细粒度 PAT（Fine-grained token），权限只勾这一个仓库的 Contents 读写。\n\n'
+            + '【用户名 / 仓库名】\n'
+            + 'GitHub 上的账号名和仓库名。建议单独建一个私有仓库专门存这些内容。\n\n'
+            + '【分支】\n'
+            + '一般填 main。填完点「测试连接」验一下连通性和写权限，别等到归档时才发现填错。'
+    },
+    purpose: {
+        title: '用途配置说明',
+        content: () => {
+            const items = (typeof GITHUB_PURPOSES !== 'undefined' ? GITHUB_PURPOSES : [])
+                .map(p => `【${p.label}】\n${p.hint || '（暂无说明）'}`)
+                .join('\n\n');
+            return '每项用途挑一个上面定义好的仓库。选「不使用」＝该内容只留在本机，'
+                + '清缓存或换设备就没了。\n\n'
+                + '存放目录是定死的，不用填也改不了：填错了内容会散在奇怪的地方，'
+                + '而且改目录会让按旧目录归档的内容找不回来。\n\n'
+                + items;
+        }
+    }
+});
 
 function _ghVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
 function _ghSetVal(id, v) { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; }
@@ -180,6 +243,16 @@ async function testGithubRepoConnection() {
 // 用途绑定段
 // ============================================================
 
+// 用途行左边的小图标。纯装饰，按 key 取，取不到就落回默认那个 ——
+// 所以往 GITHUB_PURPOSES 加新用途依然不用回来改这个文件。
+// 图标放在页面层而不是 GITHUB_PURPOSES 里，是因为 js/api/ 那层不该认识长什么样。
+const _GH_PURPOSE_ICONS = {
+    backup: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
+    voice: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>'
+};
+const _GH_PURPOSE_ICON_FALLBACK = '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>';
+
 /**
  * 按 GITHUB_PURPOSES 渲染用途行。每行就是「用途名 + 一个仓库下拉」，没别的。
  *
@@ -191,6 +264,9 @@ async function testGithubRepoConnection() {
  *     两个地方都能改同一个开关就是重复
  *   这样"一个用途只对应一个仓库"这件事，看一眼就能确认，不需要猜。
  *
+ * ★ 行内不再写 hint —— 各用途的说明搬进了「用途配置」旁边的问号（见文件顶部
+ *   AppHelp.register）。文案还是从 GITHUB_PURPOSES 来，只是换了个地方显示。
+ *
  * 每次仓库列表变动都要重渲染，否则下拉里还留着已删掉的仓库。
  */
 function _ghRenderPurposes() {
@@ -201,24 +277,31 @@ function _ghRenderPurposes() {
     GITHUB_PURPOSES.forEach(p => {
         const binding = _ghDraft.bindings[p.key] || {};
 
+        // 版式跟消息通知页的"带输入框的设置项"一致：标题一行，控件占满下一行。
+        // 下拉里的文案可能是「语音仓库（user/repo）」这种长串，塞不进右侧窄栏。
         const row = document.createElement('div');
-        row.className = 'gh-purpose';
+        row.className = 'settings-item column-layout';
 
-        const nameEl = document.createElement('div');
-        nameEl.className = 'gh-purpose-name';
+        const header = document.createElement('div');
+        header.className = 'item-header';
+
+        const iconBox = document.createElement('div');
+        iconBox.className = 'setting-icon-box';
+        iconBox.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+            + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            + (_GH_PURPOSE_ICONS[p.key] || _GH_PURPOSE_ICON_FALLBACK)
+            + '</svg>';
+        header.appendChild(iconBox);
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'item-name';
         nameEl.textContent = p.label;
-        row.appendChild(nameEl);
+        header.appendChild(nameEl);
 
-        if (p.hint) {
-            const hint = document.createElement('p');
-            hint.className = 'gh-purpose-hint';
-            hint.textContent = p.hint;
-            row.appendChild(hint);
-        }
+        row.appendChild(header);
 
-        const group = document.createElement('div');
-        group.className = 'form-group gh-purpose-select';
         const repoSel = document.createElement('select');
+        repoSel.className = 'form-control settings-input-text';
         const emptyOpt = document.createElement('option');
         emptyOpt.value = '';
         emptyOpt.textContent = '不使用';
@@ -232,8 +315,7 @@ function _ghRenderPurposes() {
         });
         // 绑定的仓库可能刚被删了 —— 那就落回"不使用"，不留悬空 id
         repoSel.value = _ghDraft.repos.some(r => r.id === binding.repoId) ? binding.repoId : '';
-        group.appendChild(repoSel);
-        row.appendChild(group);
+        row.appendChild(repoSel);
         host.appendChild(row);
 
         // 就地写回草稿，不用等保存时再回来扫 DOM。
@@ -315,6 +397,8 @@ function openGithubReposScreen() {
     on('gh-del-repo', _ghDeleteRepo);
     on('gh-test-btn', testGithubRepoConnection);
     on('gh-save-btn', saveGithubRepos);
+    // header 右上角的问号 = 整页说明。小标题旁边那两个问号走 HTML 里的 onclick
+    on('gh-help-btn', () => AppHelp.show('github', 'page'));
 
     // 切仓库前先把当前编辑写回草稿，否则改完直接切走改动就丢了
     const select = document.getElementById('gh-repo-select');
