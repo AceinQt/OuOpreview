@@ -755,6 +755,90 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
 };
 
 // ================================================================
+// === AppHelp: 小标题右边的问号说明 ==============================
+// ================================================================
+// 设置类页面上大段的说明文字会把设置项本身挤没了，所以统一收进问号弹窗：
+//   · 小标题右边一个问号 → 讲这一段
+//   · app-header 右边一个 action-btn → 讲整个页面
+// 页面上只留一句话都不留，需要的人点问号，不需要的人眼里就是干净的设置列表。
+//
+// ★ 文案不集中放在这个文件里 —— 每个页面模块自己 register 自己的那几条，
+//   改功能的时候文案就在手边，不用跨文件找，也不会攒成一个几百行的大字典。
+//   这里只管"存"和"弹"两件事。
+//
+// 用法：
+//   模块加载时（js/settings/github_repos.js 那样）：
+//     AppHelp.register('github', {
+//         page: { title: '关于 GitHub 仓库', content: '……' },
+//         repo: { title: '仓库配置说明',     content: () => `……` }   // 函数 = 点开时才生成
+//     });
+//   HTML 里（notification-settings-screen / github-repos-screen 那样）：
+//     <svg class="settings-group-info-icon" onclick="showHelp('github','repo')" …>
+//
+// ★ 正文走 AppUI.alert，而 AppUI 用的是 innerText —— 换行写 \n，不要写 <br>。
+// ================================================================
+const AppHelp = {
+    // scope（页面名）→ { key: {title, content} }。scope 是为了让不同页面能各用
+    // 各自的 'page'、'repo' 这种短 key，不用担心撞车
+    _scopes: {},
+
+    /**
+     * 注册说明文案。同一个 scope 可以多次调用，结果是合并 —— 一个页面拆成
+     * 几个模块时，各自注册自己那几条即可
+     * @param {string} scope  页面/模块名，如 'notify'、'github'
+     * @param {Object} topics { key: {title, content} }；value 直接给字符串时标题用默认值
+     */
+    register(scope, topics) {
+        if (!scope || !topics) return;
+        const bucket = this._scopes[scope] || (this._scopes[scope] = {});
+        Object.keys(topics).forEach(key => {
+            const topic = topics[key];
+            bucket[key] = (typeof topic === 'string' || typeof topic === 'function')
+                ? { title: '说明', content: topic }
+                : topic;
+        });
+    },
+
+    /** 取一条，没注册返回 null */
+    get(scope, key) {
+        const bucket = this._scopes[scope];
+        return (bucket && bucket[key]) || null;
+    },
+
+    /**
+     * 弹出说明。content 允许是函数，点开的那一刻才求值 ——
+     * 像"用途列表"这种内容跟着数据变的说明，写死字符串就会过期
+     */
+    show(scope, key) {
+        const topic = this.get(scope, key);
+        if (!topic) {
+            console.warn(`[AppHelp] 未注册的说明：${scope}/${key}`);
+            return;
+        }
+        const title = topic.title || '说明';
+        let content = topic.content;
+        if (typeof content === 'function') {
+            try {
+                content = content();
+            } catch (err) {
+                // 说明文案生成失败不该把页面带崩，退化成一句话就行
+                console.warn(`[AppHelp] ${scope}/${key} 文案生成失败`, err);
+                content = '说明加载失败了。';
+            }
+        }
+        if (typeof AppUI !== 'undefined' && typeof AppUI.alert === 'function') {
+            AppUI.alert(String(content || ''), title, '我知道了');
+        } else {
+            alert(`【${title}】\n\n${content}`);
+        }
+    }
+};
+window.AppHelp = AppHelp;
+
+// HTML 的 onclick 里用的短名字：showHelp('github', 'repo')
+window.showHelp = function (scope, key) { AppHelp.show(scope, key); };
+
+// ================================================================
 // === historyToPlainText: 聊天记录转纯文本（过滤图片等非文本内容）===
 // ================================================================
 function historyToPlainText(history) {
