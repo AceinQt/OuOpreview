@@ -1,51 +1,69 @@
 /* ============================================================
    GitHub 仓库设置页
    ============================================================
-   仓库定义（凭据）和用途绑定（谁用哪个仓库）分两段。
-   表单控件本身复用 components.css / api.css 里的 .form-group、.switch，
-   这里只补这个页面特有的分段标题、用途行和测试结果块。 */
+   版式跟 notification-settings-screen 保持一致：灰底 + settings-group-title
+   + settings-card + settings-item，那套类都在 settings_screen.css 里，
+   这里只补这个页面独有的两样东西：
+     · .gh-inline-row  —— 输入框旁边还要挂按钮的那两行
+     · .gh-test-result —— 测试连接的结果块
+   说明文字一律不上页面，收在小标题和 header 的问号里（见 js/settings/github_repos.js）。 */
 #github-repos-screen {
-    background-color: var(--gray-color);  /* 与存储页面一致的浅灰色背景 */   
+    background-color: var(--gray-color);  /* 与存储页面一致的浅灰色背景 */
 }
 
+/* header 跟着一起灰，和内容区连成一片（同消息通知页） */
 #github-repos-screen .app-header {
-    background-color: var(--white-color); 
+    background-color: var(--gray-color);
+    border: none;
+}
+
+/* header 右上角的问号：action-btn-group 默认给 svg 上 fill，
+   这个图标是描边款，得把 fill 关掉否则会糊成一个实心圆 */
+#github-repos-screen .app-header .action-btn-group .action-btn svg {
+    fill: none;
 }
 
 #github-repos-screen .content {
-    padding: 15px; /* 上下左右留出间距 */
-}
-
-.gh-section {
-    margin: 0 0 15px;
-    padding: 16px;
-    background: #fff;
-    border-radius: 14px;
-}
-
-.gh-section-title {
-    margin: 0 0 4px;
-    color: #333;
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.gh-section-desc {
-    margin: 0 0 16px;
-    color: #8a9399;
-    font-size: 12px;
-    line-height: 1.6;
-}
-
-/* ── 仓库管理按钮行（同 api.css 的 .api-preset-btns-row）────────── */
-.gh-btns-row {
+    padding: 0 15px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ── 输入框 + 旁边的小按钮 ──────────────────────────────────────
+   column-layout 里的控件本来靠 .settings-input-text 自己缩进 47px，
+   一旦并排放就得把缩进提到这个容器上，否则两边各缩一次会串位。 */
+#github-repos-screen .gh-inline-row {
+    display: flex;
+    align-items: center;
     gap: 8px;
+    margin-left: 47px;
+    width: calc(100% - 47px);
+}
+
+#github-repos-screen .gh-inline-row .settings-input-text {
+    margin-left: 0;
+    width: auto;
+    flex: 1;
+    min-width: 0;   /* 没这句 flex 子项不肯被压缩，按钮会被挤出卡片 */
+}
+
+/* 仓库下拉里可能是「语音仓库（user/repo）」这种长文本，别把按钮顶出去 */
+#github-repos-screen .gh-inline-row select {
+    text-overflow: ellipsis;
+}
+
+/* 保存按钮：.bottom-actions 自带 25px 左右内边距，叠上 content 的 15px 会比卡片窄一截，
+   这里把横向那份清掉，让按钮和上面的卡片对齐 */
+#github-repos-screen .bottom-actions {
+    padding: 15px 0 25px;
 }
 
 /* ── 测试连接结果 ──────────────────────────────────────────── */
 .gh-test-result {
-    margin-top: 14px;
+    margin: 0;
     padding: 14px;
     border: 1px solid #d9e8ef;
     border-radius: 12px;
@@ -66,40 +84,4 @@
     border-color: #b6e3c4;
     background: #f6fdf8;
     color: #2f6b43;
-}
-
-/* ── 用途行 ────────────────────────────────────────────────── */
-.gh-purpose {
-    padding: 14px 0;
-    border-top: 1px solid #f0f2f4;
-}
-
-.gh-purpose:first-child {
-    padding-top: 0;
-    border-top: 0;
-}
-
-.gh-purpose-name {
-    color: #333;
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.gh-purpose-hint {
-    margin: 4px 0 0;
-    color: #8a9399;
-    font-size: 12px;
-    line-height: 1.6;
-}
-
-/* 用途行只有一个仓库下拉，没有开关也没有目录输入框 */
-.gh-purpose-select {
-    margin: 10px 0 0;
-}
-
-.gh-footnote {
-    margin: 0 16px 20px;
-    color: #8a9399;
-    font-size: 11px;
-    line-height: 1.7;
 }
