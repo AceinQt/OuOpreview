@@ -9,8 +9,12 @@
 // 对外符号：
 //   IMAGE_PROVIDERS / imageProviderLabel
 //   _normalizeImageSettings / _normalizeImagePreset / _newImagePresetId
+//   getImagePreset / getImagePresetOptions / resolveImagePreset / resolveImagePresetForChat
+//   imageMimeExtension
 //   generateImage
 // ============================================================
+
+const IMAGE_GENERATION_TIMEOUT_MS = 120000;
 
 // 预留了服务商体系，将来加 NAI、NanoBanana 直接往这里加枚举
 const IMAGE_PROVIDERS = [
@@ -34,14 +38,15 @@ function _newImagePresetId() {
 function _normalizeImagePreset(raw, legacyConfig) {
     const p = raw || {};
     const provider = IMAGE_PROVIDERS.some(x => x.value === p.provider) ? p.provider : 'openai';
-    
+    const legacy = legacyConfig || {};
+
     return {
-        id: p.id || _newImagePresetId(),
-        name: p.name || '未命名生图预设',
+        id: String(p.id || _newImagePresetId()).trim(),
+        name: String(p.name || '未命名生图预设').trim() || '未命名生图预设',
         provider: provider,
-        // API 地址和 Key 现已绑定至预设
-        apiUrl: p.apiUrl !== undefined ? String(p.apiUrl).trim() : (legacyConfig ? legacyConfig.apiUrl : ''),
-        apiKey: p.apiKey !== undefined ? String(p.apiKey).trim() : (legacyConfig ? legacyConfig.apiKey : ''),
+        // 只有旧数据缺字段时才继承旧全局值；显式空字符串不会借用别的凭据。
+        apiUrl: p.apiUrl !== undefined ? String(p.apiUrl).trim() : String(legacy.apiUrl || '').trim(),
+        apiKey: p.apiKey !== undefined ? String(p.apiKey).trim() : String(legacy.apiKey || '').trim(),
         // 下面是 OpenAI 体系常用参数
         model: String(p.model || 'dall-e-3').trim(),
         size: String(p.size || '1024x1024').trim(),
@@ -54,45 +59,233 @@ function _normalizeImagePreset(raw, legacyConfig) {
 /** 归一化全局生图配置 */
 function _normalizeImageSettings(raw) {
     const source = raw || {};
-    // 供老用户首次迁移时使用
-    const legacyConfig = { apiUrl: source.apiUrl || '', apiKey: source.apiKey || '' };
-
-    const presets = Array.isArray(source.imagePresets)
-        ? source.imagePresets.filter(p => p && p.id).map(p => _normalizeImagePreset(p, legacyConfig))
-        : [];
-        
-    return {
-        // 全局的 url 和 key 作为备用/兜底保留
+    const legacyConfig = {
         apiUrl: String(source.apiUrl || '').trim(),
-        apiKey: String(source.apiKey || '').trim(),
-        imagePresets: presets,
-        defaultPresetId: source.defaultPresetId || (presets[0] ? presets[0].id : '')
+        apiKey: String(source.apiKey || '').trim()
     };
+    const usedIds = new Set();
+    const presets = [];
+
+    if (Array.isArray(source.imagePresets)) {
+        source.imagePresets.filter(p => p && typeof p === 'object').forEach(rawPreset => {
+            const preset = _normalizeImagePreset(rawPreset, legacyConfig);
+            if (!preset.id || usedIds.has(preset.id)) preset.id = _newImagePresetId();
+            usedIds.add(preset.id);
+            presets.push(preset);
+        });
+    }
+
+    // 兼容只有旧全局 URL/Key、还没有预设数组的用户。
+    if (!presets.length && (legacyConfig.apiUrl || legacyConfig.apiKey)) {
+        const legacyPreset = _normalizeImagePreset({ name: '用户默认' }, legacyConfig);
+        usedIds.add(legacyPreset.id);
+        presets.push(legacyPreset);
+    }
+
+    const requestedDefaultId = String(source.defaultPresetId || '').trim();
+    const defaultPresetId = presets.some(p => p.id === requestedDefaultId)
+        ? requestedDefaultId
+        : ((!Array.isArray(source.imagePresets) || source.imagePresets.length === 0) && presets.length === 1
+            ? presets[0].id
+            : '');
+
+    return {
+        // 旧字段仅供迁移；新调用必须使用预设自己的 URL/Key。
+        apiUrl: legacyConfig.apiUrl,
+        apiKey: legacyConfig.apiKey,
+        imagePresets: presets,
+        defaultPresetId: defaultPresetId
+    };
+}
+
+function _getImageSettingsSource(settings) {
+    if (settings) return settings;
+    if (typeof db !== 'undefined' && db && db.imageSettings) return db.imageSettings;
+    return {};
+}
+
+/** 按 id 精确取预设；空值或找不到时返回 null，不自动回退。 */
+function getImagePreset(presetId, settings) {
+    const wanted = String(presetId || '').trim();
+    if (!wanted) return null;
+    const config = _normalizeImageSettings(_getImageSettingsSource(settings));
+    return config.imagePresets.find(p => p.id === wanted) || null;
+}
+
+/** 私聊/群聊共用的选项数据，只提供数据，不操作 DOM。 */
+function getImagePresetOptions(settings) {
+    const config = _normalizeImageSettings(_getImageSettingsSource(settings));
+    const defaultPreset = config.imagePresets.find(p => p.id === config.defaultPresetId) || null;
+    return [
+        {
+            value: '',
+            label: defaultPreset ? `全局默认 · ${defaultPreset.name}` : '全局默认（未配置）'
+        },
+        ...config.imagePresets.map(p => ({
+            value: p.id,
+            label: `${p.name} · ${imageProviderLabel(p.provider)}`
+        }))
+    ];
+}
+
+/** 指定预设有效就使用，否则回退到明确设置的全局默认；仍无可用项则返回 null。 */
+function resolveImagePreset(presetId, settings) {
+    const config = _normalizeImageSettings(_getImageSettingsSource(settings));
+    const wanted = String(presetId || '').trim();
+    if (wanted) {
+        const selected = config.imagePresets.find(p => p.id === wanted);
+        if (selected) return selected;
+    }
+    return config.imagePresets.find(p => p.id === config.defaultPresetId) || null;
+}
+
+/** 私聊角色和群聊对象都使用同一个 imageApiPresetId 字段。 */
+function resolveImagePresetForChat(chat, settings) {
+    return resolveImagePreset(chat && chat.imageApiPresetId, settings);
 }
 
 // ============================================================
 // 具体服务商的请求实现
 // ============================================================
 
+function imageMimeExtension(mime) {
+    const normalized = String(mime || '').toLowerCase().split(';')[0].trim();
+    const extensions = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'image/avif': 'avif',
+        'image/bmp': 'bmp'
+    };
+    return extensions[normalized] || 'img';
+}
+
+function _normalizeImageMime(mime) {
+    const normalized = String(mime || '').toLowerCase().split(';')[0].trim();
+    return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+}
+
+function _detectImageMime(bytes, declaredMime) {
+    if (bytes.length >= 8 &&
+        bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+        bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) {
+        return 'image/png';
+    }
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        return 'image/jpeg';
+    }
+    if (bytes.length >= 6) {
+        const gif = String.fromCharCode(...bytes.slice(0, 6));
+        if (gif === 'GIF87a' || gif === 'GIF89a') return 'image/gif';
+    }
+    if (bytes.length >= 12) {
+        const riff = String.fromCharCode(...bytes.slice(0, 4));
+        const webp = String.fromCharCode(...bytes.slice(8, 12));
+        if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp';
+    }
+    if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return 'image/bmp';
+
+    const normalizedDeclared = _normalizeImageMime(declaredMime);
+    return normalizedDeclared.startsWith('image/') ? normalizedDeclared : '';
+}
+
+function _validateImageBytes(bytes, declaredMime) {
+    const normalizedBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+    if (!normalizedBytes.byteLength) throw new Error('接口返回了空图片');
+
+    const mime = _detectImageMime(normalizedBytes, declaredMime);
+    if (!mime) throw new Error('接口返回的内容不是可识别的图片');
+    if (mime === 'image/svg+xml') throw new Error('暂不接受 SVG 生图结果，请让接口返回 PNG、JPEG 或 WebP');
+    return { bytes: normalizedBytes, mime };
+}
+
+function _decodeBase64Image(rawBase64, fallbackMime = 'image/png') {
+    let encoded = String(rawBase64 || '').trim();
+    let declaredMime = fallbackMime;
+    const dataUriMatch = encoded.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+    if (dataUriMatch) {
+        declaredMime = dataUriMatch[1];
+        encoded = dataUriMatch[2];
+    }
+
+    encoded = encoded.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    if (!encoded) throw new Error('接口返回了空的 Base64 图片');
+    const padding = encoded.length % 4;
+    if (padding) encoded += '='.repeat(4 - padding);
+
+    let binary;
+    try {
+        binary = atob(encoded);
+    } catch (_) {
+        throw new Error('接口返回的 Base64 图片无法解析');
+    }
+
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return _validateImageBytes(bytes, declaredMime);
+}
+
+async function _downloadGeneratedImage(url, signal) {
+    const targetUrl = String(url || '').trim();
+    if (!targetUrl) throw new Error('接口没有返回可下载的图片地址');
+    if (targetUrl.startsWith('data:')) {
+        const decoded = _decodeBase64Image(targetUrl);
+        return { ...decoded, source: 'url' };
+    }
+
+    let response;
+    try {
+        response = await fetch(targetUrl, { signal });
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        throw new Error('图片已经生成，但浏览器无法下载中转站返回的临时链接。请检查该中转站是否允许跨域下载（CORS）');
+    }
+
+    if (!response.ok) {
+        throw new Error(`图片已经生成，但下载临时链接失败（HTTP ${response.status}）`);
+    }
+
+    let buffer;
+    try {
+        buffer = await response.arrayBuffer();
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        throw new Error(`读取生成图片失败：${error.message || '未知错误'}`);
+    }
+
+    const validated = _validateImageBytes(new Uint8Array(buffer), response.headers.get('content-type'));
+    return { ...validated, source: 'url' };
+}
+
+async function _readImageApiError(response) {
+    let text = '';
+    try { text = await response.text(); } catch (_) {}
+    if (!text) return '';
+    try {
+        const data = JSON.parse(text);
+        return String(data?.error?.message || data?.message || data?.detail || '').trim();
+    } catch (_) {
+        return text.trim().slice(0, 300);
+    }
+}
+
+function _buildOpenAIImageEndpoint(apiUrl) {
+    let endpoint = String(apiUrl || 'https://api.openai.com').trim().replace(/\/+$/, '');
+    if (!endpoint) endpoint = 'https://api.openai.com';
+    if (endpoint.endsWith('/images/generations')) return endpoint;
+    return /\/v\d+$/.test(endpoint)
+        ? `${endpoint}/images/generations`
+        : `${endpoint}/v1/images/generations`;
+}
+
 /**
  * OpenAI 格式图像生成请求
  * 支持 DALL-E 2, DALL-E 3，以及部分中转站封装的 Midjourney 等。
  */
-
-async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt) {
-    let endpoint = (apiUrl || 'https://api.openai.com').trim().replace(/\/+$/, '');
-    
-    // ★ 智能 URL 拼接逻辑
-    if (!endpoint.endsWith('/images/generations')) {
-        // 如果用户填了带版本号的后缀（如 /v1, /v2, /api/v3 等），直接补具体的接口路径
-        if (/\/v\d+$/.test(endpoint)) {
-            endpoint = `${endpoint}/images/generations`;
-        } else {
-            // 否则默认当作裸域名，补全标准的 /v1/images/generations
-            endpoint = `${endpoint}/v1/images/generations`;
-        }
-    }
-    
+async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt, signal) {
+    const endpoint = _buildOpenAIImageEndpoint(apiUrl);
     const payload = {
         model: preset.model,
         prompt: prompt,
@@ -106,33 +299,76 @@ async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt) {
         if (preset.style) payload.style = preset.style;
     }
 
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(payload)
-    });
+    let response;
+    try {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(payload),
+            signal
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        throw new Error(`连接生图接口失败：${error.message || '网络错误'}`);
+    }
 
     if (!response.ok) {
-        let detail = '';
-        try {
-            const errData = await response.json();
-            if (errData.error && errData.error.message) {
-                detail = errData.error.message;
-            }
-        } catch (_) {}
+        const detail = await _readImageApiError(response);
         throw new Error(`HTTP ${response.status}${detail ? `：${detail}` : ''}`);
     }
 
-    const payloadData = await response.json();
-    if (!payloadData.data || !payloadData.data[0] || (!payloadData.data[0].url && !payloadData.data[0].b64_json)) {
+    let payloadData;
+    try {
+        payloadData = await response.json();
+    } catch (_) {
+        throw new Error('接口返回格式异常：响应不是有效 JSON');
+    }
+
+    const firstImage = payloadData && Array.isArray(payloadData.data) ? payloadData.data[0] : null;
+    if (!firstImage || (!firstImage.url && !firstImage.b64_json)) {
         throw new Error('接口返回格式异常，未找到图片数据');
     }
-    
-    // 返回标准化的图片 URL（或者是 base64 data URI）
-    return payloadData.data[0].url || `data:image/png;base64,${payloadData.data[0].b64_json}`;
+
+    if (firstImage.b64_json) {
+        const decoded = _decodeBase64Image(firstImage.b64_json, 'image/png');
+        return { ...decoded, source: 'b64_json' };
+    }
+    return _downloadGeneratedImage(firstImage.url, signal);
+}
+
+function _createImageRequestScope(parentSignal, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : IMAGE_GENERATION_TIMEOUT_MS;
+    let timedOut = false;
+    let parentAborted = false;
+
+    const abortFromParent = () => {
+        parentAborted = true;
+        controller.abort();
+    };
+    if (parentSignal) {
+        if (parentSignal.aborted) abortFromParent();
+        else parentSignal.addEventListener('abort', abortFromParent, { once: true });
+    }
+
+    const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, timeout);
+
+    return {
+        signal: controller.signal,
+        timeout,
+        didTimeOut: () => timedOut,
+        wasParentAborted: () => parentAborted,
+        cleanup: () => {
+            clearTimeout(timer);
+            if (parentSignal) parentSignal.removeEventListener('abort', abortFromParent);
+        }
+    };
 }
 
 // ============================================================
@@ -144,31 +380,51 @@ async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt) {
  * 
  * @param {object} args
  * @param {string} args.prompt    用户输入的提示词
- * @param {object} args.preset    当前选中的生图预设
+ * @param {object} [args.preset]  当前选中的生图预设；省略时解析全局默认
  * @param {object} [args.settings] 覆盖 db.imageSettings (给设置页试听用)
- * @returns {Promise<string>} 图片的 URL 或 Base64 字符串
+ * @param {AbortSignal} [args.signal] 外部取消信号
+ * @param {number} [args.timeoutMs] 超时时间，默认 120 秒
+ * @returns {Promise<{bytes: Uint8Array, mime: string, source: 'b64_json'|'url'}>}
  */
-async function generateImage({ prompt, preset, settings }) {
-    const config = _normalizeImageSettings(settings || window.db.imageSettings);
-    const imagePreset = _normalizeImagePreset(preset, config);
-    const provider = imagePreset.provider;
+async function generateImage({ prompt, preset, settings, signal, timeoutMs } = {}) {
+    const promptText = String(prompt || '').trim();
+    if (!promptText) throw new Error('提示词不能为空');
 
-    // 优先使用当前预设的凭据，如果没有再使用全局兜底
-    const activeUrl = imagePreset.apiUrl || config.apiUrl;
-    const activeKey = imagePreset.apiKey || config.apiKey;
+    const config = _normalizeImageSettings(_getImageSettingsSource(settings));
+    const imagePreset = preset
+        ? _normalizeImagePreset(preset, config)
+        : (config.imagePresets.find(p => p.id === config.defaultPresetId) || null);
 
-    if (!activeKey) throw new Error('尚未配置生图 API Key');
-    if (!prompt) throw new Error('提示词不能为空');
+    if (!imagePreset) throw new Error('尚未设置全局默认生图预设');
+    if (!imagePreset.apiKey) throw new Error(`生图预设「${imagePreset.name}」尚未配置 API Key`);
+    if (!imagePreset.model) throw new Error(`生图预设「${imagePreset.name}」尚未配置模型`);
 
-    // ★ 路由分发区：未来添加 NAI 等平台，只需在这里增加 case 即可
-    switch (provider) {
-        case 'openai':
-            return await _generateOpenAIImage(activeUrl, activeKey, imagePreset, prompt);
-            
-        // case 'nai':
-        //     return await _generateNovelAIImage(activeUrl, activeKey, imagePreset, prompt);
-            
-        default:
-            throw new Error(`暂不支持的生图服务商: ${provider}`);
+    const requestScope = _createImageRequestScope(signal, timeoutMs);
+    try {
+        switch (imagePreset.provider) {
+            case 'openai':
+                return await _generateOpenAIImage(
+                    imagePreset.apiUrl,
+                    imagePreset.apiKey,
+                    imagePreset,
+                    promptText,
+                    requestScope.signal
+                );
+
+            default:
+                throw new Error(`暂不支持的生图服务商: ${imagePreset.provider}`);
+        }
+    } catch (error) {
+        if (requestScope.didTimeOut()) {
+            throw new Error(`生图请求超过 ${Math.round(requestScope.timeout / 1000)} 秒，已自动取消`);
+        }
+        if (requestScope.wasParentAborted() || (signal && signal.aborted)) {
+            const aborted = new Error('生图请求已取消');
+            aborted.name = 'AbortError';
+            throw aborted;
+        }
+        throw error;
+    } finally {
+        requestScope.cleanup();
     }
 }
