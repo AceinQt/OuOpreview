@@ -562,12 +562,16 @@ function _setupBackGuard() {
     if (!backBtn) return;
     // 监听挂在按钮自己身上，冒泡时先于 body 上的委托代理执行
     backBtn.addEventListener('click', async (e) => {
-        if (!_hasAnyDirty()) return;   // 无脏数据，正常冒泡给全局代理
+        if (!_hasAnyDirty()) {
+            _clearImagePreview({ abortRequest: true, clearResult: true });
+            return;   // 无脏数据，正常冒泡给全局代理
+        }
         e.stopPropagation();
         e.preventDefault();
         const leave = await AppUI.confirm('您还未保存，是否离开页面？', '提示', '离开', '取消');
         if (leave) {
             _API_STATE_KEYS.forEach(_clearDirty);
+            _clearImagePreview({ abortRequest: true, clearResult: true });
             if (typeof navigateTo === 'function') navigateTo('settings-screen');
         }
     });
@@ -1479,7 +1483,52 @@ function initVoiceApiTab() {
 
 let _imageDraft = null;
 let _imageLoadedPresetId = '';
-let _currentPreviewImageUrl = '';
+let _currentPreviewImage = null;
+let _imagePreviewAbortController = null;
+
+function _setImageDownloadEnabled(enabled) {
+    const btn = document.getElementById('api-image-download-btn');
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.classList.toggle('btn-neutral', !enabled);
+    btn.classList.toggle('btn-secondary', !!enabled);
+}
+
+function _clearImagePreview({ abortRequest = false, clearResult = false } = {}) {
+    if (abortRequest && _imagePreviewAbortController) {
+        _imagePreviewAbortController.abort();
+        _imagePreviewAbortController = null;
+    }
+    if (_currentPreviewImage && _currentPreviewImage.objectUrl) {
+        URL.revokeObjectURL(_currentPreviewImage.objectUrl);
+    }
+    _currentPreviewImage = null;
+
+    const img = document.getElementById('api-image-preview-img');
+    const container = document.getElementById('api-image-preview-container');
+    if (img) img.removeAttribute('src');
+    if (container) container.hidden = true;
+    _setImageDownloadEnabled(false);
+    if (clearResult) _setImageTestResult('', false, true);
+}
+
+function _updateImageDefaultToggle() {
+    const toggle = document.getElementById('api-image-set-default');
+    if (!toggle) return;
+    const hasPreset = !!(_imageDraft && _imageLoadedPresetId &&
+        _imageDraft.imagePresets.some(p => p.id === _imageLoadedPresetId));
+    toggle.disabled = !hasPreset;
+    toggle.checked = hasPreset && _imageDraft.defaultPresetId === _imageLoadedPresetId;
+}
+
+function _uniqueImagePresetName(rawName, takenNames) {
+    const base = String(rawName || '生图预设').trim() || '生图预设';
+    const taken = takenNames instanceof Set ? takenNames : new Set(takenNames || []);
+    if (!taken.has(base)) return base;
+    let suffix = 2;
+    while (taken.has(`${base}${suffix}`)) suffix++;
+    return `${base}${suffix}`;
+}
 
 function _populateImageProviderSelect() {
     const select = document.getElementById('api-image-provider');
@@ -1499,7 +1548,8 @@ function _populateImagePresetSelect(selectedId) {
     _imageDraft.imagePresets.forEach(preset => {
         const option = document.createElement('option');
         option.value = preset.id;
-        option.textContent = `${preset.name} · ${imageProviderLabel(preset.provider)}`;
+        const defaultLabel = preset.id === _imageDraft.defaultPresetId ? ' · 全局默认' : '';
+        option.textContent = `${preset.name} · ${imageProviderLabel(preset.provider)}${defaultLabel}`;
         select.appendChild(option);
     });
     select.value = selectedId || _imageLoadedPresetId || _imageDraft.defaultPresetId || '';
@@ -1521,7 +1571,8 @@ function _applyImagePresetToForm(presetId) {
     _setVal('api-image-size', preset ? preset.size : '1024x1024');
     _setVal('api-image-quality', preset ? preset.quality : 'standard');
     _setVal('api-image-style', preset ? preset.style : 'vivid');
-    
+
+    _updateImageDefaultToggle();
     _populateImagePresetSelect(_imageLoadedPresetId);
 }
 
@@ -1540,33 +1591,36 @@ function _readImagePresetFromForm() {
     });
 }
 
-function _syncImagePresetFromForm() {
+function _syncImagePresetFromForm({ createIfMissing = false } = {}) {
     if (!_imageDraft) return;
     const edited = _readImagePresetFromForm();
 
-    // 自动建第一条预设
-    if (!_imageLoadedPresetId && edited.model) {
+    // 空白页只有在明确保存时才自动建立第一条，避免“新增预设”一次产生两条。
+    if (!_imageLoadedPresetId && createIfMissing && edited.model) {
         const preset = { ...edited, id: _newImagePresetId(), name: edited.name || '默认生图' };
         _imageDraft.imagePresets.push(preset);
         _imageLoadedPresetId = preset.id;
         _populateImagePresetSelect(preset.id);
         _setVal('api-image-preset-name', preset.name);
+        _updateImageDefaultToggle();
         return;
     }
 
     const index = _imageDraft.imagePresets.findIndex(p => p.id === _imageLoadedPresetId);
     if (index < 0) return;
     _imageDraft.imagePresets[index] = { ...edited, name: edited.name || _imageDraft.imagePresets[index].name };
+    if (_getChecked('api-image-set-default')) {
+        _imageDraft.defaultPresetId = _imageLoadedPresetId;
+    } else if (_imageDraft.defaultPresetId === _imageLoadedPresetId) {
+        _imageDraft.defaultPresetId = '';
+    }
 }
 
 function _addImagePreset(copyCurrent = false) {
     _syncImagePresetFromForm();
     const source = copyCurrent && _imageDraft.imagePresets.find(p => p.id === _imageLoadedPresetId);
     const baseName = source ? source.name : '生图预设';
-    const taken = _imageDraft.imagePresets.map(p => p.name);
-    let suffix = source ? 2 : 1;
-    let name = `${baseName}${suffix}`;
-    while (taken.includes(name)) name = `${baseName}${++suffix}`;
+    const name = _uniqueImagePresetName(baseName, _imageDraft.imagePresets.map(p => p.name));
     
     const preset = source 
         ? { ...source, id: _newImagePresetId(), name }
@@ -1582,32 +1636,26 @@ async function _deleteImagePreset() {
     const preset = _imageDraft.imagePresets.find(p => p.id === _imageLoadedPresetId);
     if (!preset) return;
     
-    const ok = await AppUI.confirm(`确定删除预设「${preset.name}」？`, '删除预设', '删除', '取消');
+    const defaultWarning = _imageDraft.defaultPresetId === preset.id
+        ? '\n\n它当前是全局默认，删除后全局默认将清空。'
+        : '';
+    const ok = await AppUI.confirm(`确定删除预设「${preset.name}」？${defaultWarning}`, '删除预设', '删除', '取消');
     if (!ok) return;
-    
+
     _imageDraft.imagePresets = _imageDraft.imagePresets.filter(p => p.id !== preset.id);
+    if (_imageDraft.defaultPresetId === preset.id) _imageDraft.defaultPresetId = '';
     _applyImagePresetToForm((_imageDraft.imagePresets[0] || {}).id);
     _markDirty('image');
 }
 
 function _refreshImageTabUI() {
+    _clearImagePreview({ abortRequest: true, clearResult: true });
     _imageDraft = _normalizeImageSettings(db.imageSettings);
     _populateImageProviderSelect(); 
     // 不再从根节点加载 url 和 key，交给 _applyImagePresetToForm 按预设填充
     _applyImagePresetToForm(_imageDraft.defaultPresetId || (_imageDraft.imagePresets[0] || {}).id);
-    
-    _setImageTestResult('', false, true);
-    const imgContainer = document.getElementById('api-image-preview-container');
-    if(imgContainer) imgContainer.hidden = true;
-    _clearDirty('image');
 
-    _currentPreviewImageUrl = '';
-    const dlBtn = document.getElementById('api-image-download-btn');
-    if (dlBtn) {
-        dlBtn.disabled = true;
-        dlBtn.classList.add('btn-neutral');
-        dlBtn.classList.remove('btn-secondary');
-    }
+    _clearDirty('image');
 }
 
 function _setImageTestResult(message, isError = false, hidden = false) {
@@ -1629,111 +1677,94 @@ async function previewImageGeneration() {
     if (!prompt) return showToast('请输入测试提示词');
 
     const btn = document.getElementById('api-image-preview-btn');
-    const dlBtn = document.getElementById('api-image-download-btn'); 
     const imgContainer = document.getElementById('api-image-preview-container');
     const imgEl = document.getElementById('api-image-preview-img');
 
+    _clearImagePreview({ abortRequest: true, clearResult: false });
+    const requestController = new AbortController();
+    _imagePreviewAbortController = requestController;
+
     btn.classList.add('loading');
     btn.disabled = true;
-    
-    _currentPreviewImageUrl = '';
-    if (dlBtn) {
-        dlBtn.disabled = true;
-        dlBtn.classList.add('btn-neutral');
-        dlBtn.classList.remove('btn-secondary');
-    }
-    
+
     _setImageTestResult('正在生成图像，通常需要 10~30 秒，请稍候...');
     imgContainer.hidden = true;
-    imgEl.src = '';
 
     try {
-        const imageUrl = await generateImage({
+        const result = await generateImage({
             prompt: prompt,
-            preset: preset
+            preset: preset,
+            signal: requestController.signal
         });
-        
+
+        // 如果用户已经离开图像页，旧请求即使晚到也不能重新改写预览。
+        if (_imagePreviewAbortController !== requestController || requestController.signal.aborted) return;
+        const objectUrl = URL.createObjectURL(new Blob([result.bytes], { type: result.mime }));
+        _currentPreviewImage = { objectUrl, bytes: result.bytes, mime: result.mime };
+
         _setImageTestResult('生成成功！');
-        imgEl.src = imageUrl;
+        imgEl.src = objectUrl;
         imgContainer.hidden = false;
-        
-        _currentPreviewImageUrl = imageUrl;
-        if (dlBtn) {
-            dlBtn.disabled = false;
-            dlBtn.classList.remove('btn-neutral');
-            dlBtn.classList.add('btn-secondary'); 
-        }
+        _setImageDownloadEnabled(true);
 
     } catch (error) {
-        _setImageTestResult(`生图失败: ${error.message}`, true);
+        const stillCurrent = _imagePreviewAbortController === requestController;
+        if (stillCurrent && error && error.name !== 'AbortError') {
+            _setImageTestResult(`生图失败: ${error.message}`, true);
+        }
     } finally {
-        btn.classList.remove('loading');
-        btn.disabled = false;
+        if (_imagePreviewAbortController === requestController) {
+            _imagePreviewAbortController = null;
+            btn.classList.remove('loading');
+            btn.disabled = false;
+        }
     }
 }
 
 async function saveImageApiSettings() {
-    _syncImagePresetFromForm();
+    _syncImagePresetFromForm({ createIfMissing: true });
     
     if (!_imageDraft.imagePresets.length && _getVal('api-image-model')) {
         _addImagePreset(false);
     }
 
-    const currentPreset = _readImagePresetFromForm();
+    const legacySettings = db.imageSettings || {};
+    const normalizedPresets = _imageDraft.imagePresets.map(p => _normalizeImagePreset(p));
+    const defaultPresetId = normalizedPresets.some(p => p.id === _imageDraft.defaultPresetId)
+        ? _imageDraft.defaultPresetId
+        : '';
 
     const finalSettings = {
-        // 同步一份当前的 URL/Key 到外层兜底
-        apiUrl: currentPreset.apiUrl,
-        apiKey: currentPreset.apiKey,
-        imagePresets: _imageDraft.imagePresets,
-        defaultPresetId: _imageLoadedPresetId || (_imageDraft.imagePresets[0] && _imageDraft.imagePresets[0].id) || ''
+        // 旧字段只原样保留作兼容，不再随着当前编辑预设漂移。
+        apiUrl: String(legacySettings.apiUrl || '').trim(),
+        apiKey: String(legacySettings.apiKey || '').trim(),
+        imagePresets: normalizedPresets,
+        defaultPresetId
     };
 
     // 检查是否所有预设都没填 Key
-    if (!_imageDraft.imagePresets.some(p => p.apiKey)) return showToast('请至少为一个预设填写 API Key');
+    if (!normalizedPresets.some(p => p.apiKey)) return showToast('请至少为一个预设填写 API Key');
 
     db.imageSettings = finalSettings;
     await saveGlobalKeys(['imageSettings']);
     _imageDraft = _normalizeImageSettings(finalSettings);
+    _applyImagePresetToForm(_imageLoadedPresetId || (_imageDraft.imagePresets[0] || {}).id);
     _clearDirty('image');
-    showToast('图像配置已保存');
+    showToast(defaultPresetId ? '图像配置已保存' : '图像配置已保存，但尚未设置全局默认');
 }
 
 function initImageApiTab() {
     _refreshImageTabUI();
     
     _on('api-image-preview-btn', previewImageGeneration);
-    _on('api-image-download-btn', async () => {
-        if (!_currentPreviewImageUrl) return;
-        
-        try {
-            if (_currentPreviewImageUrl.startsWith('data:')) {
-                // 如果是 Base64，直接触发下载
-                const a = document.createElement('a');
-                a.href = _currentPreviewImageUrl;
-                a.download = `生成图片_${Date.now()}.png`;
-                a.click();
-            } else {
-                // 如果是 URL，由于 CORS 限制，用 <a> 标签的 download 属性可能不管用（只会打开新标签）
-                // 我们通过 fetch 把它转成 blob 强制触发下载
-                showToast('正在获取图片文件...');
-                const res = await fetch(_currentPreviewImageUrl);
-                const blob = await res.blob();
-                const blobUrl = URL.createObjectURL(blob);
-                
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = `生成图片_${Date.now()}.png`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(blobUrl);
-            }
-        } catch (e) {
-            // 如果遇到强硬的跨域限制（Cors Blocked），降级为在新标签页打开图片
-            console.warn('图片跨域下载失败，在新标签页打开：', e);
-            window.open(_currentPreviewImageUrl, '_blank');
-        }
+    _on('api-image-download-btn', () => {
+        if (!_currentPreviewImage) return;
+        const a = document.createElement('a');
+        a.href = _currentPreviewImage.objectUrl;
+        a.download = `生成图片_${Date.now()}.${imageMimeExtension(_currentPreviewImage.mime)}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
     });
     _on('api-image-save-btn', saveImageApiSettings);
     _on('api-image-add-preset', () => _addImagePreset(false));
@@ -1741,11 +1772,25 @@ function initImageApiTab() {
     _on('api-image-del-preset', _deleteImagePreset);
 
     // 极简版导入导出
-    _on('api-image-export-preset', () => {
+    _on('api-image-export-preset', async () => {
         _syncImagePresetFromForm();
         if (!_imageDraft.imagePresets.length) return showToast('无预设可导出');
+        const confirmed = await AppUI.confirm(
+            '导出的预设文件会包含 API Key。请只保存在可信设备上，不要公开分享。',
+            '导出预设',
+            '继续导出',
+            '取消'
+        );
+        if (!confirmed) return;
         const blob = new Blob([JSON.stringify(_imageDraft.imagePresets, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'api_image_presets.json'; a.click();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'api_image_presets.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     });
     
     _on('api-image-import-preset', () => {
@@ -1757,9 +1802,19 @@ function initImageApiTab() {
                 try {
                     const data = JSON.parse(r.result);
                     if (!Array.isArray(data)) throw new Error('格式不对');
-                    data.forEach(p => { p.id = _newImagePresetId(); _imageDraft.imagePresets.push(p); });
-                    _applyImagePresetToForm(_imageDraft.imagePresets[_imageDraft.imagePresets.length-1].id);
-                    _markDirty('image'); showToast('导入成功');
+                    const takenNames = new Set(_imageDraft.imagePresets.map(p => p.name));
+                    let imported = 0;
+                    data.filter(p => p && typeof p === 'object').forEach(rawPreset => {
+                        const normalized = _normalizeImagePreset({ ...rawPreset, id: _newImagePresetId() });
+                        normalized.name = _uniqueImagePresetName(normalized.name, takenNames);
+                        takenNames.add(normalized.name);
+                        _imageDraft.imagePresets.push(normalized);
+                        imported++;
+                    });
+                    if (!imported) throw new Error('文件中没有可用的生图预设');
+                    _applyImagePresetToForm(_imageDraft.imagePresets[_imageDraft.imagePresets.length - 1].id);
+                    _markDirty('image');
+                    showToast(`已导入 ${imported} 个生图预设，请保存图像配置`);
                 } catch(ex) { AppUI.alert('导入失败: ' + ex.message); }
             }; r.readAsText(f);
         }; inp.click();
@@ -1769,17 +1824,7 @@ function initImageApiTab() {
     if (presetSelect) presetSelect.addEventListener('change', () => {
         _syncImagePresetFromForm();
         _applyImagePresetToForm(presetSelect.value);
-        _setImageTestResult('', false, true);
-        document.getElementById('api-image-preview-container').hidden = true;
-        _clearDirty('image');
-
-        _currentPreviewImageUrl = '';
-        const dlBtn = document.getElementById('api-image-download-btn');
-        if (dlBtn) {
-            dlBtn.disabled = true;
-            dlBtn.classList.add('btn-neutral');
-            dlBtn.classList.remove('btn-secondary');
-        }
+        _clearImagePreview({ abortRequest: true, clearResult: true });
     });
 
     // ★ 新增：监听服务商切换，自动填充对应的默认 URL
@@ -1798,9 +1843,13 @@ function initImageApiTab() {
 
     // 监控表单改动，点亮底部的未保存提示
     _watchDirty('image', [
-        'api-image-url', 'api-image-key', 'api-image-preset-name', 'api-image-provider',
+        'api-image-url', 'api-image-key', 'api-image-preset-name', 'api-image-set-default', 'api-image-provider',
         'api-image-model', 'api-image-size', 'api-image-quality', 'api-image-style'
     ]);
+
+    window.addEventListener('pagehide', () => {
+        _clearImagePreview({ abortRequest: true, clearResult: false });
+    });
 }
 
 // ============================================================
@@ -1895,6 +1944,10 @@ function _initApiTab(type) {
 function _activateApiTab(name) {
     const apiScreen = document.getElementById('api-settings-screen');
     if (!apiScreen) return;
+
+    if (_currentApiTab === 'image' && name !== 'image') {
+        _clearImagePreview({ abortRequest: true, clearResult: true });
+    }
 
     // 1. 切换侧边栏按钮的激活状态
     apiScreen.querySelectorAll('[data-api-tab]').forEach(b => b.classList.remove('active'));
