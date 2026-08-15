@@ -245,6 +245,22 @@ function setupChatSettings() {
         });
     }
 
+    // 图像生成：私聊与群聊复用同一弹窗，只先回填侧栏草稿，提交侧栏时再保存。
+    const imageGenerationItem = document.getElementById('setting-chat-image-item');
+    if (imageGenerationItem) {
+        imageGenerationItem.addEventListener('click', async () => {
+            if (typeof openImageGenerationSettingDialog !== 'function') return;
+            const result = await openImageGenerationSettingDialog({
+                imageApiPresetId: document.getElementById('setting-chat-image-preset').value || '',
+                imageAutoGenerate: document.getElementById('setting-chat-image-auto').value === '1'
+            });
+            if (!result) return;
+            document.getElementById('setting-chat-image-preset').value = result.imageApiPresetId;
+            document.getElementById('setting-chat-image-auto').value = result.imageAutoGenerate ? '1' : '0';
+            _refreshChatImageGenerationDisplay();
+        });
+    }
+
     // 清理图片：批量把本聊天的图片转成文字描述
     const cleanupImagesBtn = document.getElementById('cleanup-images-btn');
     if (cleanupImagesBtn) {
@@ -410,6 +426,20 @@ function loadSettingsToSidebar() {
             document.getElementById('setting-chat-weather-forecast').value = e.weatherForecastEnabled ? '1' : '0';
             _refreshChatWeatherDisplay();
         }
+
+        const imagePresetInput = document.getElementById('setting-chat-image-preset');
+        const imageAutoInput = document.getElementById('setting-chat-image-auto');
+        if (imagePresetInput && imageAutoInput) {
+            const binding = typeof normalizeChatImageBinding === 'function'
+                ? normalizeChatImageBinding(e)
+                : {
+                    imageApiPresetId: e.imageApiPresetId || '',
+                    imageAutoGenerate: !!e.imageAutoGenerate
+                };
+            imagePresetInput.value = binding.imageApiPresetId;
+            imageAutoInput.value = binding.imageAutoGenerate ? '1' : '0';
+            _refreshChatImageGenerationDisplay();
+        }
     }
 }
 
@@ -421,6 +451,16 @@ function _refreshChatWeatherDisplay() {
         document.getElementById('setting-chat-weather-mode').value || 'off',
         document.getElementById('setting-chat-weather-preset').value || '',
         document.getElementById('setting-chat-weather-forecast').value === '1'
+    );
+}
+
+/** 按隐藏 input 的当前值刷新侧栏图像生成文案。 */
+function _refreshChatImageGenerationDisplay() {
+    const display = document.getElementById('setting-chat-image-display');
+    if (!display || typeof formatImageGenerationSettingLabel !== 'function') return;
+    display.textContent = formatImageGenerationSettingLabel(
+        document.getElementById('setting-chat-image-preset').value || '',
+        document.getElementById('setting-chat-image-auto').value === '1'
     );
 }
             
@@ -482,6 +522,13 @@ async function saveSettingsFromSidebar() {
             e.weatherMode = weatherModeInput.value || 'off';
             e.weatherLocationPresetId = document.getElementById('setting-chat-weather-preset').value || '';
             e.weatherForecastEnabled = document.getElementById('setting-chat-weather-forecast').value === '1';
+        }
+
+        const imagePresetInput = document.getElementById('setting-chat-image-preset');
+        const imageAutoInput = document.getElementById('setting-chat-image-auto');
+        if (imagePresetInput && imageAutoInput) {
+            e.imageApiPresetId = imagePresetInput.value || '';
+            e.imageAutoGenerate = imageAutoInput.value === '1';
         }
 
         await saveSingleChat(currentChatId, currentChatType);

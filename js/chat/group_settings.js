@@ -492,6 +492,22 @@ function setupGroupChatSystem() {
             _refreshGroupWeatherDisplay();
         });
     }
+
+    // 图像生成：只写群对象，不把预设复制到任何群成员。
+    const groupImageGenerationItem = document.getElementById('setting-group-image-item');
+    if (groupImageGenerationItem) {
+        groupImageGenerationItem.addEventListener('click', async () => {
+            if (typeof openImageGenerationSettingDialog !== 'function') return;
+            const result = await openImageGenerationSettingDialog({
+                imageApiPresetId: document.getElementById('setting-group-image-preset').value || '',
+                imageAutoGenerate: document.getElementById('setting-group-image-auto').value === '1'
+            });
+            if (!result) return;
+            document.getElementById('setting-group-image-preset').value = result.imageApiPresetId;
+            document.getElementById('setting-group-image-auto').value = result.imageAutoGenerate ? '1' : '0';
+            _refreshGroupImageGenerationDisplay();
+        });
+    }
 }
 
 /** 按隐藏 input 的当前值刷新群聊侧栏天气行文案 */
@@ -502,6 +518,16 @@ function _refreshGroupWeatherDisplay() {
         document.getElementById('setting-group-weather-mode').value || 'off',
         document.getElementById('setting-group-weather-preset').value || '',
         document.getElementById('setting-group-weather-forecast').value === '1'
+    );
+}
+
+/** 按隐藏 input 的当前值刷新群聊侧栏图像生成文案。 */
+function _refreshGroupImageGenerationDisplay() {
+    const display = document.getElementById('setting-group-image-display');
+    if (!display || typeof formatImageGenerationSettingLabel !== 'function') return;
+    display.textContent = formatImageGenerationSettingLabel(
+        document.getElementById('setting-group-image-preset').value || '',
+        document.getElementById('setting-group-image-auto').value === '1'
     );
 }
 
@@ -591,6 +617,19 @@ if (groupWeatherModeInput) {
     document.getElementById('setting-group-weather-preset').value = group.weatherLocationPresetId || '';
     document.getElementById('setting-group-weather-forecast').value = group.weatherForecastEnabled ? '1' : '0';
     _refreshGroupWeatherDisplay();
+}
+const groupImagePresetInput = document.getElementById('setting-group-image-preset');
+const groupImageAutoInput = document.getElementById('setting-group-image-auto');
+if (groupImagePresetInput && groupImageAutoInput) {
+    const binding = typeof normalizeChatImageBinding === 'function'
+        ? normalizeChatImageBinding(group)
+        : {
+            imageApiPresetId: group.imageApiPresetId || '',
+            imageAutoGenerate: !!group.imageAutoGenerate
+        };
+    groupImagePresetInput.value = binding.imageApiPresetId;
+    groupImageAutoInput.value = binding.imageAutoGenerate ? '1' : '0';
+    _refreshGroupImageGenerationDisplay();
 }
     // ── 气泡外观 ─────────────────────────────────────────
     if (typeof window.populateChatThemeSelects === 'function') {
@@ -769,6 +808,12 @@ if (groupWeatherModeInputSave) {
     group.weatherMode = groupWeatherModeInputSave.value || 'off';
     group.weatherLocationPresetId = document.getElementById('setting-group-weather-preset').value || '';
     group.weatherForecastEnabled = document.getElementById('setting-group-weather-forecast').value === '1';
+}
+const groupImagePresetInputSave = document.getElementById('setting-group-image-preset');
+const groupImageAutoInputSave = document.getElementById('setting-group-image-auto');
+if (groupImagePresetInputSave && groupImageAutoInputSave) {
+    group.imageApiPresetId = groupImagePresetInputSave.value || '';
+    group.imageAutoGenerate = groupImageAutoInputSave.value === '1';
 }
     await saveSingleChat(currentChatId, 'group');
     showToast('群聊设置已保存！');
