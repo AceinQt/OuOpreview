@@ -953,6 +953,8 @@
             <input type="hidden" id="setting-chat-weather-mode" value="off">
             <input type="hidden" id="setting-chat-weather-preset" value="">
             <input type="hidden" id="setting-chat-weather-forecast" value="0">
+            <input type="hidden" id="setting-chat-image-preset" value="">
+            <input type="hidden" id="setting-chat-image-auto" value="0">
             <!-- ============================== -->
 
             <!-- 设置项列表 -->
@@ -977,6 +979,13 @@
     <select id="setting-chat-api-preset" class="inline-select"></select>
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
+                <!-- 图像生成 -->
+                <div class="settings-item" id="setting-chat-image-item">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5.64 5.64l12.72 12.72"></path><path d="M18.36 5.64L5.64 18.36"></path></svg></div>
+                    <div class="item-details"><span class="item-name">图像生成</span></div>
+                    <span id="setting-chat-image-display" class="item-value">未配置</span>
+                    <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
                 <!-- 天气地点 -->
                 <div class="settings-item" id="setting-chat-weather-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
@@ -1092,6 +1101,8 @@
             <input type="hidden" id="setting-group-weather-mode" value="off">
             <input type="hidden" id="setting-group-weather-preset" value="">
             <input type="hidden" id="setting-group-weather-forecast" value="0">
+            <input type="hidden" id="setting-group-image-preset" value="">
+            <input type="hidden" id="setting-group-image-auto" value="0">
             <input type="file" id="setting-group-chat-bg-upload" accept="image/*" style="display:none;">
             <!-- ======================================= -->
 
@@ -1128,6 +1139,13 @@
     <select id="setting-group-api-preset" class="inline-select"></select>
     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 </div>
+                <!-- 图像生成 -->
+                <div class="settings-item" id="setting-group-image-item">
+                    <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5.64 5.64l12.72 12.72"></path><path d="M18.36 5.64L5.64 18.36"></path></svg></div>
+                    <div class="item-details"><span class="item-name">图像生成</span></div>
+                    <span id="setting-group-image-display" class="item-value">未配置</span>
+                    <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
                 <!-- 天气地点 -->
                 <div class="settings-item" id="setting-group-weather-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.93 19.07l1.41-1.41"></path><path d="M17.66 6.34l1.41-1.41"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
@@ -7243,6 +7261,7 @@
 <!-- 语音功能里唯一认识 DOM 的模块，必须排在 chat_room / chat_bubble_factory 之前 -->
     <script src="js/chat/chat_voice_player.js"></script>
     <script src="js/api/image_generation_api.js"></script>
+    <script src="js/chat/chat_image_settings.js"></script>
 
 <!-- 设置页面 -->
     <script src="js/settings/api_settings.js"></script>
