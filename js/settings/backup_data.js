@@ -188,6 +188,7 @@ window.exportPartialData = async function(categoryKey) {
             case 'settings':
                 partialData.apiSettings = db.apiSettings;
                 partialData.apiPresets = db.apiPresets;
+                partialData.imageSettings = db.imageSettings;
                 partialData.pomodoroSettings = db.pomodoroSettings;
                 partialData.pomodoroTasks = db.pomodoroTasks;
                 partialData.homeScreenMode = db.homeScreenMode;
@@ -413,6 +414,7 @@ async function* createFullBackupStream() {
         //   到新设备上重新打开开关即可拿到新订阅。
         globalPushSettings:     _sanitizePushSettingsForBackup(db.globalPushSettings),
         voiceSettings:          db.voiceSettings,
+        imageSettings:          db.imageSettings,
         // ★ githubRepos 里含访问令牌。必须进备份，否则换设备恢复后
         //   voiceClips.cloudRepoId 找不到对应凭据，已归档的旧语音就读不回来了。
         githubRepos:            db.githubRepos             || [],
@@ -601,6 +603,8 @@ async function importJsonlStream(byteStream, onProgress) {
             dexieDB.studyExams.clear(),
             dexieDB.studyExamRecords.clear(),
             dexieDB.studyBookSummaries.clear(),
+            // imageCache 是当前浏览器的可淘汰数据，不属于备份内容。
+            dexieDB.imageCache?.clear(),
         ]);
         // 小数据整体进内存 db
         Object.keys(meta).forEach(key => {
@@ -960,6 +964,7 @@ async function lazyImportBackupData(jsonString) {
             dexieDB.studyExams.clear(),
             dexieDB.studyExamRecords.clear(),
             dexieDB.studyBookSummaries.clear(),
+            dexieDB.imageCache?.clear(),
         ]);
     }
 
@@ -1279,6 +1284,7 @@ if (typeof dexieDB !== 'undefined') {
         dexieDB.studyExams.clear(),         // ★ V10：清空考卷
         dexieDB.studyExamRecords.clear(),   // ★ V11：清空考试记录
         dexieDB.studyBookSummaries.clear(), // ★ V12：清空书本总结
+        dexieDB.imageCache?.clear(),         // ★ V16：本地图片缓存不随备份恢复
     ]);
 }
             message = "全量数据已恢复";

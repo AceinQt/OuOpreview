@@ -1660,6 +1660,7 @@ function _refreshImageTabUI() {
     _clearImagePreview({ abortRequest: true, clearResult: true });
     _imageDraft = _normalizeImageSettings(db.imageSettings);
     _populateImageProviderSelect(); 
+    _setVal('api-image-cache-limit', _imageDraft.localCacheLimitMB);
     // 不再从根节点加载 url 和 key，交给 _applyImagePresetToForm 按预设填充
     _applyImagePresetToForm(_imageDraft.defaultPresetId || (_imageDraft.imagePresets[0] || {}).id);
 
@@ -1755,7 +1756,13 @@ async function saveImageApiSettings() {
         apiUrl: String(legacySettings.apiUrl || '').trim(),
         apiKey: String(legacySettings.apiKey || '').trim(),
         imagePresets: normalizedPresets,
-        defaultPresetId
+        defaultPresetId,
+        localCacheLimitMB: (() => {
+            const raw = _getVal('api-image-cache-limit').trim();
+            if (!raw) return Number(_imageDraft.localCacheLimitMB) >= 0 ? Number(_imageDraft.localCacheLimitMB) : 10;
+            const value = Number(raw);
+            return Number.isFinite(value) && value >= 0 ? value : 10;
+        })()
     };
 
     // 检查是否所有预设都没填 Key
@@ -1763,6 +1770,9 @@ async function saveImageApiSettings() {
 
     db.imageSettings = finalSettings;
     await saveGlobalKeys(['imageSettings']);
+    if (typeof enforceImageCacheLimit === 'function') {
+        enforceImageCacheLimit(finalSettings.localCacheLimitMB).catch(() => {});
+    }
     _imageDraft = _normalizeImageSettings(finalSettings);
     _applyImagePresetToForm(_imageLoadedPresetId || (_imageDraft.imagePresets[0] || {}).id);
     _clearDirty('image');
@@ -1866,7 +1876,7 @@ function initImageApiTab() {
     // 监控表单改动，点亮底部的未保存提示
     _watchDirty('image', [
         'api-image-url', 'api-image-key', 'api-image-preset-name', 'api-image-set-default', 'api-image-provider',
-        'api-image-model', 'api-image-size', 'api-image-quality', 'api-image-style'
+        'api-image-model', 'api-image-size', 'api-image-quality', 'api-image-style', 'api-image-cache-limit'
     ]);
 
     window.addEventListener('pagehide', () => {

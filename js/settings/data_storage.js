@@ -9,6 +9,7 @@ const dataStorage = {
         peek:            '#2590EE',
         study:           '#3A9EF6',
         voice:           '#59AEF8',
+        image:           '#F59E0B',
         forum:           '#7EBEFB',
         rpg:             '#BADBFC',
         personalization: '#E0EDFE'
@@ -21,6 +22,7 @@ const dataStorage = {
         peek:            '角色手机数据',
         study:           '学习',
         voice:           '语音缓存',
+        image:           '图片缓存',
         forum:           '喵坛',
         rpg:             '游戏',
         personalization: '个性化',
@@ -49,6 +51,7 @@ const dataStorage = {
             peek: 0,
             study: 0,
             voice: 0,
+            image: 0,
             forum: 0,
             rpg: 0,
             personalization: 0,
@@ -188,6 +191,14 @@ if (typeof getVoiceCacheStats === 'function') {
         const voiceStats = await getVoiceCacheStats();
         categorizedSizes.voice += voiceStats.cachedBytes;
     } catch (e) { console.warn('[storage] 语音缓存统计失败:', e); }
+}
+
+// ★ 10. 图片缓存同样只读元数据统计，避免为展示存储占用把图片字节全部 stringify。
+if (typeof getImageCacheStats === 'function') {
+    try {
+        const imageStats = await getImageCacheStats();
+        categorizedSizes.image += imageStats.cachedBytes;
+    } catch (e) { console.warn('[storage] 图片缓存统计失败:', e); }
 }
 
             const totalSize = Object.values(categorizedSizes).reduce((sum, size) => sum + size, 0);
@@ -476,7 +487,11 @@ function setupStorageAnalysisScreen() {
                 if (confirmed) {
                     const hideDeleting = typeof showLoadingToast === 'function' ? showLoadingToast("正在执行清理...") : () => {};
                     if (toDelete.length > 0) {
-                        await dexieDB.messages.bulkDelete(toDelete); // 从数据库抹除
+                        if (typeof deleteMessagesFromDB === 'function') {
+                            await deleteMessagesFromDB(toDelete);
+                        } else {
+                            await dexieDB.messages.bulkDelete(toDelete);
+                        }
                     }
                     if (snapshotTargets.length > 0) {
                         // 同步清空内存对象与 memories 表（挂载对象与表记录是两份，须都更新）
