@@ -253,10 +253,13 @@ function setupChatRoom() {
 
             const pvCard = e.target.closest('.pv-card');
             if (pvCard) {
+                if (e.target.closest('.pv-card-download')) return;
                 const imageOverlay = pvCard.querySelector('.pv-card-image-overlay');
                 const footer = pvCard.querySelector('.pv-card-footer');
-                imageOverlay.classList.toggle('hidden');
-                footer.classList.toggle('hidden');
+                if (imageOverlay && footer) {
+                    imageOverlay.classList.toggle('hidden');
+                    footer.classList.toggle('hidden');
+                }
             }
             const giftCard = e.target.closest('.gift-card');
             if (giftCard) {
@@ -752,6 +755,7 @@ if (!isLoadMore) {
 const messagesToRender = chat.history.slice(start, end);
 
     if (!isLoadMore) {
+        if (typeof releaseImageObjectUrlsWithin === 'function') releaseImageObjectUrlsWithin(messageArea);
         messageArea.innerHTML = '';
     } else {
         // 如果是加载更多，先移除可能存在的 loading 指示器（如果有的话）

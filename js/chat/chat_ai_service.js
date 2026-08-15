@@ -593,6 +593,11 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         await saveSingleChat(targetChatId, targetChatType);
         renderChatList();
 
+        // 图片生成不阻塞文字回复：文字已落库后，每批最多后台处理一条照片描述。
+        if (typeof queueAutoImageGeneration === 'function') {
+            queueAutoImageGeneration(newMessagesForDB, chat, targetChatId, targetChatType);
+        }
+
         // Step 2：若此刻在后台，弹系统通知（标题=角色名，内部已判权限/开关/可见性）
         if (window.NotifyCenter) {
             NotifyCenter.notifyMessages(chat, targetChatType, newMessagesForDB);

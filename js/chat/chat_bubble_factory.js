@@ -391,7 +391,139 @@ function createMessageBubbleElement(message) {
     } else if (photoVideoMatch) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'pv-card';
-        bubbleElement.innerHTML = `<div class="pv-card-content">${photoVideoMatch[1].trim()}</div><div class="pv-card-image-overlay" style="background-image: url('${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}');"></div><div class="pv-card-footer"><svg viewBox="0 0 24 24"><path d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z"></path></svg><span>照片/视频・点击查看</span></div>`;
+        const hasImageMedia = typeof isImageMediaMessage === 'function'
+            ? isImageMediaMessage(message)
+            : !!(message && message.media && message.media.kind === 'image');
+
+        const description = document.createElement('div');
+        description.className = 'pv-card-content';
+        description.textContent = photoVideoMatch[1].trim();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'pv-card-image-overlay';
+        overlay.style.backgroundImage = `url("${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}")`;
+
+        const footer = document.createElement('div');
+        footer.className = 'pv-card-footer';
+        const coverIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        coverIcon.setAttribute('viewBox', '0 0 24 24');
+        coverIcon.setAttribute('aria-hidden', 'true');
+        const coverPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        coverPath.setAttribute('d', 'M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z');
+        coverIcon.appendChild(coverPath);
+        const media = hasImageMedia && typeof normalizeImageMedia === 'function'
+            ? normalizeImageMedia(message.media)
+            : (hasImageMedia ? message.media : null);
+        const livePending = !!(media && media.state === 'pending'
+            && typeof isImageGenerationPending === 'function'
+            && isImageGenerationPending(message.id, typeof currentChatId !== 'undefined' ? currentChatId : ''));
+        const footerText = document.createElement('span');
+        footerText.textContent = !hasImageMedia
+            ? '照片/视频・点击查看'
+            : livePending
+                ? '正在生成图片・点击查看描述'
+                : media && media.state === 'pending'
+                    ? '生成已中断・点击重试'
+                : media && media.state === 'failed'
+                    ? '生成失败・点击查看描述'
+                    : '图片加载中・点击查看描述';
+        footer.append(coverIcon, footerText);
+
+        const generateButton = document.createElement('button');
+        generateButton.type = 'button';
+        generateButton.className = 'pv-card-generate';
+        generateButton.title = media && (media.state === 'failed' || media.state === 'pending') ? '重试生成图片' : '生成图片';
+        generateButton.setAttribute('aria-label', generateButton.title);
+        generateButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="m19 14 .7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14Z"/></svg>';
+        generateButton.hidden = hasImageMedia && (!media || livePending || media.state === 'ready');
+        generateButton.addEventListener('click', async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof generateImageForMessage !== 'function') {
+                if (typeof showToast === 'function') showToast('图片生成功能尚未加载');
+                return;
+            }
+            generateButton.disabled = true;
+            try {
+                await generateImageForMessage(message, {
+                    chatId: typeof currentChatId !== 'undefined' ? currentChatId : '',
+                    chatType: typeof currentChatType !== 'undefined' ? currentChatType : ''
+                });
+            } catch (error) {
+                if (typeof showToast === 'function') showToast(error.message || '图片生成失败');
+            } finally {
+                generateButton.disabled = false;
+            }
+        });
+        footer.appendChild(generateButton);
+
+        if (hasImageMedia) {
+            const downloadButton = document.createElement('button');
+            downloadButton.type = 'button';
+            downloadButton.className = 'pv-card-download';
+            downloadButton.title = '下载图片';
+            downloadButton.setAttribute('aria-label', '下载图片');
+            downloadButton.hidden = true;
+            downloadButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+            downloadButton.addEventListener('click', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                downloadButton.disabled = true;
+                try {
+                    await downloadImageMessage(message);
+                } catch (error) {
+                    if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载');
+                } finally {
+                    downloadButton.disabled = false;
+                }
+            });
+            footer.appendChild(downloadButton);
+            bubbleElement.dataset.imageMedia = 'true';
+            bubbleElement._imageDownloadButton = downloadButton;
+            bubbleElement._imageGenerateButton = generateButton;
+            bubbleElement._imageFooterText = footerText;
+            bubbleElement._imageHydrationToken = Symbol('image-card');
+            const token = bubbleElement._imageHydrationToken;
+            Promise.resolve().then(async () => {
+                try {
+                    const result = await readImageMessageBytes(message);
+                    if (bubbleElement._imageHydrationToken !== token) return;
+                    if (bubbleElement.ownerDocument && bubbleElement.ownerDocument.body && !bubbleElement.ownerDocument.body.contains(bubbleElement)) return;
+                    if (!result || !result.bytes) {
+                        footerText.textContent = livePending
+                            ? '正在生成图片・点击查看描述'
+                            : media && media.state === 'pending'
+                                ? '生成已中断・点击重试'
+                            : media && media.state === 'failed'
+                                ? '生成失败・点击查看描述'
+                                : '图片暂不可用・点击查看描述';
+                        generateButton.hidden = !!(livePending || media && media.source === 'uploaded');
+                        bubbleElement.classList.add('pv-card-unavailable');
+                        return;
+                    }
+                    const objectUrl = createImageObjectUrl(
+                        result.bytes,
+                        result.mime,
+                        message.media && message.media.localCacheKey
+                    );
+                    if (!objectUrl) return;
+                    overlay.style.backgroundImage = `url("${objectUrl}")`;
+                    overlay.dataset.imageObjectUrl = objectUrl;
+                    overlay.classList.remove('is-placeholder');
+                    footerText.textContent = '照片/视频・点击查看';
+                    downloadButton.hidden = false;
+                    generateButton.hidden = true;
+                    bubbleElement.classList.add('pv-card-real-image');
+                } catch (error) {
+                    footerText.textContent = error.code === 'image-repo-missing'
+                        ? '图片仓库不可用・点击查看描述'
+                        : '图片加载失败・点击查看描述';
+                    generateButton.hidden = !!(media && media.source === 'uploaded');
+                    bubbleElement.classList.add('pv-card-unavailable');
+                }
+            });
+        }
+        bubbleElement.append(description, overlay, footer);
     } else if (locationMatch) {
         const body = locationMatch[1].trim();
         const sepIndex = body.indexOf('；地址：');
@@ -437,7 +569,26 @@ function createMessageBubbleElement(message) {
     } else if (imageRecogMatch || urlRegex.test(content)) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'image-bubble';
-        bubbleElement.innerHTML = `<img src="${content}" alt="图片消息">`;
+        const legacyImage = document.createElement('img');
+        const imagePart = Array.isArray(message.parts) && message.parts.find(p => p && p.type === 'image' && p.data);
+        legacyImage.src = imagePart ? imagePart.data : content;
+        legacyImage.alt = '图片消息';
+        bubbleElement.appendChild(legacyImage);
+        const legacyDownload = document.createElement('button');
+        legacyDownload.type = 'button';
+        legacyDownload.className = 'image-bubble-download';
+        legacyDownload.title = '下载图片';
+        legacyDownload.setAttribute('aria-label', '下载图片');
+        legacyDownload.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+        legacyDownload.addEventListener('click', async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            legacyDownload.disabled = true;
+            try { await downloadImageMessage(message); }
+            catch (error) { if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载'); }
+            finally { legacyDownload.disabled = false; }
+        });
+        bubbleElement.appendChild(legacyDownload);
     } else if (textMatch) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
