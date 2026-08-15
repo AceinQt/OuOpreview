@@ -14,7 +14,7 @@
 //   generateImage
 // ============================================================
 
-const IMAGE_GENERATION_TIMEOUT_MS = 120000;
+const IMAGE_GENERATION_SLOW_WARNING_MS = 120000;
 
 // 预留了服务商体系，将来加 NAI、NanoBanana 直接往这里加枚举
 const IMAGE_PROVIDERS = [
@@ -339,10 +339,9 @@ async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt, signal) {
     return _downloadGeneratedImage(firstImage.url, signal);
 }
 
-function _createImageRequestScope(parentSignal, timeoutMs) {
+function _createImageRequestScope(parentSignal, slowAfterMs, onSlow) {
     const controller = new AbortController();
-    const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : IMAGE_GENERATION_TIMEOUT_MS;
-    let timedOut = false;
+    const slowWarningDelay = Number(slowAfterMs) > 0 ? Number(slowAfterMs) : IMAGE_GENERATION_SLOW_WARNING_MS;
     let parentAborted = false;
 
     const abortFromParent = () => {
@@ -355,14 +354,16 @@ function _createImageRequestScope(parentSignal, timeoutMs) {
     }
 
     const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-    }, timeout);
+        if (controller.signal.aborted || typeof onSlow !== 'function') return;
+        try {
+            const callbackResult = onSlow({ elapsedMs: slowWarningDelay });
+            if (callbackResult && typeof callbackResult.catch === 'function') callbackResult.catch(() => {});
+        } catch (_) {}
+    }, slowWarningDelay);
 
     return {
         signal: controller.signal,
-        timeout,
-        didTimeOut: () => timedOut,
+        slowWarningDelay,
         wasParentAborted: () => parentAborted,
         cleanup: () => {
             clearTimeout(timer);
@@ -383,10 +384,11 @@ function _createImageRequestScope(parentSignal, timeoutMs) {
  * @param {object} [args.preset]  当前选中的生图预设；省略时解析全局默认
  * @param {object} [args.settings] 覆盖 db.imageSettings (给设置页试听用)
  * @param {AbortSignal} [args.signal] 外部取消信号
- * @param {number} [args.timeoutMs] 超时时间，默认 120 秒
+ * @param {number} [args.slowAfterMs] 慢请求提醒阈值，默认 120 秒；提醒后请求继续运行
+ * @param {(info: {elapsedMs: number}) => void|Promise<void>} [args.onSlow] 超过提醒阈值时调用
  * @returns {Promise<{bytes: Uint8Array, mime: string, source: 'b64_json'|'url'}>}
  */
-async function generateImage({ prompt, preset, settings, signal, timeoutMs } = {}) {
+async function generateImage({ prompt, preset, settings, signal, slowAfterMs, onSlow } = {}) {
     const promptText = String(prompt || '').trim();
     if (!promptText) throw new Error('提示词不能为空');
 
@@ -399,7 +401,7 @@ async function generateImage({ prompt, preset, settings, signal, timeoutMs } = {
     if (!imagePreset.apiKey) throw new Error(`生图预设「${imagePreset.name}」尚未配置 API Key`);
     if (!imagePreset.model) throw new Error(`生图预设「${imagePreset.name}」尚未配置模型`);
 
-    const requestScope = _createImageRequestScope(signal, timeoutMs);
+    const requestScope = _createImageRequestScope(signal, slowAfterMs, onSlow);
     try {
         switch (imagePreset.provider) {
             case 'openai':
@@ -415,9 +417,6 @@ async function generateImage({ prompt, preset, settings, signal, timeoutMs } = {
                 throw new Error(`暂不支持的生图服务商: ${imagePreset.provider}`);
         }
     } catch (error) {
-        if (requestScope.didTimeOut()) {
-            throw new Error(`生图请求超过 ${Math.round(requestScope.timeout / 1000)} 秒，已自动取消`);
-        }
         if (requestScope.wasParentAborted() || (signal && signal.aborted)) {
             const aborted = new Error('生图请求已取消');
             aborted.name = 'AbortError';
