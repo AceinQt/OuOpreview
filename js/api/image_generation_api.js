@@ -89,12 +89,19 @@ function _normalizeImageSettings(raw) {
             ? presets[0].id
             : '');
 
+    const rawCacheLimit = Number(source.localCacheLimitMB);
+    const localCacheLimitMB = Number.isFinite(rawCacheLimit) && rawCacheLimit >= 0
+        ? rawCacheLimit
+        : 10;
+
     return {
         // 旧字段仅供迁移；新调用必须使用预设自己的 URL/Key。
         apiUrl: legacyConfig.apiUrl,
         apiKey: legacyConfig.apiKey,
         imagePresets: presets,
-        defaultPresetId: defaultPresetId
+        defaultPresetId: defaultPresetId,
+        // 0 明确表示关闭浏览器本地图片缓存；旧数据缺字段时默认 10 MB。
+        localCacheLimitMB
     };
 }
 

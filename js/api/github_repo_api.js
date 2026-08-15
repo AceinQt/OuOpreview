@@ -48,7 +48,7 @@ const GITHUB_PURPOSES = [
     { key: 'voice', label: '语音归档', pathPrefix: 'voice',
       hint: '合成好的语音上传到这里，换设备也能听回来' },
     { key: 'image', label: '图片归档', pathPrefix: 'image',
-      hint: '暂未接入，先留位置' }
+      hint: '生成或转换后的图片上传到这里，换设备后仍可恢复真实封面' }
 ];
 
 // ============================================================
