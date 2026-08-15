@@ -812,6 +812,70 @@
     flex-shrink: 0;
 }
 
+.pv-card-download,
+.pv-card-generate,
+.image-bubble-download {
+    width: 28px;
+    height: 28px;
+    margin-left: auto;
+    padding: 5px;
+    border: 0;
+    border-radius: 50%;
+    color: white;
+    background: rgba(0, 0, 0, 0.38);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.pv-card-download[hidden] {
+    display: none;
+}
+
+.pv-card-generate[hidden] {
+    display: none;
+}
+
+.pv-card-download:hover,
+.pv-card-generate:hover,
+.image-bubble-download:hover {
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.pv-card-download:disabled,
+.pv-card-generate:disabled,
+.image-bubble-download:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.pv-card-download svg,
+.pv-card-generate svg,
+.image-bubble-download svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+}
+
+.pv-card-unavailable .pv-card-image-overlay {
+    filter: saturate(0.55);
+}
+
+.image-bubble {
+    position: relative;
+    overflow: hidden;
+}
+
+.image-bubble-download {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    background: rgba(0, 0, 0, 0.52);
+}
+
 /* 位置卡片：路网是纯 CSS 渐变画的，不联网也不占天气额度 */
 .location-card {
     width: 220px;
