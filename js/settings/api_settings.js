@@ -1494,6 +1494,13 @@ function _setImageDownloadEnabled(enabled) {
     btn.classList.toggle('btn-secondary', !!enabled);
 }
 
+function _setImageCancelVisible(visible) {
+    const btn = document.getElementById('api-image-cancel-btn');
+    if (!btn) return;
+    btn.hidden = !visible;
+    btn.disabled = !visible;
+}
+
 function _clearImagePreview({ abortRequest = false, clearResult = false } = {}) {
     if (abortRequest && _imagePreviewAbortController) {
         _imagePreviewAbortController.abort();
@@ -1509,6 +1516,7 @@ function _clearImagePreview({ abortRequest = false, clearResult = false } = {}) 
     if (img) img.removeAttribute('src');
     if (container) container.hidden = true;
     _setImageDownloadEnabled(false);
+    _setImageCancelVisible(false);
     if (clearResult) _setImageTestResult('', false, true);
 }
 
@@ -1694,7 +1702,14 @@ async function previewImageGeneration() {
         const result = await generateImage({
             prompt: prompt,
             preset: preset,
-            signal: requestController.signal
+            signal: requestController.signal,
+            slowAfterMs: 120000,
+            onSlow: ({ elapsedMs }) => {
+                if (_imagePreviewAbortController !== requestController || requestController.signal.aborted) return;
+                const seconds = Math.round(elapsedMs / 1000);
+                _setImageCancelVisible(true);
+                _setImageTestResult(`已经等待 ${seconds} 秒，接口可能仍在处理。你可以继续等待，也可以点击“取消生成”。`);
+            }
         });
 
         // 如果用户已经离开图像页，旧请求即使晚到也不能重新改写预览。
@@ -1715,6 +1730,7 @@ async function previewImageGeneration() {
     } finally {
         if (_imagePreviewAbortController === requestController) {
             _imagePreviewAbortController = null;
+            _setImageCancelVisible(false);
             btn.classList.remove('loading');
             btn.disabled = false;
         }
@@ -1757,6 +1773,12 @@ function initImageApiTab() {
     _refreshImageTabUI();
     
     _on('api-image-preview-btn', previewImageGeneration);
+    _on('api-image-cancel-btn', () => {
+        const controller = _imagePreviewAbortController;
+        if (!controller) return;
+        _setImageTestResult('已取消生图请求。');
+        controller.abort();
+    });
     _on('api-image-download-btn', () => {
         if (!_currentPreviewImage) return;
         const a = document.createElement('a');
