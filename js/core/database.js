@@ -106,7 +106,8 @@ window.db = {
         apiUrl: '',
         apiKey: '',
         imagePresets: [],
-        defaultPresetId: ''
+        defaultPresetId: '',
+        localCacheLimitMB: 10
     },
     homeStatusBarColor: '#ffffff',
     homeNavigationBarColor: '#ffffff',
@@ -294,6 +295,15 @@ dexieDB.version(15).stores({
     voiceClipData: '&voiceKey',
 }).upgrade(async tx => {
     console.log("Upgrading database to version 15 (voiceClips / voiceClipData tables added)...");
+});
+
+// ★★★ Version 16（双层图片消息：独立本地缓存表）★★★
+// imageCache 只保存浏览器本地的图片字节，不随消息备份导出。
+// 消息中的 media.localCacheKey 是稳定定位键；LRU 字段用于全局缓存淘汰。
+dexieDB.version(16).stores({
+    imageCache: '&key, chatId, messageId, lastAccessedAt'
+}).upgrade(async tx => {
+    console.log("Upgrading database to version 16 (imageCache table added)...");
 });
 
 window.loadData = async () => {
@@ -747,12 +757,18 @@ window.saveMessagesToDB = async (msgs, chatId, chatType) => {
 };
 // msgIds 必须是数组，如 ['id1', 'id2']，单条也要包裹成 [id]
 window.deleteMessagesFromDB = async (msgIds) => {
-    try { await dexieDB.messages.bulkDelete(msgIds); } catch (e) { console.error("❌ 消息删除失败:", e); }
+    try {
+        await dexieDB.messages.bulkDelete(msgIds);
+        if (typeof deleteImageCacheByMessage === 'function') {
+            await Promise.all((msgIds || []).map(id => deleteImageCacheByMessage(id)));
+        }
+    } catch (e) { console.error("❌ 消息删除失败:", e); }
 };
 window.clearChatHistoryInDB = async (chatId) => {
     try {
         const keys = await dexieDB.messages.where({chatId}).primaryKeys();
         await dexieDB.messages.bulkDelete(keys);
+        if (typeof deleteImageCacheByChat === 'function') await deleteImageCacheByChat(chatId);
     } catch (e) { console.error("❌ 清空消息失败:", e); }
 };
 
