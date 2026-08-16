@@ -297,6 +297,62 @@ async function _ghFetch(path, { token, method = 'GET', body, signal,
 }
 
 /**
+ * 读取 GitHub Contents API 的原始字节响应。
+ * 大于 1MB 的文件不会在普通 JSON 响应里返回 base64 content；使用 raw media type
+ * 可继续走 api.github.com，并始终携带私有仓库 Token，避免无鉴权 download_url 失败。
+ */
+async function _ghFetchBytes(path, { token, signal, retry = GITHUB_RETRY_TIMES } = {}) {
+    if (!token) throw _githubError('还没填这个仓库的访问令牌');
+
+    let lastError = null;
+    for (let attempt = 0; attempt <= retry; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
+        const onAbort = () => controller.abort();
+        if (signal) {
+            if (signal.aborted) controller.abort();
+            else signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        let response;
+        try {
+            response = await fetch(`${GITHUB_API_BASE}${path}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github.raw+json',
+                    'X-GitHub-Api-Version': '2022-11-28'
+                },
+                signal: controller.signal
+            });
+        } catch (error) {
+            if (signal && signal.aborted) throw _githubError('操作已取消', { aborted: true });
+            lastError = error.name === 'AbortError'
+                ? _githubError(`下载 GitHub 文件超时（超过 ${GITHUB_TIMEOUT_MS / 1000} 秒）`, { retryable: true })
+                : _githubError(`下载 GitHub 文件失败：${error.message}`, { retryable: true });
+            continue;
+        } finally {
+            clearTimeout(timer);
+            if (signal) signal.removeEventListener('abort', onAbort);
+        }
+
+        if (!response.ok) {
+            const detail = await _readGithubMessage(response);
+            const worthRetry = response.status >= 500 || response.status === 429;
+            const error = _githubError(_describeGithubStatus(response.status, detail), {
+                status: response.status,
+                retryable: worthRetry,
+                notFound: response.status === 404
+            });
+            if (!worthRetry || attempt === retry) throw error;
+            lastError = error;
+            continue;
+        }
+        return new Uint8Array(await response.arrayBuffer());
+    }
+    throw lastError || _githubError('下载 GitHub 文件失败');
+}
+
+/**
  * 测试一个仓库配置能不能用。分两步查，好让错误能精确指到是仓库还是分支的问题。
  * @returns {Promise<{ok: boolean, message: string, canWrite: boolean}>}
  *          不抛异常 —— 这个函数的用途就是把失败原因说清楚
@@ -412,28 +468,18 @@ async function downloadGithubFile(repo, filePath, { signal } = {}) {
     if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
     if (!filePath) throw _githubError('没有指定下载路径');
 
+    const contentPath = `${_ghContentsPath(repo, filePath)}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`;
     const info = await _ghFetch(
-        `${_ghContentsPath(repo, filePath)}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`,
+        contentPath,
         { token: repo.token, allow404: true, signal });
     if (!info) return null;   // 真 404：云端那份被删了
 
     // 1MB 以内 Contents API 直接把 base64 塞在 content 里，省一次请求。
-    // 超过就只给 download_url，得再去取一次。语音片段通常几十 KB，走前者。
     if (info.content && info.encoding === 'base64') {
         return base64ToBytes(String(info.content).replace(/\s/g, ''));
     }
-    if (!info.download_url) {
-        throw _githubError('GitHub 没有返回文件内容，也没给下载地址');
-    }
-    let response;
-    try {
-        response = await fetch(info.download_url, { signal });
-    } catch (error) {
-        throw _githubError(`下载文件失败：${error.message}`, { retryable: true });
-    }
-    if (!response.ok) {
-        throw _githubError(`下载文件返回 HTTP ${response.status}`,
-            { retryable: response.status >= 500 });
-    }
-    return new Uint8Array(await response.arrayBuffer());
+
+    // 1MB～100MB 的文件不会返回 base64 content。重新请求同一 Contents API，
+    // 但使用 raw media type；这样私有仓库下载仍带鉴权，也不依赖临时 download_url。
+    return await _ghFetchBytes(contentPath, { token: repo.token, signal });
 }
