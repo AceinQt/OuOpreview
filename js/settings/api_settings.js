@@ -1563,19 +1563,40 @@ function _populateImagePresetSelect(selectedId) {
     select.value = selectedId || _imageLoadedPresetId || _imageDraft.defaultPresetId || '';
 }
 
+/**
+ * 模型下拉框写入值：值不在现有选项里时补一个 option 再选中。
+ * （旧代码是文本框，直接 _setVal；换成 select 后必须保证选项存在，否则 value 会被吞掉）
+ */
+function _setImageModelSelectValue(model) {
+    const sel = document.getElementById('api-image-model');
+    if (!sel) return;
+    const value = String(model || '').trim();
+    if (!value) {
+        sel.innerHTML = '<option value="">请先拉取模型列表</option>';
+        return;
+    }
+    if (!Array.from(sel.options).some(o => o.value === value)) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        sel.appendChild(opt);
+    }
+    sel.value = value;
+}
+
 function _applyImagePresetToForm(presetId) {
     const preset = _imageDraft && _imageDraft.imagePresets.find(p => p.id === presetId);
     _imageLoadedPresetId = preset ? preset.id : '';
-    
+
     _setVal('api-image-preset-name', preset ? preset.name : '');
     const providerEl = document.getElementById('api-image-provider');
     if (providerEl) providerEl.value = preset ? preset.provider : 'openai';
-    
+
     // API URL 和 Key 直接从预设里读出，赋给表单
     _setVal('api-image-url', preset ? preset.apiUrl : '');
     _setVal('api-image-key', preset ? preset.apiKey : '');
-    
-    _setVal('api-image-model', preset ? preset.model : 'dall-e-3');
+
+    _setImageModelSelectValue(preset ? preset.model : 'dall-e-3');
     _setVal('api-image-size', preset ? preset.size : '1024x1024');
     _setVal('api-image-quality', preset ? preset.quality : 'standard');
     _setVal('api-image-style', preset ? preset.style : 'vivid');
@@ -1673,6 +1694,86 @@ function _setImageTestResult(message, isError = false, hidden = false) {
     el.textContent = message;
     el.classList.toggle('is-error', !!isError);
     el.hidden = !!hidden || !message;
+}
+
+/**
+ * 拉取生图模型列表（OpenAI 兼容的 /models 端点），逻辑对齐文字 tab 的 fetchModels：
+ * 成功填充下拉框；失败弹 AppUI.prompt 允许手动填写。
+ * 注意：预设里已选的模型即使不在拉取结果中也保留并维持选中，
+ *       防止"拉一次列表"就把当前预设的模型悄悄换成了列表第一项。
+ */
+async function fetchImageModels() {
+    let url = _getVal('api-image-url').trim();
+    const key = _getVal('api-image-key').trim();
+    const btn = document.getElementById('api-image-fetch-btn');
+    const modelSel = document.getElementById('api-image-model');
+
+    if (!url || !key) return showToast('请先填写 API 地址和密钥！');
+    if (url.endsWith('/')) url = url.slice(0, -1);
+
+    // 与文字 tab 同一套规则：URL 已带 /vN 就直接拼 /models，否则补 /v1
+    const endpoint = /\/v\d+$/.test(url) ? `${url}/models` : `${url}/v1/models`;
+
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(endpoint, { method: 'GET', headers: { Authorization: `Bearer ${key}` } });
+        if (!res.ok) {
+            const err = new Error(`网络响应错误: ${res.status}`);
+            err.response = res;
+            throw err;
+        }
+        const json = await res.json();
+        const models = Array.isArray(json.data) ? json.data.map(e => e.id).filter(Boolean) : [];
+        if (!models.length) throw new Error('接口未返回任何模型数据');
+
+        const current = modelSel.value;
+        if (current && !models.includes(current)) models.push(current);
+        modelSel.innerHTML = '';
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            modelSel.appendChild(opt);
+        });
+        if (current) modelSel.value = current;
+        showToast('模型列表拉取成功！');
+
+        btn.classList.remove('loading');
+        btn.disabled = false;
+
+    } catch (ex) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+
+        const manualModel = await AppUI.prompt(
+            `自动拉取失败: ${ex.message}\n企业级接口通常不支持拉取，请直接手动填写。`,
+            '例如: dall-e-3',   // placeholder
+            '手动输入模型',      // title
+            '确定添加',          // confirmText
+            '取消'              // cancelText
+        );
+
+        if (manualModel && manualModel.trim() !== '') {
+            const m = manualModel.trim();
+            modelSel.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            modelSel.appendChild(opt);
+            modelSel.value = m;
+
+            // 代码改值不触发事件，手动 dispatch 让 _watchDirty 点亮保存按钮
+            modelSel.dispatchEvent(new Event('change', { bubbles: true }));
+            showToast('已手动添加模型：' + m);
+        } else {
+            if (typeof showApiError === 'function') {
+                showApiError(ex);
+            } else {
+                showToast('拉取失败，且未输入模型');
+            }
+            modelSel.innerHTML = '<option value="">拉取失败，请重新获取或手动填写</option>';
+        }
+    }
 }
 
 /** 测试预览（委托到底层 API，UI 层只管显示 loading 和图片） */
@@ -1781,7 +1882,8 @@ async function saveImageApiSettings() {
 
 function initImageApiTab() {
     _refreshImageTabUI();
-    
+
+    _on('api-image-fetch-btn', fetchImageModels);
     _on('api-image-preview-btn', previewImageGeneration);
     _on('api-image-cancel-btn', () => {
         const controller = _imagePreviewAbortController;
