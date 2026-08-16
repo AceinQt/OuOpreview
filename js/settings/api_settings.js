@@ -1494,11 +1494,25 @@ function _setImageDownloadEnabled(enabled) {
     btn.classList.toggle('btn-secondary', !!enabled);
 }
 
-function _setImageCancelVisible(visible) {
-    const btn = document.getElementById('api-image-cancel-btn');
-    if (!btn) return;
-    btn.hidden = !visible;
-    btn.disabled = !visible;
+/**
+ * 生成中状态切换。下载与取消共用同一个槽位（生成中没有新图可下载，
+ * 没在生成也不需要取消，二者永远不会同时出现）：
+ *   生成中：测试生成转圈禁用，下载换成取消（立即可点，不等慢请求提醒）
+ *   平时  ：测试生成可用，取消换回下载
+ */
+function _setImageGenerating(generating) {
+    const previewBtn  = document.getElementById('api-image-preview-btn');
+    const downloadBtn = document.getElementById('api-image-download-btn');
+    const cancelBtn   = document.getElementById('api-image-cancel-btn');
+    if (previewBtn) {
+        previewBtn.classList.toggle('loading', !!generating);
+        previewBtn.disabled = !!generating;
+    }
+    if (downloadBtn) downloadBtn.hidden = !!generating;
+    if (cancelBtn) {
+        cancelBtn.hidden = !generating;
+        cancelBtn.disabled = !generating;
+    }
 }
 
 function _clearImagePreview({ abortRequest = false, clearResult = false } = {}) {
@@ -1516,7 +1530,7 @@ function _clearImagePreview({ abortRequest = false, clearResult = false } = {}) 
     if (img) img.removeAttribute('src');
     if (container) container.hidden = true;
     _setImageDownloadEnabled(false);
-    _setImageCancelVisible(false);
+    _setImageGenerating(false);
     if (clearResult) _setImageTestResult('', false, true);
 }
 
@@ -1786,7 +1800,6 @@ async function previewImageGeneration() {
     if (!preset.model) return showToast('请填写模型名称');
     if (!prompt) return showToast('请输入测试提示词');
 
-    const btn = document.getElementById('api-image-preview-btn');
     const imgContainer = document.getElementById('api-image-preview-container');
     const imgEl = document.getElementById('api-image-preview-img');
 
@@ -1794,8 +1807,8 @@ async function previewImageGeneration() {
     const requestController = new AbortController();
     _imagePreviewAbortController = requestController;
 
-    btn.classList.add('loading');
-    btn.disabled = true;
+    // 生成一开始就把下载槽位换成取消，不用等慢请求提醒才出现
+    _setImageGenerating(true);
 
     _setImageTestResult('正在生成图像，通常需要 10~30 秒，请稍候...');
     imgContainer.hidden = true;
@@ -1809,7 +1822,6 @@ async function previewImageGeneration() {
             onSlow: ({ elapsedMs }) => {
                 if (_imagePreviewAbortController !== requestController || requestController.signal.aborted) return;
                 const seconds = Math.round(elapsedMs / 1000);
-                _setImageCancelVisible(true);
                 _setImageTestResult(`已经等待 ${seconds} 秒，接口可能仍在处理。你可以继续等待，也可以点击“取消生成”。`);
             }
         });
@@ -1832,9 +1844,7 @@ async function previewImageGeneration() {
     } finally {
         if (_imagePreviewAbortController === requestController) {
             _imagePreviewAbortController = null;
-            _setImageCancelVisible(false);
-            btn.classList.remove('loading');
-            btn.disabled = false;
+            _setImageGenerating(false);
         }
     }
 }
