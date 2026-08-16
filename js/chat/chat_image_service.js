@@ -100,8 +100,17 @@ function _imageChatMessage(message, chatId, chatType) {
 }
 
 async function _saveImageMessage(message, chatId, chatType) {
-    if (typeof saveMessageToDB === 'function') await saveMessageToDB(message, chatId, chatType);
+    await _persistImageMessageRecord(message, chatId, chatType);
     if (typeof saveSingleChat === 'function') await saveSingleChat(chatId, chatType);
+}
+
+async function _persistImageMessageRecord(message, chatId, chatType) {
+    if (typeof dexieDB !== 'undefined' && dexieDB && dexieDB.messages
+        && typeof dexieDB.messages.put === 'function') {
+        await dexieDB.messages.put({ ...message, chatId, chatType });
+        return;
+    }
+    if (typeof saveMessageToDB === 'function') await saveMessageToDB(message, chatId, chatType);
 }
 
 function _refreshImageMessageBubble(message, chatId, chatType) {
@@ -254,18 +263,16 @@ async function archiveUploadedImageMessage(message, {
         : null;
     let messageSaved = false;
     try {
-        if (typeof saveMessageToDB === 'function') {
-            await saveMessageToDB(nextMessage, chatId, chatType);
-            messageSaved = true;
-        }
+        await _persistImageMessageRecord(nextMessage, chatId, chatType);
+        messageSaved = true;
         _replaceImageMessage(message, nextMessage);
         if (memoryMessage && memoryMessage !== message) _replaceImageMessage(memoryMessage, nextMessage);
         if (saveChat && typeof saveSingleChat === 'function') await saveSingleChat(chatId, chatType);
     } catch (error) {
         _replaceImageMessage(message, originalMessage);
         if (memoryMessage && memoryMessage !== message) _replaceImageMessage(memoryMessage, originalMemoryMessage);
-        if (messageSaved && typeof saveMessageToDB === 'function') {
-            try { await saveMessageToDB(originalMessage, chatId, chatType); } catch (rollbackError) {
+        if (messageSaved) {
+            try { await _persistImageMessageRecord(originalMessage, chatId, chatType); } catch (rollbackError) {
                 console.error('[图片] 回滚原图片消息失败：', rollbackError);
             }
         }

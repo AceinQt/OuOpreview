@@ -392,6 +392,9 @@ async function saveMessageEdit() {
     const newBubble = createMessageBubbleElement(chat.history[messageIndex]);
 
     if (existingBubble) {
+        if (typeof releaseImageObjectUrlsWithin === 'function') {
+            releaseImageObjectUrlsWithin(existingBubble);
+        }
         if (newBubble) {
             // 3a. 如果新气泡生成成功，直接替换旧气泡
             // 这会保留浏览器当前的滚动位置，因为元素高度变化通常不会剧烈影响视口定位
@@ -526,4 +529,4 @@ async function withdrawMessage(messageId) {
     renderMessages(false, true);
     renderChatList();
     showToast('消息已撤回');
-}            
+}

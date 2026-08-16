@@ -218,6 +218,26 @@ async function getImageCacheStats() {
     }
 }
 
+async function countImageMessagesInRepo(repoId) {
+    const id = String(repoId || '').trim();
+    if (!id || typeof dexieDB === 'undefined' || !dexieDB.messages) return 0;
+    let count = 0;
+    try {
+        await dexieDB.messages.each(message => {
+            const media = message && message.media;
+            if (media && media.kind === 'image'
+                && String(media.cloudRepoId || '').trim() === id
+                && String(media.cloudPath || '').trim()) {
+                count++;
+            }
+        });
+        return count;
+    } catch (error) {
+        console.warn('[图片] 统计仓库引用失败：', error);
+        return 0;
+    }
+}
+
 async function enforceImageCacheLimit(limitMB, protectedKeys = []) {
     const result = { freedBytes: 0, evictedCloudBacked: 0, evictedLocalOnly: 0, remainingBytes: 0 };
     if (!_imageCacheTableReady()) return result;
@@ -389,6 +409,7 @@ window.deleteImageCache = deleteImageCache;
 window.deleteImageCacheByMessage = deleteImageCacheByMessage;
 window.deleteImageCacheByChat = deleteImageCacheByChat;
 window.getImageCacheStats = getImageCacheStats;
+window.countImageMessagesInRepo = countImageMessagesInRepo;
 window.enforceImageCacheLimit = enforceImageCacheLimit;
 window.readImageMessageBytes = readImageMessageBytes;
 window.createImageObjectUrl = createImageObjectUrl;
