@@ -1771,7 +1771,7 @@ async function saveImageApiSettings() {
     db.imageSettings = finalSettings;
     await saveGlobalKeys(['imageSettings']);
     if (typeof enforceImageCacheLimit === 'function') {
-        enforceImageCacheLimit(finalSettings.localCacheLimitMB).catch(() => {});
+        await enforceImageCacheLimit(finalSettings.localCacheLimitMB);
     }
     _imageDraft = _normalizeImageSettings(finalSettings);
     _applyImagePresetToForm(_imageLoadedPresetId || (_imageDraft.imagePresets[0] || {}).id);

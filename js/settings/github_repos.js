@@ -193,8 +193,11 @@ async function _ghDeleteRepo() {
 
     let warn = '';
     if (usedBy.length) warn += `\n\n「${usedBy.join('、')}」正在用它，删除后会变成未绑定。`;
-    if (archived > 0) {
-        warn += `\n\n已经有 ${archived} 条内容归档在这个仓库里，`
+    if (archived.total > 0) {
+        const details = [];
+        if (archived.voice > 0) details.push(`${archived.voice} 条语音`);
+        if (archived.image > 0) details.push(`${archived.image} 张图片`);
+        warn += `\n\n已经有 ${details.join('、')}归档在这个仓库里，`
             + '删掉它的令牌之后这些内容就读不回来了（GitHub 上的文件还在，重新添加同一个仓库即可恢复访问）。';
     }
 
@@ -215,10 +218,17 @@ async function _ghDeleteRepo() {
     _ghRenderPurposes();
 }
 
-/** 数一下有多少条已归档内容指向这个仓库（目前只有语音会归档） */
+/** 分别统计语音和图片对仓库的历史引用，删除前必须把两类风险都说清楚。 */
 async function _ghCountArchivedIn(repoId) {
-    if (typeof countVoiceClipsInRepo !== 'function') return 0;
-    return await countVoiceClipsInRepo(repoId);
+    const [voice, image] = await Promise.all([
+        typeof countVoiceClipsInRepo === 'function'
+            ? Promise.resolve().then(() => countVoiceClipsInRepo(repoId)).catch(() => 0)
+            : 0,
+        typeof countImageMessagesInRepo === 'function'
+            ? Promise.resolve().then(() => countImageMessagesInRepo(repoId)).catch(() => 0)
+            : 0
+    ]);
+    return { voice: Number(voice) || 0, image: Number(image) || 0, total: (Number(voice) || 0) + (Number(image) || 0) };
 }
 
 async function testGithubRepoConnection() {

@@ -416,7 +416,7 @@ async function* createFullBackupStream() {
         voiceSettings:          db.voiceSettings,
         imageSettings:          db.imageSettings,
         // ★ githubRepos 里含访问令牌。必须进备份，否则换设备恢复后
-        //   voiceClips.cloudRepoId 找不到对应凭据，已归档的旧语音就读不回来了。
+        //   语音/图片记录里的 cloudRepoId 找不到对应凭据，已归档内容就读不回来了。
         githubRepos:            db.githubRepos             || [],
         githubBindings:         db.githubBindings          || {},
         studyBanks:             db.studyBanks              || [],
