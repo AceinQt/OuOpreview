@@ -2453,9 +2453,16 @@
                         <input type="password" id="api-image-key" placeholder="请输入 API Key" autocomplete="off">
                     </div>
 
+                    <button type="button" class="btn btn-secondary" style="margin-bottom: 20px;" id="api-image-fetch-btn">
+                        <span class="btn-text">点击拉取模型</span>
+                        <div class="spinner"></div>
+                    </button>
+
                     <div class="form-group">
-                        <label for="api-image-model">模型名称 <span class="field-hint">dall-e-3, dall-e-2, midjourney等</span></label>
-                        <input type="text" id="api-image-model" placeholder="dall-e-3" autocomplete="off">
+                        <label for="api-image-model">选择模型 <span class="field-hint">dall-e-3, dall-e-2, midjourney等</span></label>
+                        <select id="api-image-model">
+                            <option value="">请先拉取模型列表</option>
+                        </select>
                     </div>
 
                     <div class="form-group" style="display:flex; gap:10px;">
