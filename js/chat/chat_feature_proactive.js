@@ -332,6 +332,10 @@ async function checkAndDeliverProactiveMessages() {
                         parts: [{ type: 'text', text: finalContent }],
                         timestamp: baseTs + i * 1000
                     };
+                    // 与实时回复路径(chat_ai_service.js)对齐：私聊收到的转账须标记 pending，
+                    // 否则 chat_room.js 点击接收守卫(transferStatus === 'pending')不放行，用户无法收款
+                    if (type === 'private' && actionStr === '的转账') newMsg.transferStatus = 'pending';
+                    else if (actionStr === '送来的礼物') newMsg.giftStatus = 'sent';
                     if (actionStr === '撤回了一条消息' || actionStr === '撤回了上一条消息') {
                         newMsg.isWithdrawn = true; newMsg.originalContent = msgInfo.text;
                     }
@@ -625,6 +629,11 @@ async function checkAndDeliverProactiveMessages() {
                         parts:[{ type: 'text', text: finalContent }],
                         timestamp: msgFakeTimestamp
                     };
+
+                    // 与实时回复路径(chat_ai_service.js)对齐：私聊收到的转账须标记 pending，
+                    // 否则 chat_room.js 点击接收守卫(transferStatus === 'pending')不放行，用户无法收款
+                    if (type === 'private' && actionStr === '的转账') newMsg.transferStatus = 'pending';
+                    else if (actionStr === '送来的礼物') newMsg.giftStatus = 'sent';
 
                     if (actionStr === '撤回了一条消息' || actionStr === '撤回了上一条消息') {
                         newMsg.isWithdrawn = true;
