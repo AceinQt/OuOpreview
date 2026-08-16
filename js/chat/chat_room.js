@@ -355,7 +355,7 @@ function setupChatRoom() {
 
             const pvCard = e.target.closest('.pv-card');
             if (pvCard) {
-                if (e.target.closest('.pv-card-download')) return;
+                if (e.target.closest('.image-zoom-btn')) return;
                 const imageOverlay = pvCard.querySelector('.pv-card-image-overlay');
                 const footer = pvCard.querySelector('.pv-card-footer');
                 if (imageOverlay && footer) {

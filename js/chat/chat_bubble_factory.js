@@ -458,28 +458,22 @@ function createMessageBubbleElement(message) {
         footer.appendChild(generateButton);
 
         if (hasImageMedia) {
-            const downloadButton = document.createElement('button');
-            downloadButton.type = 'button';
-            downloadButton.className = 'pv-card-download';
-            downloadButton.title = '下载图片';
-            downloadButton.setAttribute('aria-label', '下载图片');
-            downloadButton.hidden = true;
-            downloadButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
-            downloadButton.addEventListener('click', async event => {
+            // 右上角放大按钮：真实图片加载成功后才出现，点击打开图片查看器
+            const zoomButton = document.createElement('button');
+            zoomButton.type = 'button';
+            zoomButton.className = 'image-zoom-btn';
+            zoomButton.title = '查看大图';
+            zoomButton.setAttribute('aria-label', '查看大图');
+            zoomButton.hidden = true;
+            zoomButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+            zoomButton.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
-                downloadButton.disabled = true;
-                try {
-                    await downloadImageMessage(message);
-                } catch (error) {
-                    if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载');
-                } finally {
-                    downloadButton.disabled = false;
-                }
+                const src = overlay.dataset.imageObjectUrl;
+                if (src && typeof openImageViewer === 'function') openImageViewer(message, src);
             });
-            footer.appendChild(downloadButton);
+            bubbleElement.appendChild(zoomButton);
             bubbleElement.dataset.imageMedia = 'true';
-            bubbleElement._imageDownloadButton = downloadButton;
             bubbleElement._imageGenerateButton = generateButton;
             bubbleElement._imageFooterText = footerText;
             bubbleElement._imageHydrationToken = Symbol('image-card');
@@ -511,9 +505,19 @@ function createMessageBubbleElement(message) {
                     overlay.dataset.imageObjectUrl = objectUrl;
                     overlay.classList.remove('is-placeholder');
                     footerText.textContent = '照片/视频・点击查看';
-                    downloadButton.hidden = false;
                     generateButton.hidden = true;
+                    zoomButton.hidden = false;
                     bubbleElement.classList.add('pv-card-real-image');
+                    // 卡片默认是 1:1 占位；读到真实图片后按比例撑高，保证完整显示不裁剪
+                    // （overlay 是 cover，容器比例等于图片比例时 cover 即完整铺满）
+                    const probe = new Image();
+                    probe.onload = () => {
+                        if (bubbleElement._imageHydrationToken !== token) return;
+                        if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+                            bubbleElement.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`;
+                        }
+                    };
+                    probe.src = objectUrl;
                 } catch (error) {
                     footerText.textContent = error.code === 'image-repo-missing'
                         ? '图片仓库不可用・点击查看描述'
@@ -574,21 +578,19 @@ function createMessageBubbleElement(message) {
         legacyImage.src = imagePart ? imagePart.data : content;
         legacyImage.alt = '图片消息';
         bubbleElement.appendChild(legacyImage);
-        const legacyDownload = document.createElement('button');
-        legacyDownload.type = 'button';
-        legacyDownload.className = 'image-bubble-download';
-        legacyDownload.title = '下载图片';
-        legacyDownload.setAttribute('aria-label', '下载图片');
-        legacyDownload.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
-        legacyDownload.addEventListener('click', async event => {
+        // 右上角放大按钮：点击查看大图（下载挪进查看器弹窗里）
+        const legacyZoom = document.createElement('button');
+        legacyZoom.type = 'button';
+        legacyZoom.className = 'image-zoom-btn';
+        legacyZoom.title = '查看大图';
+        legacyZoom.setAttribute('aria-label', '查看大图');
+        legacyZoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+        legacyZoom.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            legacyDownload.disabled = true;
-            try { await downloadImageMessage(message); }
-            catch (error) { if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载'); }
-            finally { legacyDownload.disabled = false; }
+            if (legacyImage.src && typeof openImageViewer === 'function') openImageViewer(message, legacyImage.src);
         });
-        bubbleElement.appendChild(legacyDownload);
+        bubbleElement.appendChild(legacyZoom);
     } else if (textMatch) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;

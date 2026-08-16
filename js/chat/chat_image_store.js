@@ -422,3 +422,55 @@ window.downloadImageMessage = downloadImageMessage;
 window.addEventListener?.('pagehide', () => {
     for (const url of Array.from(_imageObjectUrls)) revokeImageObjectUrl(url);
 });
+
+// ============================================================
+// 图片查看器：点气泡右上角的放大按钮打开，大图 + 关闭/下载
+// 只借用气泡正在显示的 src（objectUrl 的生命周期归气泡管），
+// 下载仍然走 downloadImageMessage 的统一读取入口。
+// ============================================================
+let _imageViewerMessage = null;
+
+function openImageViewer(message, src) {
+    const overlay = document.getElementById('image-viewer-modal');
+    const img = document.getElementById('image-viewer-img');
+    if (!overlay || !img || !src) return;
+    _imageViewerMessage = message || null;
+    img.src = src;
+    overlay.classList.add('visible');
+}
+
+function closeImageViewer() {
+    const overlay = document.getElementById('image-viewer-modal');
+    const img = document.getElementById('image-viewer-img');
+    if (!overlay) return;
+    overlay.classList.remove('visible');
+    if (img) img.removeAttribute('src');
+    _imageViewerMessage = null;
+}
+
+// 脚本在 body 尾部加载，弹窗 DOM 已存在，直接绑定
+(function initImageViewer() {
+    const overlay = document.getElementById('image-viewer-modal');
+    const closeBtn = document.getElementById('image-viewer-close');
+    const downloadBtn = document.getElementById('image-viewer-download');
+    if (!overlay || !closeBtn || !downloadBtn) return;
+    closeBtn.addEventListener('click', closeImageViewer);
+    // main.js 的全局委托只关「第一个」可见弹窗，这里自己绑定一份更稳（幂等）
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeImageViewer();
+    });
+    downloadBtn.addEventListener('click', async () => {
+        if (!_imageViewerMessage) return;
+        downloadBtn.disabled = true;
+        try {
+            await downloadImageMessage(_imageViewerMessage);
+        } catch (error) {
+            if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载');
+        } finally {
+            downloadBtn.disabled = false;
+        }
+    });
+})();
+
+window.openImageViewer = openImageViewer;
+window.closeImageViewer = closeImageViewer;
