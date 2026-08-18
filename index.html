@@ -953,8 +953,13 @@
             <input type="hidden" id="setting-chat-weather-mode" value="off">
             <input type="hidden" id="setting-chat-weather-preset" value="">
             <input type="hidden" id="setting-chat-weather-forecast" value="0">
-            <input type="hidden" id="setting-chat-image-preset" value="">
+            <!-- 隐藏的图像生成 Input（弹窗回填，配合原有保存逻辑）
+                 preset 默认 off = 不开启：生图要花钱，没设过就不能生 -->
+            <input type="hidden" id="setting-chat-image-preset" value="off">
             <input type="hidden" id="setting-chat-image-auto" value="0">
+            <input type="hidden" id="setting-chat-image-style" value="">
+            <input type="hidden" id="setting-chat-image-rule" value="">
+            <input type="hidden" id="setting-chat-image-reference" value="">
             <!-- ============================== -->
 
             <!-- 设置项列表 -->
@@ -1101,8 +1106,12 @@
             <input type="hidden" id="setting-group-weather-mode" value="off">
             <input type="hidden" id="setting-group-weather-preset" value="">
             <input type="hidden" id="setting-group-weather-forecast" value="0">
-            <input type="hidden" id="setting-group-image-preset" value="">
+            <!-- 隐藏的图像生成 Input（与私聊侧同构，preset 默认 off = 不开启） -->
+            <input type="hidden" id="setting-group-image-preset" value="off">
             <input type="hidden" id="setting-group-image-auto" value="0">
+            <input type="hidden" id="setting-group-image-style" value="">
+            <input type="hidden" id="setting-group-image-rule" value="">
+            <input type="hidden" id="setting-group-image-reference" value="">
             <input type="file" id="setting-group-chat-bg-upload" accept="image/*" style="display:none;">
             <!-- ======================================= -->
 
@@ -5906,6 +5915,54 @@
         <div class="btn-group">
             <button type="button" class="btn btn-neutral" id="image-viewer-close">关闭</button>
             <button type="button" class="btn btn-primary" id="image-viewer-download">下载</button>
+        </div>
+    </div>
+</div>
+
+<!-- === 图像生成设置：私聊侧栏与群聊侧栏共用这一个弹窗 === -->
+<div id="image-generation-modal" class="modal-overlay">
+    <div class="modal-window">
+        <h3>图像生成</h3>
+
+        <div class="form-group">
+            <label for="image-generation-preset">生图预设 <span class="field-hint">预设在「API 设置 &gt; 图像」里建</span></label>
+            <select id="image-generation-preset"></select>
+        </div>
+
+        <!-- 自动生成：关掉后描述卡照样出现，只是要手点才生图 -->
+        <div class="settings-item toggle-setting" style="cursor: default; padding-left: 0; padding-right: 0;">
+            <div class="item-details"><span class="item-name">自动生成图片</span></div>
+            <label class="switch">
+                <input type="checkbox" id="image-generation-auto">
+                <span class="slider round"></span>
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="image-generation-rule">内容约束 <span class="field-hint">约束文字模型怎么写画面描述</span></label>
+            <textarea id="image-generation-rule" rows="2" placeholder="例如：画面中不要出现人物" maxlength="300"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="image-generation-style">画面风格 <span class="field-hint">连同画面比例一起并进生图提示词</span></label>
+            <input type="text" id="image-generation-style" placeholder="例如：写实风格，电影质感" maxlength="200" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label>参考图 <span class="field-hint">长边压到 1024，随备份导出</span></label>
+            <div id="image-generation-reference-preview"><span>未设置</span></div>
+            <input type="file" id="image-generation-reference-upload" accept="image/*" style="display:none;">
+            <div class="btn-group" style="margin-top: 10px;">
+                <label for="image-generation-reference-upload" class="btn btn-secondary" style="margin-bottom: 0;">从本地上传</label>
+                <button type="button" class="btn btn-neutral" id="image-generation-reference-clear" style="margin-bottom: 0;">移除</button>
+            </div>
+        </div>
+
+        <p class="field-hint" style="margin: 0 0 15px;">选「不开启」即本聊天完全不生图。关闭自动生成后，照片描述卡仍会出现，可手动点击生成。</p>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" id="image-generation-confirm">保存</button>
+            <button type="button" class="btn btn-neutral" id="image-generation-cancel">取消</button>
         </div>
     </div>
 </div>
