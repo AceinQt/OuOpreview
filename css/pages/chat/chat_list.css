@@ -29,6 +29,7 @@
   border: none;
   padding: 8px 20px;
 }
+
 #chat-appearance-screen .app-header .action-btn svg {
   width: 24px;
   height: 24px;
@@ -36,6 +37,7 @@
   stroke-width: 2px;
   stroke: var(--btn-color);
 }
+
 #chat-appearance-screen .content {
   padding: 0;
   background-color: var(--gray-color);

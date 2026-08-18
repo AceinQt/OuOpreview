@@ -244,6 +244,33 @@
     margin-bottom: 10px;
 }
 
+/* 图像生成弹窗：参考图预览框，尺寸比表情预览大一些好看清构图 */
+#image-generation-reference-preview {
+    width: 120px;
+    height: 120px;
+    border: 2px dashed #ddd;
+    border-radius: 10px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    background-color: #f9f9f9;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+#image-generation-reference-preview img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 内容较多，弹窗本体给个高度上限，超出自己滚 */
+#image-generation-modal .modal-window {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
 #sticker-preview {
     width: 80px;
     height: 80px;
