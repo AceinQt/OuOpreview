@@ -7,10 +7,10 @@
 //   · js/chat/...                 → 未来可能加入的聊天侧调用
 //
 // 对外符号：
-//   IMAGE_PROVIDERS / imageProviderLabel
+//   IMAGE_PROVIDERS / imageProviderLabel / IMAGE_PRESET_OFF
 //   _normalizeImageSettings / _normalizeImagePreset / _newImagePresetId
 //   getImagePreset / getImagePresetOptions / resolveImagePreset / resolveImagePresetForChat
-//   imageMimeExtension
+//   imageMimeExtension / imageAspectRatioText / composeImagePrompt
 //   generateImage
 // ============================================================
 
@@ -25,6 +25,14 @@ function imageProviderLabel(value) {
     const hit = IMAGE_PROVIDERS.find(p => p.value === value);
     return hit ? hit.label : (value || '未知');
 }
+
+// 聊天身上 imageApiPresetId 表示"不开启生图"的值。
+// ★ 与音色的 VOICE_PRESET_OFF 同一套路：用显式哨兵而不是空串，因为 <select> 拿到的
+//   空值和"字段压根没写过"在 JS 里几乎分不开，混起来必然出 bug。
+//   预设 id 形如 img-<时间戳>-<随机>，不会撞。
+// ★ 这也是**默认值** —— 没设过的聊天一律不生图。生图是要花钱的调用，
+//   绝不能因为"全局配了个默认预设"就替用户默默付费。
+const IMAGE_PRESET_OFF = 'off';
 
 // ============================================================
 // 配置归一化
@@ -119,15 +127,16 @@ function getImagePreset(presetId, settings) {
     return config.imagePresets.find(p => p.id === wanted) || null;
 }
 
-/** 私聊/群聊共用的选项数据，只提供数据，不操作 DOM。 */
+/**
+ * 私聊/群聊共用的选项数据，只提供数据，不操作 DOM。
+ * 第一项固定是"不开启"，它同时是默认选中项。
+ * ★ 刻意不提供"全局默认"这一档：见 IMAGE_PRESET_OFF 的注释，
+ *   没设过的聊天必须是不生图，而不是悄悄借用全局默认去花钱。
+ */
 function getImagePresetOptions(settings) {
     const config = _normalizeImageSettings(_getImageSettingsSource(settings));
-    const defaultPreset = config.imagePresets.find(p => p.id === config.defaultPresetId) || null;
     return [
-        {
-            value: '',
-            label: defaultPreset ? `全局默认 · ${defaultPreset.name}` : '全局默认（未配置）'
-        },
+        { value: IMAGE_PRESET_OFF, label: '不开启' },
         ...config.imagePresets.map(p => ({
             value: p.id,
             label: `${p.name} · ${imageProviderLabel(p.provider)}`
@@ -135,7 +144,10 @@ function getImagePresetOptions(settings) {
     ];
 }
 
-/** 指定预设有效就使用，否则回退到明确设置的全局默认；仍无可用项则返回 null。 */
+/**
+ * 指定预设有效就使用，否则回退到明确设置的全局默认；仍无可用项则返回 null。
+ * 只服务于设置页（试生成、默认预设标注）；聊天侧一律走 resolveImagePresetForChat。
+ */
 function resolveImagePreset(presetId, settings) {
     const config = _normalizeImageSettings(_getImageSettingsSource(settings));
     const wanted = String(presetId || '').trim();
@@ -146,9 +158,41 @@ function resolveImagePreset(presetId, settings) {
     return config.imagePresets.find(p => p.id === config.defaultPresetId) || null;
 }
 
-/** 私聊角色和群聊对象都使用同一个 imageApiPresetId 字段。 */
+/**
+ * 私聊角色和群聊对象都使用同一个 imageApiPresetId 字段。
+ * 'off'、空值、以及指向已删预设的悬空 id 一律视为不开启，**不回退全局默认**。
+ */
 function resolveImagePresetForChat(chat, settings) {
-    return resolveImagePreset(chat && chat.imageApiPresetId, settings);
+    const wanted = String((chat && chat.imageApiPresetId) || '').trim();
+    if (!wanted || wanted === IMAGE_PRESET_OFF) return null;
+    return getImagePreset(wanted, settings);
+}
+
+/** 由 size 反推画面比例文本（1024x1024 → 1:1，1792x1024 → 7:4）。 */
+function imageAspectRatioText(size) {
+    const match = String(size || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (!match) return '';
+    const w = parseInt(match[1], 10);
+    const h = parseInt(match[2], 10);
+    if (!w || !h) return '';
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+    const divisor = gcd(w, h) || 1;
+    return `${w / divisor}:${h / divisor}`;
+}
+
+/**
+ * 拼最终提示词：画面描述 + 风格 + 画面比例。
+ * ★ 比例既写进 prompt 又保留 size 参数，是刻意的双保险：有些模型（如 Gemini 系）
+ *   会忽略 size 固定输出 16:9，只有把比例写进提示词才拗得回来；
+ *   而老实听 size 的模型多这一句也不会被带偏。
+ */
+function composeImagePrompt(description, { stylePrompt = '', size = '' } = {}) {
+    const parts = [String(description || '').trim()];
+    const style = String(stylePrompt || '').trim();
+    if (style) parts.push(style);
+    const ratio = imageAspectRatioText(size);
+    if (ratio) parts.push(`画面比例 ${ratio}`);
+    return parts.filter(Boolean).join('，');
 }
 
 // ============================================================
@@ -387,15 +431,16 @@ function _createImageRequestScope(parentSignal, slowAfterMs, onSlow) {
  * 统一生图入口，根据预设的 provider 路由到不同的请求函数。
  * 
  * @param {object} args
- * @param {string} args.prompt    用户输入的提示词
+ * @param {string} args.prompt    画面描述（文字模型写出来的那段）
  * @param {object} [args.preset]  当前选中的生图预设；省略时解析全局默认
+ * @param {string} [args.stylePrompt] 该聊天的风格文本（如"写实风格"），拼进 prompt
  * @param {object} [args.settings] 覆盖 db.imageSettings (给设置页试听用)
  * @param {AbortSignal} [args.signal] 外部取消信号
  * @param {number} [args.slowAfterMs] 慢请求提醒阈值，默认 120 秒；提醒后请求继续运行
  * @param {(info: {elapsedMs: number}) => void|Promise<void>} [args.onSlow] 超过提醒阈值时调用
  * @returns {Promise<{bytes: Uint8Array, mime: string, source: 'b64_json'|'url'}>}
  */
-async function generateImage({ prompt, preset, settings, signal, slowAfterMs, onSlow } = {}) {
+async function generateImage({ prompt, preset, stylePrompt, settings, signal, slowAfterMs, onSlow } = {}) {
     const promptText = String(prompt || '').trim();
     if (!promptText) throw new Error('提示词不能为空');
 
@@ -408,6 +453,12 @@ async function generateImage({ prompt, preset, settings, signal, slowAfterMs, on
     if (!imagePreset.apiKey) throw new Error(`生图预设「${imagePreset.name}」尚未配置 API Key`);
     if (!imagePreset.model) throw new Error(`生图预设「${imagePreset.name}」尚未配置模型`);
 
+    // 风格与比例在这里并入提示词；size 参数照旧发送，双保险见 composeImagePrompt
+    const finalPrompt = composeImagePrompt(promptText, {
+        stylePrompt,
+        size: imagePreset.size
+    });
+
     const requestScope = _createImageRequestScope(signal, slowAfterMs, onSlow);
     try {
         switch (imagePreset.provider) {
@@ -416,7 +467,7 @@ async function generateImage({ prompt, preset, settings, signal, slowAfterMs, on
                     imagePreset.apiUrl,
                     imagePreset.apiKey,
                     imagePreset,
-                    promptText,
+                    finalPrompt,
                     requestScope.signal
                 );
 

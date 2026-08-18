@@ -322,7 +322,12 @@ async function _generateImageForMessage(message, { chatId, chatType, auto = fals
 
     let generated;
     try {
-        generated = await generateImage({ prompt: parsed.description, preset });
+        // 风格文本按聊天存，和画面比例一起在 API 层并进提示词
+        generated = await generateImage({
+            prompt: parsed.description,
+            preset,
+            stylePrompt: chat.imageStylePrompt || ''
+        });
     } catch (error) {
         _setImageMediaState(targetMessage, chatId, chatType, 'failed', {
             source: 'generated', localCacheKey, presetId: preset.id,
@@ -448,6 +453,8 @@ function generateImageForMessage(message, options = {}) {
 /** 每批自动最多取一条，避免一次 AI 回复意外产生多张付费图片。 */
 function queueAutoImageGeneration(messages, chat, chatId, chatType) {
     if (!chat || !chat.imageAutoGenerate || !Array.isArray(messages)) return null;
+    // 预设为「不开启」时连队都不入：否则每轮回复都要白跑一次再报 preset-missing
+    if (typeof resolveImagePresetForChat === 'function' && !resolveImagePresetForChat(chat)) return null;
     const message = messages.find(item => isImageDescriptionMessage(item) && !isImageMediaMessage(item));
     if (!message) return null;
     const promise = generateImageForMessage(message, { chatId, chatType, auto: true });

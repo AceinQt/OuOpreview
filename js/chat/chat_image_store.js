@@ -450,6 +450,8 @@ function closeImageViewer() {
 
 // 脚本在 body 尾部加载，弹窗 DOM 已存在，直接绑定
 (function initImageViewer() {
+    // 没有真实 DOM 的宿主（测试沙箱）里只加载纯函数，不绑事件
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
     const overlay = document.getElementById('image-viewer-modal');
     const closeBtn = document.getElementById('image-viewer-close');
     const downloadBtn = document.getElementById('image-viewer-download');

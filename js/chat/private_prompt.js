@@ -260,6 +260,13 @@ if (watchingContext) {
                 
 
                 prompt += `14. 你的输出格式必须严格遵循以下格式：${outputFormats}\n`;
+                // 内容约束：只管束"照片/视频描述怎么写"这一步。真正生图时还会另外
+                // 追加风格与画面比例（见 image_generation_api.js 的 composeImagePrompt），
+                // 那些是画法，这里这条是画什么/不画什么。
+                const imageContentRule = (character.imageContentRule || '').trim();
+                if (imageContentRule) {
+                    prompt += `14.1 **照片/视频描述的内容约束**：当你使用 [${character.realName}发来的照片/视频：{描述}] 格式时，{描述}部分必须遵守：${imageContentRule}。这条只约束你怎么写画面描述，不影响你的普通聊天内容。\n`;
+                }
                 if (character.bilingualModeEnabled) {
                     prompt += `✨双语模式特别指令✨：当你的角色的母语为中文以外的语言时，你的消息回复必须严格遵循双语模式下的普通消息格式：[${character.realName}的消息：{外语原文}（中文翻译）],例如: [${character.realName}的消息：Of course, I'd love to.（当然，我很乐意。）],中文翻译文本视为系统自翻译，不视为角色的原话;当你的角色想要说中文时，需要根据你的角色设定自行判断对于中文的熟悉程度来造句，并使用普通消息的标准格式: [${character.realName}的消息：{中文消息内容}] 。这条规则的优先级非常高，请务必遵守。\n`;
                     prompt += `**注意：括号内中文翻译为纯文本翻译，原句中的颜文字、表情等内容禁止翻译！如："なので、メッセージを頂けて、めちゃくちゃ嬉しいです！(ฅ́˘ฅ̀)♡（笑） （所以，能收到你的消息，我超级开心的！）"此句，颜文字和"（笑）"禁止出现在中文翻译中**`;

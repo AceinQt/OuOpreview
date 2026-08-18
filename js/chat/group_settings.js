@@ -500,11 +500,17 @@ function setupGroupChatSystem() {
             if (typeof openImageGenerationSettingDialog !== 'function') return;
             const result = await openImageGenerationSettingDialog({
                 imageApiPresetId: document.getElementById('setting-group-image-preset').value || '',
-                imageAutoGenerate: document.getElementById('setting-group-image-auto').value === '1'
+                imageAutoGenerate: document.getElementById('setting-group-image-auto').value === '1',
+                imageContentRule: document.getElementById('setting-group-image-rule').value || '',
+                imageStylePrompt: document.getElementById('setting-group-image-style').value || '',
+                imageReference: document.getElementById('setting-group-image-reference').value || ''
             });
             if (!result) return;
             document.getElementById('setting-group-image-preset').value = result.imageApiPresetId;
             document.getElementById('setting-group-image-auto').value = result.imageAutoGenerate ? '1' : '0';
+            document.getElementById('setting-group-image-rule').value = result.imageContentRule;
+            document.getElementById('setting-group-image-style').value = result.imageStylePrompt;
+            document.getElementById('setting-group-image-reference').value = result.imageReference;
             _refreshGroupImageGenerationDisplay();
         });
     }
@@ -624,11 +630,20 @@ if (groupImagePresetInput && groupImageAutoInput) {
     const binding = typeof normalizeChatImageBinding === 'function'
         ? normalizeChatImageBinding(group)
         : {
-            imageApiPresetId: group.imageApiPresetId || '',
-            imageAutoGenerate: !!group.imageAutoGenerate
+            imageApiPresetId: group.imageApiPresetId || 'off',
+            imageAutoGenerate: !!group.imageAutoGenerate,
+            imageContentRule: group.imageContentRule || '',
+            imageStylePrompt: group.imageStylePrompt || '',
+            imageReference: group.imageReference || ''
         };
     groupImagePresetInput.value = binding.imageApiPresetId;
     groupImageAutoInput.value = binding.imageAutoGenerate ? '1' : '0';
+    const groupImageRuleInput = document.getElementById('setting-group-image-rule');
+    const groupImageStyleInput = document.getElementById('setting-group-image-style');
+    const groupImageRefInput = document.getElementById('setting-group-image-reference');
+    if (groupImageRuleInput) groupImageRuleInput.value = binding.imageContentRule;
+    if (groupImageStyleInput) groupImageStyleInput.value = binding.imageStylePrompt;
+    if (groupImageRefInput) groupImageRefInput.value = binding.imageReference;
     _refreshGroupImageGenerationDisplay();
 }
     // ── 气泡外观 ─────────────────────────────────────────
@@ -812,8 +827,14 @@ if (groupWeatherModeInputSave) {
 const groupImagePresetInputSave = document.getElementById('setting-group-image-preset');
 const groupImageAutoInputSave = document.getElementById('setting-group-image-auto');
 if (groupImagePresetInputSave && groupImageAutoInputSave) {
-    group.imageApiPresetId = groupImagePresetInputSave.value || '';
+    group.imageApiPresetId = groupImagePresetInputSave.value || 'off';
     group.imageAutoGenerate = groupImageAutoInputSave.value === '1';
+    const groupImageRuleSave = document.getElementById('setting-group-image-rule');
+    const groupImageStyleSave = document.getElementById('setting-group-image-style');
+    const groupImageRefSave = document.getElementById('setting-group-image-reference');
+    if (groupImageRuleSave) group.imageContentRule = groupImageRuleSave.value || '';
+    if (groupImageStyleSave) group.imageStylePrompt = groupImageStyleSave.value || '';
+    if (groupImageRefSave) group.imageReference = groupImageRefSave.value || '';
 }
     await saveSingleChat(currentChatId, 'group');
     showToast('群聊设置已保存！');

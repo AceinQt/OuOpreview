@@ -137,6 +137,11 @@ function generateGroupSystemPrompt(group, retrievedContext = '', weatherText = '
 
 
     prompt += `4. **你的输出格式 (极其重要)**: 你生成的每一条消息都 **必须** 严格遵循以下格式之一。每条消息占一行。请用成员的 **真名** 填充格式中的 \`{成员真名}\`。\n${outputFormats}\n\n`;
+    // 内容约束：只管束"照片/视频描述怎么写"这一步；风格与画面比例在生图时另加。
+    const groupImageContentRule = (group.imageContentRule || '').trim();
+    if (groupImageContentRule) {
+        prompt += `   - **照片/视频描述的内容约束**: 任何成员使用 [{成员真名}发来的照片/视频：{内容描述}] 格式时，{内容描述}必须遵守：${groupImageContentRule}。这条只约束画面描述怎么写，不影响普通聊天内容。\n\n`;
+    }
     prompt += `   - **重要**: 群聊不支持AI成员接收/退回转账或接收礼物的特殊指令，也不支持更新状态。你只需要通过普通消息来回应我发送的转账或礼物即可。\n\n`;
 
     prompt += `5. **模拟群聊氛围**: 为了让群聊看起来真实、活跃且混乱，你的每一次回复都必须遵循以下随机性要求：\n`;
