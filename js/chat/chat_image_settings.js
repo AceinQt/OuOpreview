@@ -10,6 +10,9 @@
 /** 参考图压缩档位：长边 1024、JPEG 0.8，和头像那套共用 compressImage。 */
 const IMAGE_REFERENCE_COMPRESS_OPTIONS = { quality: 0.8, maxWidth: 1024, maxHeight: 1024 };
 
+/** 用于记录折叠面板点击事件是否已经绑定过，防止重复绑定 */
+let _imageModalEventBound = false;
+
 /** 没配过生图的聊天一律落到"不开启"，绝不借用全局默认替用户花钱。 */
 function _imageBindingOffValue() {
     return typeof IMAGE_PRESET_OFF === 'string' ? IMAGE_PRESET_OFF : 'off';
@@ -52,7 +55,7 @@ function _renderImageReferencePreview(dataUrl) {
     const box = document.getElementById('image-generation-reference-preview');
     if (!box) return;
     const value = String(dataUrl || '').trim();
-    box.innerHTML = value ? `<img src="${value}" alt="参考图">` : '<span>未设置</span>';
+    box.innerHTML = value ? `<img src="${value}" alt="参考图" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span>未设置</span>';
 }
 
 /**
@@ -71,6 +74,19 @@ async function openImageGenerationSettingDialog(current = {}) {
     const cancelBtn = document.getElementById('image-generation-cancel');
     if (!modal || !presetSel || !confirmBtn || !cancelBtn) return null;
     if (typeof getImagePresetOptions !== 'function') return null;
+
+    // === 新增：绑定折叠面板的展开/收起点击事件（确保只绑定一次） ===
+    if (!_imageModalEventBound) {
+        modal.addEventListener('click', (e) => {
+            const header = e.target.closest('.collapsible-header');
+            if (header) {
+                // 点击头部时，切换父元素(.collapsible-section)的 open 状态
+                header.parentElement.classList.toggle('open');
+            }
+        });
+        _imageModalEventBound = true; // 标记为已绑定
+    }
+    // ==========================================================
 
     const binding = normalizeChatImageBinding(current);
     const off = _imageBindingOffValue();
