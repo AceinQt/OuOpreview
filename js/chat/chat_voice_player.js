@@ -15,7 +15,7 @@
 //   而且每个 blob URL 都得手动回收，多实例必然漏。
 //
 // 对外符号：
-//   handleVoiceBubbleClick / refreshVoiceBubbleState
+//   handleVoiceBubbleClick / refreshVoiceBubbleState / toggleVoiceTranscript
 //   stopVoicePlayback / regenerateVoiceClip
 // ============================================================
 
@@ -138,9 +138,13 @@ async function refreshVoiceBubbleState(bubble, chat, chatType, senderId) {
     if (!profile) {
         // 没有可用音色 —— 按钮留着但标明点了会怎样，不要假装能播
         _setVoiceBubbleState(btn, 'idle');
-        btn.title = _voiceIsSentBubble(bubble)
-            ? '自己发的语音没有音色可用'
-            : '这个角色还没设置音色（聊天设置里选一个）';
+        if (_voiceIsSentBubble(bubble)) {
+            // 自己发的语音播不了，这个键就是个"看文字"的开关（见 handleVoiceBubbleClick）
+            btn.setAttribute('aria-label', '查看语音文字');
+            btn.title = '查看语音文字';
+        } else {
+            btn.title = '这个角色还没设置音色（聊天设置里选一个）';
+        }
         return;
     }
     // 记下 key：后台预合成完成时靠它找到该更新哪些气泡
@@ -193,6 +197,19 @@ function _voiceProfileForBubble(bubble, chat, chatType, senderId) {
     return resolveVoicePresetForSender(chat, chatType, senderId);
 }
 
+/**
+ * 切换文字稿显隐 —— 点气泡本体的那个动作。
+ *
+ * ★ 放在这里而不是留在 chat_room 的点击分派里：自己发的语音点播放键也要落到
+ *   同一个动作上（见 handleVoiceBubbleClick），两个入口共用一份实现，
+ *   免得哪天改了一处漏另一处。
+ */
+function toggleVoiceTranscript(bubble) {
+    const wrapper = bubble && bubble.closest('.message-wrapper');
+    const transcript = wrapper && wrapper.querySelector('.voice-transcript');
+    if (transcript) transcript.classList.toggle('active');
+}
+
 // ── 点击入口 ──────────────────────────────────────────────────
 
 /**
@@ -222,9 +239,13 @@ async function handleVoiceBubbleClick(bubble, chat, chatType, senderId) {
 
     const profile = _voiceProfileForBubble(bubble, chat, chatType, senderId);
     if (!profile) {
-        showToast(_voiceIsSentBubble(bubble)
-            ? '自己发的语音没有音色可用'
-            : '这个角色还没设置音色，在聊天设置里选一个');
+        // ★ 自己发的语音永远拿不到音色（见 _voiceProfileForBubble），弹一句"没有音色"
+        //   只是让用户白点一下。整个气泡就一个可点区域是"看文字"，播放键也归到那儿去。
+        if (_voiceIsSentBubble(bubble)) {
+            toggleVoiceTranscript(bubble);
+        } else {
+            showToast('这个角色还没设置音色，在聊天设置里选一个');
+        }
         return;
     }
 
