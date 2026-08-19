@@ -576,41 +576,23 @@
     margin-bottom: 0;
 }
 
-/* 提示小字说明 */
+/* 提示小字说明。
+   ★ margin-top 必须显式归零：reset.css 只重置了滚动条，没有通用 margin reset，
+     而这些说明现在是 <p>，会吃到浏览器默认的 1em 上边距，撑出一道空隙。 */
 #image-generation-modal .field-hint {
     font-weight: normal;
     font-size: 12px;
     color: #888;
     display: block;
-    margin-bottom: 8px;
-}
-
-/* 自动生成：开关项布局 */
-#image-generation-modal .toggle-setting {
-    margin-top: 5px;
-    margin-bottom: 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-#image-generation-modal .toggle-setting .item-name {
-    font-weight: 600;
-    color: var(--secondary-color);
-}
-
-#image-generation-modal .toggle-setting .switch {
-    margin: 0;
-}
-
-/* 自动生成：内部提示文案 */
-#image-generation-modal .section-hint {
-    margin: 0;
-    font-size: 12px;
-    color: #888;
+    margin: 0 0 8px;
     line-height: 1.6;
-    padding-top: 10px;
-    border-top: 1px dashed #eee;
+}
+
+/* 开关行里的标题：.form-group label 自带 margin-bottom:8px，在 align-items:center
+   的 flex 行里会把文字顶高约 4px，和开关对不齐 —— 这里归零。
+   只点名这一个 label，避免顺手影响参考图那边的 label.btn。 */
+#image-generation-modal label[for="image-generation-auto"] {
+    margin-bottom: 0;
 }
 
 /* 参考图：左右结构容器 */
