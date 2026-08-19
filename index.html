@@ -5932,8 +5932,9 @@
             </div>
             <div class="collapsible-content">
                 <div class="form-group mb-0">
-
-                    <select id="image-generation-preset" class="mb-0"></select>                                               <label for="image-generation-preset" class="field-hint">预设在「API 设置 &gt; 图像」里建。选「不开启」即本聊天完全不生图。</label>
+                    <select id="image-generation-preset" class="mb-0"></select>
+                    <!-- 说明文字用 p 不用 label[for]：否则点说明也会弹开下拉框 -->
+                    <p class="field-hint">预设在「API 设置 &gt; 图像」里建。选「不开启」即本聊天完全不生图。</p>
                 </div>
             </div>
         </div>
@@ -5941,18 +5942,20 @@
         <!-- ② 自动生成 -->
         <div class="collapsible-section">
             <div class="collapsible-header">
-                <h4>是否自动生成</h4>
+                <h4>图片自动生成</h4>
                 <span class="collapsible-arrow">▼</span>
             </div>
             <div class="collapsible-content">
-                <div class="settings-item toggle-setting">
-                    <div class="item-details"><span class="item-name">自动生成图片</span></div>
+                <div class="form-group mb-0" style="display:flex; flex-direction:row;justify-content:space-between; align-items:center;">
+                    <!-- 保持 label：.form-group label 给的蓝色（--secondary-color）就靠它；
+                         补上 for 之后点文字也能拨动开关 -->
+                    <label for="image-generation-auto">自动生成</label>
                     <label class="switch">
                         <input type="checkbox" id="image-generation-auto">
                         <span class="slider round"></span>
                     </label>
                 </div>
-                <label class="field-hint">关闭自动生成后，照片描述卡仍会出现，可手动点击生成。</label>
+                <p class="field-hint">关闭自动生成后，照片描述卡仍会出现，可手动点击生成。</p>
             </div>
         </div>
 
