@@ -198,10 +198,9 @@
     width: 100%;
 }
 
-/* 47px = 图标盒 32px + 它的 margin-right 15px，让输入框跟标题文字左对齐 */
+
 .settings-input-text {
-    margin-left: 47px;
-    width: calc(100% - 47px);
+    width: 100%;
     padding: 10px;
     box-sizing: border-box;
     border: 1px solid #eee;

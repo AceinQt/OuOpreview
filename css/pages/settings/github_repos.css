@@ -33,14 +33,12 @@
 }
 
 /* ── 输入框 + 旁边的小按钮 ──────────────────────────────────────
-   column-layout 里的控件本来靠 .settings-input-text 自己缩进 47px，
-   一旦并排放就得把缩进提到这个容器上，否则两边各缩一次会串位。 */
+ */
 #github-repos-screen .gh-inline-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: 47px;
-    width: calc(100% - 47px);
+    width: 100%;
 }
 
 #github-repos-screen .gh-inline-row .settings-input-text {
@@ -53,6 +51,11 @@
 /* 仓库下拉里可能是「语音仓库（user/repo）」这种长文本，别把按钮顶出去 */
 #github-repos-screen .gh-inline-row select {
     text-overflow: ellipsis;
+}
+
+/* 让仓库备注名的标题占满剩余空间，从而把右侧的三个操作按钮挤到最右边 */
+#github-repos-screen .gh-inline-row .item-name {
+    flex: 1;
 }
 
 /* 保存按钮：.bottom-actions 自带 25px 左右内边距，叠上 content 的 15px 会比卡片窄一截，
@@ -84,4 +87,9 @@
     border-color: #b6e3c4;
     background: #f6fdf8;
     color: #2f6b43;
+}
+
+/* 覆盖全局分割线缩进：让本页面的分割线不再避让图标，占满卡片宽度 */
+#github-repos-screen .settings-item::after {
+    left: 20px; 
 }
