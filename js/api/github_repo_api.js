@@ -42,12 +42,14 @@ const GITHUB_RETRY_TIMES = 2;
 //   放开让人改，改完旧备份就找不到了。
 // ★ 改这里的默认值**不影响已归档的内容** —— 每条内容记的是自己完整的 cloudPath，
 //   改默认目录只影响之后新上传的。所以这个决定将来想反悔也不用迁数据。
+// ★ shortLabel 只给设置页「GitHub 仓库」那一行的状态文案用 —— 三个用途全开时
+//   全称拼起来会在窄屏上折行。页面里的用途行仍用 label，那里空间够、全称更清楚。
 const GITHUB_PURPOSES = [
-    { key: 'backup', label: '数据备份', pathPrefix: '',
+    { key: 'backup', label: '数据备份', shortLabel: '备份', pathPrefix: '',
       hint: '全量备份文件传到仓库根目录。每日自动备份的开关在「存储备份 > 云端同步」里' },
-    { key: 'voice', label: '语音归档', pathPrefix: 'voice',
+    { key: 'voice', label: '语音归档', shortLabel: '语音', pathPrefix: 'voice',
       hint: '合成好的语音上传到这里，换设备也能听回来' },
-    { key: 'image', label: '图片归档', pathPrefix: 'image',
+    { key: 'image', label: '图片归档', shortLabel: '图片', pathPrefix: 'image',
       hint: '生成或转换后的图片上传到这里，换设备后仍可恢复真实封面' }
 ];
 
