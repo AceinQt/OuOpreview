@@ -356,7 +356,8 @@ function refreshGithubReposSummary() {
     });
     if (!repos.length) el.textContent = '未配置';
     else if (!active.length) el.textContent = `${repos.length} 个仓库 · 未启用`;
-    else el.textContent = active.map(p => p.label).join('、');
+    // 用 shortLabel（备份/语音/图片）而不是 label —— 三项全开时全称在窄屏上会折行。
+    else el.textContent = active.map(p => p.shortLabel || p.label).join('、');
 }
 
 async function saveGithubRepos() {

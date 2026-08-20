@@ -1,32 +1,64 @@
 // --- 文件位置: js/settings/data_storage.js ---
 
 const dataStorage = {
+    // ★ 唯一的顺序真相：饼图和详情列表都按这个数组来排（以前两边各排一套，
+    //   导致饼图上最深色的"系统设置"紧贴最浅色的"个性化"，看着很乱）。
+    //   排序按"通常占多少"从大到小，配色也跟着从深到浅 —— 深色落在真正吃空间的
+    //   大扇区上，几 KB 的小项拿最浅的颜色，饼图一眼就能看出主次。
+    //   往下加新分类时**必须**同时加进这里，否则详情列表不会显示它
+    //   （历史上语音/图片就是这么漏掉的）。
+    categoryOrder: [
+        'characters',
+        'localMedia',
+        'memory',
+        'study',
+        'peek',
+        'forum',
+        'worldBooks',
+        'rpg',
+        'personalization',
+        'settings'
+    ],
+
+    // 与 categoryOrder 一一对应的单色蓝渐变，深 → 浅，无重复色。
     categoryColors: {
-        settings:        '#0C3A6C',
-        worldBooks:      '#05519F',
-        characters:      '#0462C2',
-        memory:          '#1080E6',
-        peek:            '#2590EE',
-        study:           '#3A9EF6',
-        voice:           '#59AEF8',
-        image:           '#F59E0B',
-        forum:           '#7EBEFB',
-        rpg:             '#BADBFC',
-        personalization: '#E0EDFE'
+        characters:      '#1B60A1',
+        localMedia:      '#1B6CB3',
+        memory:          '#1F78BC',
+        study:           '#2E81C2',
+        peek:            '#3991CC',
+        forum:           '#4EA2D8',
+        worldBooks:      '#77B7E3',
+        rpg:             '#A5D2F1',
+        personalization: '#CEE9FB',
+        settings:        '#E6F5FB'
     },
 
     categoryNames: {
         characters:      '角色与聊天',
-        worldBooks:      '世界书',
+        localMedia:      '本地媒体',
         memory:          '记忆与向量',
-        peek:            '角色手机数据',
         study:           '学习',
-        voice:           '语音缓存',
-        image:           '图片缓存',
+        peek:            '角色手机数据',
         forum:           '喵坛',
+        worldBooks:      '世界书',
         rpg:             '游戏',
         personalization: '个性化',
         settings:        '系统设置'
+    },
+
+    /**
+     * 把 categorizedSizes 拉平成 [{key, value}]，按 categoryOrder 排好、滤掉 0。
+     * 饼图和详情列表都走这里 —— 顺序只有一份实现，两边不可能再排得不一样。
+     * 不在 categoryOrder 里的分类会被追加到末尾（见 categoryOrder 上的说明）。
+     */
+    orderedEntries: function (categorizedSizes) {
+        const sizes = categorizedSizes || {};
+        const known = this.categoryOrder.filter(key => key in sizes);
+        const unregistered = Object.keys(sizes).filter(key => !this.categoryOrder.includes(key));
+        return known.concat(unregistered)
+            .map(key => ({ key, value: sizes[key] || 0 }))
+            .filter(item => item.value > 0);
     },
 
     getStorageInfo: async function () {
@@ -46,13 +78,12 @@ const dataStorage = {
 
         let categorizedSizes = {
             characters: 0,
-            worldBooks: 0,
+            localMedia: 0,
             memory: 0,
-            peek: 0,
             study: 0,
-            voice: 0,
-            image: 0,
+            peek: 0,
             forum: 0,
+            worldBooks: 0,
             rpg: 0,
             personalization: 0,
             settings: 0
@@ -184,20 +215,22 @@ if (typeof dexieDB !== 'undefined') {
     } catch(e) {}
 }
 
-// ★ 9. 语音缓存（音频字节在独立表，用元数据里的 size 累加 ——
-//   绝不能 stringify 那张表，几兆音频读进内存只为算个大小）
+// ★ 9. 本地媒体 = 语音音频字节 + 生图图片字节，合成一项统计。
+//   两者都是"只存在于本机的媒体缓存"：不进备份、恢复时会被清空、可按限额淘汰，
+//   归档过的还能从 GitHub 仓库拉回来 —— 性质完全一致，所以不拆成两项。
+//   ★ 绝不能 stringify 这两张表：几兆的音频/图片字节读进内存只为算个大小。
+//   统一走各自的 stats 函数，它们只遍历元数据里的 size 字段。
 if (typeof getVoiceCacheStats === 'function') {
     try {
         const voiceStats = await getVoiceCacheStats();
-        categorizedSizes.voice += voiceStats.cachedBytes;
+        categorizedSizes.localMedia += voiceStats.cachedBytes;
     } catch (e) { console.warn('[storage] 语音缓存统计失败:', e); }
 }
 
-// ★ 10. 图片缓存同样只读元数据统计，避免为展示存储占用把图片字节全部 stringify。
 if (typeof getImageCacheStats === 'function') {
     try {
         const imageStats = await getImageCacheStats();
-        categorizedSizes.image += imageStats.cachedBytes;
+        categorizedSizes.localMedia += imageStats.cachedBytes;
     } catch (e) { console.warn('[storage] 图片缓存统计失败:', e); }
 }
 
@@ -283,13 +316,14 @@ function renderStorageChart(container, info) {
         myStorageChart = echarts.init(container);
     }
 
-    const chartData = Object.entries(info.categorizedSizes)
-        .filter(([_, value]) => value > 0)
-        .map(([key, value]) => ({
-            name: dataStorage.categoryNames[key] || key,
-            value: value,
+    // ★ 饼图与详情列表共用 dataStorage.orderedEntries()：
+    //   扇区顺序 = 列表顺序 = 配色深浅顺序。
+    const chartData = dataStorage.orderedEntries(info.categorizedSizes)
+        .map(item => ({
+            name: dataStorage.categoryNames[item.key] || item.key,
+            value: item.value,
             itemStyle: {
-                color: dataStorage.categoryColors[key] || '#999' 
+                color: dataStorage.categoryColors[item.key] || '#999'
             }
         }));
 
@@ -349,20 +383,22 @@ function renderStorageDetails(container, info) {
     container.innerHTML = ''; 
     container.classList.add('storage-details-container');
 
-    // 定义类别的显示顺序（与顶部定义的顺序一致）
-    const categoryOrder = ['settings', 'worldBooks', 'characters', 'memory', 'peek', 'study', 'forum', 'rpg', 'personalization'];
+    // ★ 顺序与饼图共用 orderedEntries()。以前这里另有一份写死的 categoryOrder 白名单，
+    //   新加的语音/图片没登记进去，于是"算进了总量、画进了饼图、却不在列表里"。
+    const sortedData = dataStorage.orderedEntries(info.categorizedSizes);
 
-    // 按照预定义的顺序排序
-    const sortedData = categoryOrder
-        .map(key => ({ 
-            key, 
-            value: info.categorizedSizes[key] || 0 
-        }))
-        .filter(item => item.value > 0); // 只显示有数据的类别
+    // 没有独立导出通道的分类，右侧显示说明文字而不是导出按钮。
+    // 能导出的分类见 exportPartialData() 的 switch。
+    const noExportNotes = {
+        memory:     '随角色导出',
+        peek:       '随角色导出',
+        localMedia: '不参与备份'
+    };
 
     sortedData.forEach((item) => {
         const name = dataStorage.categoryNames[item.key] || item.key;
         const color = dataStorage.categoryColors[item.key] || '#ccc';
+        const note = noExportNotes[item.key];
 
         const row = document.createElement('div');
         row.className = 'storage-detail-item';
@@ -374,7 +410,7 @@ function renderStorageDetails(container, info) {
             </div>
             <div class="storage-item-right">
                 <span class="storage-detail-size">${formatBytes(item.value)}</span>
-                ${(item.key !== 'memory' && item.key !== 'peek') ? `<button class="btn-export-sm">导出</button>` : '<span style="font-size:11px;color:#aaa;">随角色导出</span>'}
+                ${note ? `<span style="font-size:11px;color:#aaa;">${note}</span>` : `<button class="btn-export-sm">导出</button>`}
             </div>
         `;
 
