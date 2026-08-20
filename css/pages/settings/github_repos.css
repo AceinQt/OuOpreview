@@ -32,8 +32,7 @@
     gap: 10px;
 }
 
-/* ── 输入框 + 旁边的小按钮 ──────────────────────────────────────
- */
+/* ── 输入框 + 旁边的小按钮 ────────────────────────────────────── */
 #github-repos-screen .gh-inline-row {
     display: flex;
     align-items: center;
@@ -91,5 +90,5 @@
 
 /* 覆盖全局分割线缩进：让本页面的分割线不再避让图标，占满卡片宽度 */
 #github-repos-screen .settings-item::after {
-    left: 20px; 
+    left: 20px;
 }
