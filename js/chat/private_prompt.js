@@ -93,11 +93,11 @@ if (watchingContext) {
     prompt += `6. **挂断通话**：如果对话需要自然结束，你可以主动挂断，单起一行输出：[${character.realName}挂断了通话]。\n`; 
     // 调节旋钮：天气并进时间这一条，见 plans/weather-prompt-refit.md
     if (character.timePerceptionEnabled && weatherText) {
-        prompt += `7. 现在是 ${currentTime}，${weatherText}。不要主动提及或评论天气。`;
+        prompt += `7. 现在是 ${currentTime}，${weatherText}。仅供你参考，不需要特意提及。`;
     } else if (character.timePerceptionEnabled) {
         prompt += `7. 现在是 ${currentTime}。`;
     } else if (weatherText) {
-        prompt += `7. ${weatherText}。不要主动提及或评论天气。`;
+        prompt += `7. ${weatherText}。仅供你参考，不需要特意提及。`;
     }
 
     return prompt;
@@ -133,7 +133,7 @@ if (watchingContext) {
                     // 若 AI 忽略天气 → 把 chat_ai_service.js 自问第 4 条扩成"什么天气？"；
                     // 若 AI 反复重复天气 → 把下面这句改短。详见 plans/weather-prompt-refit.md
                     if (weatherText) {
-                        prompt += `**当前室外天气**：${weatherText}。（写景时可自然带入，但不要反复描写同一天气特征，也不要让角色主动谈论天气。）\n\n`;
+                        prompt += `**当前室外天气**：${weatherText}。（写景时可自然带入，但不要反复描写同一天气特征，也不要让角色特意谈论天气。）\n\n`;
                     }
 
                     prompt += `**互动对象（故事中的“你”）**：${character.myName}\n`;
@@ -282,11 +282,11 @@ if (watchingContext) {
                 // 调节旋钮：天气并进第 16 条时间那句，见 plans/weather-prompt-refit.md
                 let rule16Prefix = '';
                 if (character.timePerceptionEnabled && weatherText) {
-                    rule16Prefix = `现在是 ${currentTime}，${weatherText}。你应知晓当前时间与天气，但不要主动提及或评论时间和天气（例如，不要催促我睡觉，不要没头没脑地聊天气），`;
+                    rule16Prefix = `现在是 ${currentTime}，${weatherText}。你应知晓当前时间与天气，但不要刻意提及时间和天气（例如，不要催促我睡觉，不要没头没脑地聊天气），`;
                 } else if (character.timePerceptionEnabled) {
-                    rule16Prefix = `现在是 ${currentTime}。你应知晓当前时间，但不要主动提及或评论时间（例如，不要催促我睡觉），`;
+                    rule16Prefix = `现在是 ${currentTime}。你应知晓当前时间，但不要刻意提及时间（例如，不要催促我睡觉），`;
                 } else if (weatherText) {
-                    rule16Prefix = `${weatherText}。你应知晓当前天气，但不要主动提及或评论天气（例如，不要没头没脑地聊天气），`;
+                    rule16Prefix = `${weatherText}。你应知晓当前天气，但不要刻意提及（例如，不要没头没脑地聊天气），`;
                 }
                 prompt += `16. ${rule16Prefix}不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
 
