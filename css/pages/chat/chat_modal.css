@@ -584,7 +584,7 @@
     font-size: 12px;
     color: #888;
     display: block;
-    margin: 0 0 8px;
+    margin: 0;
     line-height: 1.6;
 }
 
@@ -607,24 +607,56 @@
     margin: 0;
     width: 100px;
     height: 100px;
+    flex-shrink: 0; /* 确保预览框形状方正，不会被挤压 */
 }
 
 /* 参考图：右侧按钮容器 */
 #image-generation-modal .reference-actions {
     display: flex;
     flex-direction: column;
+    justify-content: center; /* 魔法 1：让内部按钮在垂直方向居中对齐 */
+    height: 100px; /* 魔法 2：强制容器高度和左侧图片一模一样(100px) */
     gap: 12px;
     flex: 1;
 }
 
+/* 彻底覆盖原本 .btn 笨重的样式，变得精致修长、白底蓝边 */
 #image-generation-modal .reference-actions .btn {
     margin-bottom: 0;
     width: 100%;
-    text-align: center;
+    
+    /* 配色：白底蓝字蓝边 (呼应测试按钮) */
+    background-color: var(--white-color);
+    color: var(--accent-color);
+    border: 1px solid var(--accent-color);
+    
+    /* 尺寸与排版 */
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 12px; /* 压缩内边距，让按钮变扁 */
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    
+    /* 确保按钮内的文字完美居中 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+    cursor: pointer;
 }
 
-#image-generation-modal .reference-actions label.btn {
-    cursor: pointer;
+/* 上传按钮点击时的反馈色 */
+#image-generation-modal .reference-actions .btn:active {
+    background-color: var(--bg-color); /* 极浅的主题蓝背景 */
+}
+
+/* 审美优化：将“移除”按钮稍作弱化（灰色边框），避免喧宾夺主及误触 */
+#image-generation-modal .reference-actions #image-generation-reference-clear {
+    color: var(--dgray-color);
+    border-color: var(--dgray-color);
+}
+#image-generation-modal .reference-actions #image-generation-reference-clear:active {
+    background-color: var(--gray-color);
 }
 
 /* 底部主按钮组 */
