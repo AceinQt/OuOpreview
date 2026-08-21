@@ -93,11 +93,11 @@ if (watchingContext) {
     prompt += `6. **挂断通话**：如果对话需要自然结束，你可以主动挂断，单起一行输出：[${character.realName}挂断了通话]。\n`; 
     // 调节旋钮：天气并进时间这一条，见 plans/weather-prompt-refit.md
     if (character.timePerceptionEnabled && weatherText) {
-        prompt += `7. 现在是 ${currentTime}，${weatherText}。仅供你参考，不需要特意提及。`;
+        prompt += `7. 现在是 ${currentTime}，${weatherText}。仅供你参考，不要刻意或反复提及天气。`;
     } else if (character.timePerceptionEnabled) {
         prompt += `7. 现在是 ${currentTime}。`;
     } else if (weatherText) {
-        prompt += `7. ${weatherText}。仅供你参考，不需要特意提及。`;
+        prompt += `7. ${weatherText}。仅供你参考，不要刻意或反复提及天气。`;
     }
 
     return prompt;
@@ -282,11 +282,11 @@ if (watchingContext) {
                 // 调节旋钮：天气并进第 16 条时间那句，见 plans/weather-prompt-refit.md
                 let rule16Prefix = '';
                 if (character.timePerceptionEnabled && weatherText) {
-                    rule16Prefix = `现在是 ${currentTime}，${weatherText}。你应知晓当前时间与天气，但不要刻意提及时间和天气（例如，不要催促我睡觉，不要没头没脑地聊天气），`;
+                    rule16Prefix = `现在是 ${currentTime}，${weatherText}。你应知晓当前时间与天气，不要刻意或反复提及时间和天气（例如，不要催促我睡觉，不要没头没脑地聊天气），`;
                 } else if (character.timePerceptionEnabled) {
                     rule16Prefix = `现在是 ${currentTime}。你应知晓当前时间，但不要刻意提及时间（例如，不要催促我睡觉），`;
                 } else if (weatherText) {
-                    rule16Prefix = `${weatherText}。你应知晓当前天气，但不要刻意提及（例如，不要没头没脑地聊天气），`;
+                    rule16Prefix = `${weatherText}。你应知晓当前天气，但不要刻意或反复提及天气（例如，不要没头没脑地聊天气），`;
                 }
                 prompt += `16. ${rule16Prefix}不要主动结束对话，除非我明确提出。保持你的人设，自然地进行对话。`;
 
