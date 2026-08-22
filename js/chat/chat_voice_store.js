@@ -326,10 +326,14 @@ async function countVoiceClipsInRepo(repoId) {
 /**
  * 缓存占用情况。
  * ★ 只遍历元数据 + 查一次主键列表，不读任何音频字节 —— 这就是拆两张表的意义。
- * @returns {Promise<{clipCount, cachedCount, cachedBytes, archivedCount, orphanCount}>}
+ * @returns {Promise<{clipCount, cachedCount, cachedBytes, metaBytes, archivedCount, orphanCount}>}
+ *   cachedBytes —— 本机实际存着的音频字节（只算 voiceClipData 里有的）
+ *   metaBytes   —— voiceClips 元数据行本身的体积。**所有** clip 都算，包括
+ *                  字节已被淘汰、只剩元数据的那些。存储统计页要用它：
+ *                  元数据里带 text（TTS 原文），条数多了不是可以忽略的量。
  */
 async function getVoiceCacheStats() {
-    const empty = { clipCount: 0, cachedCount: 0, cachedBytes: 0,
+    const empty = { clipCount: 0, cachedCount: 0, cachedBytes: 0, metaBytes: 0,
                     archivedCount: 0, orphanCount: 0 };
     try {
         if (typeof dexieDB === 'undefined' || !dexieDB.voiceClips) return empty;
@@ -339,7 +343,10 @@ async function getVoiceCacheStats() {
         ]);
         const cached = new Set(cachedKeys);
         const stats = { ...empty, clipCount: clips.length };
+        const clipKeys = new Set();
         clips.forEach(c => {
+            clipKeys.add(c.voiceKey);
+            try { stats.metaBytes += JSON.stringify(c).length; } catch (e) {}
             if (cached.has(c.voiceKey)) {
                 stats.cachedCount++;
                 stats.cachedBytes += Number(c.size) || 0;
@@ -347,8 +354,8 @@ async function getVoiceCacheStats() {
             if (c.cloudState === 'uploaded' && c.cloudPath) stats.archivedCount++;
         });
         // 有字节但没元数据 —— 正常情况不该出现，出现了说明有孤儿要清
-        stats.orphanCount = cachedKeys.filter(
-            k => !clips.some(c => c.voiceKey === k)).length;
+        // （用上面攒的 Set 判断；原先是 filter 套 some，clip 一多就是平方级）
+        stats.orphanCount = cachedKeys.filter(k => !clipKeys.has(k)).length;
         return stats;
     } catch (error) {
         console.warn('[语音] 统计缓存失败：', error);
