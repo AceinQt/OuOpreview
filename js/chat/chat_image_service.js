@@ -318,11 +318,13 @@ async function archiveUploadedImageMessage(message, {
 async function _produceImageMedia({ description, messageId, chat, chatId, chatType, preset, availability }) {
     const localCacheKey = computeImageCacheKey(chatType, chatId, messageId);
 
-    // 风格文本按聊天存，和画面比例一起在 API 层并进提示词
+    // 风格文本按聊天存，和画面比例一起在 API 层并进提示词。
+    // 参考图同样按聊天存：给了它，API 层会自动改走对话式生图（只有那条路能带图）。
     const generated = await generateImage({
         prompt: description,
         preset,
-        stylePrompt: (chat && chat.imageStylePrompt) || ''
+        stylePrompt: (chat && chat.imageStylePrompt) || '',
+        referenceImage: (chat && chat.imageReference) || ''
     });
 
     const bytes = generated && generated.bytes;
