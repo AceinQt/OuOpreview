@@ -1055,9 +1055,8 @@
     font-size: 14px;
     margin-top: 10px;
     opacity: 0.9;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.4;
+    word-break: break-all;
 }
 
 .transfer-status {
