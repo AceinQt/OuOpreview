@@ -24,7 +24,7 @@
 //   getGithubRepo / getGithubBinding / describeGithubRepo
 //   migrateLegacyGithubConfig
 //   _ghFetch / checkGithubRepo
-//   uploadGithubFile / downloadGithubFile
+//   uploadGithubFile / downloadGithubFile / deleteGithubFile
 // ============================================================
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -484,4 +484,42 @@ async function downloadGithubFile(repo, filePath, { signal } = {}) {
     // 1MB～100MB 的文件不会返回 base64 content。重新请求同一 Contents API，
     // 但使用 raw media type；这样私有仓库下载仍带鉴权，也不依赖临时 download_url。
     return await _ghFetchBytes(contentPath, { token: repo.token, signal });
+}
+
+/**
+ * 删除一个文件。
+ *
+ * ★ 和 uploadGithubFile 一样必须先拿 sha 才能删，所以同样只把**真 404**当成
+ *   "文件已经不在了"；401 / 断网 / 5xx 一律抛出中止，绝不能误判成"删掉了"——
+ *   上层靠这个区分来决定要不要接着删本地数据。
+ *
+ * @param {object} repo     { username, repo, token, branch }
+ * @param {string} filePath 仓库内路径，如 image/ab/xxx.png
+ * @param {object} [opts]   { message, signal }
+ * @returns {Promise<{path: string, alreadyMissing: boolean}>}
+ *          alreadyMissing=true 表示云端本来就没有这个文件（目标状态已达成，视为成功）
+ * @throws {Error} 其他失败原样抛出，附 retryable 标记
+ */
+async function deleteGithubFile(repo, filePath, { message, signal } = {}) {
+    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+    if (!filePath) throw _githubError('没有指定删除路径');
+
+    const apiPath = _ghContentsPath(repo, filePath);
+    const branch = repo.branch || GITHUB_BRANCH_DEFAULT;
+
+    const existing = await _ghFetch(
+        `${apiPath}?ref=${encodeURIComponent(branch)}`,
+        { token: repo.token, allow404: true, signal });
+    // 真 404：云端那份早就没了，不用再发 DELETE
+    if (!existing || !existing.sha) return { path: filePath, alreadyMissing: true };
+
+    await _ghFetch(apiPath, {
+        token: repo.token,
+        method: 'DELETE',
+        body: { message: message || `Delete ${filePath}`, sha: existing.sha, branch },
+        signal,
+        // 和上传同理：sha 可能已经变了，盲目重试不安全，失败让上层重走一遍
+        retry: 0
+    });
+    return { path: filePath, alreadyMissing: false };
 }
