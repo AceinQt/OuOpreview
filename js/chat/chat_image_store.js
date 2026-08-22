@@ -424,27 +424,53 @@ window.addEventListener?.('pagehide', () => {
 });
 
 // ============================================================
-// 图片查看器：点气泡右上角的放大按钮打开，大图 + 关闭/下载
-// 只借用气泡正在显示的 src（objectUrl 的生命周期归气泡管），
-// 下载仍然走 downloadImageMessage 的统一读取入口。
+// 图片查看器：点气泡右上角的放大按钮打开
+//   布局：图片区（右上角浮一个关闭）+ 底部固定工具栏（下载 / 删除）
+//   只借用气泡正在显示的 src（objectUrl 的生命周期归气泡管），
+//   下载走 downloadImageMessage、删除走 deleteImageMessageMedia 的统一入口。
+//   图片加载失败（云端已删/断网）时换成固定尺寸占位块：
+//   此时下载置灰（读不到字节必然失败），删除保持可用——
+//   「删掉再点气泡上的生成」就是重新生成的入口，所以不做单独的重生成按钮。
 // ============================================================
 let _imageViewerMessage = null;
+let _imageViewerFailed = false;
+
+function _imageViewerEls() {
+    return {
+        overlay: document.getElementById('image-viewer-modal'),
+        img: document.getElementById('image-viewer-img'),
+        fallback: document.getElementById('image-viewer-fallback'),
+        downloadBtn: document.getElementById('image-viewer-download'),
+        deleteBtn: document.getElementById('image-viewer-delete')
+    };
+}
+
+function setImageViewerFailed(failed) {
+    const { img, fallback, downloadBtn } = _imageViewerEls();
+    _imageViewerFailed = !!failed;
+    if (img) img.hidden = _imageViewerFailed;
+    if (fallback) fallback.hidden = !_imageViewerFailed;
+    // 下载读不到字节必然失败，直接禁用；删除不禁用，图裂时正是要靠它清理重生成
+    if (downloadBtn) downloadBtn.disabled = _imageViewerFailed;
+}
 
 function openImageViewer(message, src) {
-    const overlay = document.getElementById('image-viewer-modal');
-    const img = document.getElementById('image-viewer-img');
+    const { overlay, img, deleteBtn } = _imageViewerEls();
     if (!overlay || !img || !src) return;
     _imageViewerMessage = message || null;
+    setImageViewerFailed(false);
+    // 上一次删除留下的 disabled 不能带到下一张图上
+    if (deleteBtn) deleteBtn.disabled = false;
     img.src = src;
     overlay.classList.add('visible');
 }
 
 function closeImageViewer() {
-    const overlay = document.getElementById('image-viewer-modal');
-    const img = document.getElementById('image-viewer-img');
+    const { overlay, img } = _imageViewerEls();
     if (!overlay) return;
     overlay.classList.remove('visible');
     if (img) img.removeAttribute('src');
+    setImageViewerFailed(false);
     _imageViewerMessage = null;
 }
 
@@ -453,25 +479,71 @@ function closeImageViewer() {
     // 没有真实 DOM 的宿主（测试沙箱）里只加载纯函数，不绑事件
     if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
     const overlay = document.getElementById('image-viewer-modal');
+    const img = document.getElementById('image-viewer-img');
     const closeBtn = document.getElementById('image-viewer-close');
     const downloadBtn = document.getElementById('image-viewer-download');
+    const deleteBtn = document.getElementById('image-viewer-delete');
     if (!overlay || !closeBtn || !downloadBtn) return;
     closeBtn.addEventListener('click', closeImageViewer);
     // main.js 的全局委托只关「第一个」可见弹窗，这里自己绑定一份更稳（幂等）
     overlay.addEventListener('click', event => {
         if (event.target === overlay) closeImageViewer();
     });
+    // removeAttribute('src') 也会触发 error，靠 hasAttribute 过滤掉这一下
+    if (img) {
+        img.addEventListener('error', () => {
+            if (img.hasAttribute('src')) setImageViewerFailed(true);
+        });
+        img.addEventListener('load', () => setImageViewerFailed(false));
+    }
     downloadBtn.addEventListener('click', async () => {
-        if (!_imageViewerMessage) return;
+        if (!_imageViewerMessage || _imageViewerFailed) return;
         downloadBtn.disabled = true;
         try {
             await downloadImageMessage(_imageViewerMessage);
         } catch (error) {
             if (typeof showToast === 'function') showToast(error.message || '图片暂不可下载');
         } finally {
-            downloadBtn.disabled = false;
+            // 失败态可能是在下载过程中才判定的，别把该灰的按钮又点亮
+            downloadBtn.disabled = _imageViewerFailed;
         }
     });
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            const message = _imageViewerMessage;
+            if (!message) return;
+            if (typeof deleteImageMessageMedia !== 'function') {
+                if (typeof showToast === 'function') showToast('图片删除功能尚未加载');
+                return;
+            }
+            // 不可逆且要动云端，先确认一次
+            if (typeof AppUI !== 'undefined' && AppUI && typeof AppUI.show === 'function') {
+                const ok = await AppUI.show({
+                    title: '删除这张图片？',
+                    content: '会连同云端仓库里的文件一起删掉，只保留文字描述。删除后可以重新生成。',
+                    type: 'confirm',
+                    confirmText: '删除',
+                    cancelText: '取消'
+                });
+                if (!ok) return;
+            }
+            deleteBtn.disabled = true;
+            try {
+                await deleteImageMessageMedia(message, {
+                    chatId: message.chatId || (typeof currentChatId !== 'undefined' ? currentChatId : ''),
+                    chatType: message.chatType || (typeof currentChatType !== 'undefined' ? currentChatType : '')
+                });
+                closeImageViewer();
+                if (typeof showToast === 'function') showToast('图片已删除，可点气泡重新生成');
+            } catch (error) {
+                // 云端没删干净就不动本地，这里只报错、图片照旧留着
+                if (typeof showToast === 'function') showToast(error.message || '删除失败，图片已保留');
+            } finally {
+                // 放在 finally：万一 showToast 自己抛了，按钮也不会卡死在禁用态
+                deleteBtn.disabled = false;
+            }
+        });
+    }
 })();
 
 window.openImageViewer = openImageViewer;

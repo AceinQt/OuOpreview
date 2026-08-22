@@ -480,6 +480,47 @@ function generateImageForMessage(message, options = {}) {
     return task;
 }
 
+/**
+ * 删除一张已生成的图片，让消息退回「只有文字」的状态。
+ *
+ * ★ 顺序是刻意的：**先删云端，成功了才动本地**。反过来的话云端删失败，
+ *   本地已经没了，这张图就变成"看不到、又一直占着仓库空间"的幽灵文件。
+ *   云端真 404（本来就没了）视为成功——否则那些早就失效的图永远清理不掉。
+ *
+ * 删完只是摘掉 media 元数据，描述文字仍在，气泡会自动退回「点击生成」形态，
+ * 所以「重新生成」不需要单独的按钮，删掉再点生成即可。
+ */
+async function deleteImageMessageMedia(message, options = {}) {
+    const chatId = options.chatId || (typeof currentChatId !== 'undefined' ? currentChatId : '');
+    const chatType = options.chatType || (typeof currentChatType !== 'undefined' ? currentChatType : '');
+    if (!isImageMediaMessage(message)) throw new Error('这条消息没有可删除的图片');
+    const media = normalizeImageMedia(message.media);
+
+    // ① 云端：任何一种"没删干净"都要抛出来中止，绝不能先动本地数据
+    if (media.cloudPath && media.cloudRepoId) {
+        const repo = typeof getGithubRepo === 'function' ? getGithubRepo(media.cloudRepoId) : null;
+        if (!repo) {
+            throw Object.assign(new Error(
+                `这张图片归档在 ${media.cloudOwner || '?'}/${media.cloudRepo || '?'}，`
+                + '但仓库配置已删除，删不掉云端文件。请到“设置 > GitHub 仓库”重新添加该仓库。'
+            ), { code: 'image-repo-missing' });
+        }
+        if (typeof deleteGithubFile !== 'function') throw new Error('图片删除模块未加载');
+        await deleteGithubFile(repo, media.cloudPath, { message: `Delete image ${message.id}` });
+    }
+
+    // ② 云端已确认不存在，再清本地字节（顺带 revoke 掉对应的 objectUrl）
+    if (typeof deleteImageCacheByMessage === 'function') await deleteImageCacheByMessage(message.id);
+
+    // ③ 摘掉 media：气泡靠它判断有没有图，去掉后自动退回纯文字 + 生成按钮
+    const target = _imageChatMessage(message, chatId, chatType) || message;
+    delete target.media;
+    if (target !== message) delete message.media;
+    await _saveImageMessage(target, chatId, chatType);
+    _refreshImageMessageBubble(target, chatId, chatType);
+    return true;
+}
+
 /** 每批自动最多取一条，避免一次 AI 回复意外产生多张付费图片。 */
 function queueAutoImageGeneration(messages, chat, chatId, chatType) {
     if (!chat || !chat.imageAutoGenerate || !Array.isArray(messages)) return null;
@@ -648,6 +689,7 @@ window.isImageGenerationPending = isImageGenerationPending;
 window.getImageStorageAvailability = getImageStorageAvailability;
 window.archiveUploadedImageMessage = archiveUploadedImageMessage;
 window.generateImageForMessage = generateImageForMessage;
+window.deleteImageMessageMedia = deleteImageMessageMedia;
 window.queueAutoImageGeneration = queueAutoImageGeneration;
 window.prepareImageForMessages = prepareImageForMessages;
 window.applyPreparedImage = applyPreparedImage;
