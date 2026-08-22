@@ -93,10 +93,22 @@ function _enqueueImageTask(task) {
     return run;
 }
 
-function _imageChatMessage(message, chatId, chatType) {
+function _findImageMessageById(messageId, chatId, chatType) {
     const chat = _imageTargetChat(chatId, chatType);
-    if (!chat || !message || !Array.isArray(chat.history)) return null;
-    return chat.history.find(item => item && item.id === message.id) || null;
+    if (!messageId || !chat || !Array.isArray(chat.history)) return null;
+    return chat.history.find(item => item && item.id === messageId) || null;
+}
+
+function _imageChatMessage(message, chatId, chatType) {
+    if (!message) return null;
+    return _findImageMessageById(message.id, chatId, chatType);
+}
+
+/** 只存在本地、没进 GitHub 时提醒一次，别每张图都弹。 */
+function _noticeImageLocalOnly(localOnly) {
+    if (!localOnly || _imageLocalModeNoticeShown) return;
+    _imageLocalModeNoticeShown = true;
+    if (typeof showToast === 'function') showToast('图片仅保存在当前浏览器，不能随备份恢复，缓存超限后可能被清理');
 }
 
 async function _saveImageMessage(message, chatId, chatType) {
@@ -293,6 +305,103 @@ async function archiveUploadedImageMessage(message, {
     };
 }
 
+/**
+ * 只负责「调接口拿字节 → 落本地缓存 / 传 GitHub → 拼出 media 补丁」。
+ * 刻意不碰 chat.history、不写消息库、不刷气泡，所以调用方既可以是
+ * 已经有气泡的手动生成，也可以是气泡还没出生的预生成。
+ *
+ * @returns {{readyPatch: object, localOnly: boolean}} readyPatch 可直接交给
+ *   _setImageMediaState(..., 'ready', readyPatch)，也可以 createImageMedia 现拼一份。
+ * @throws 生成或落地失败时抛错，error.code 为失败原因；error.imageMime/imageSize
+ *   在「图片拿到了但存不下」时带上，便于调用方把尺寸信息一起写进 failed 状态。
+ */
+async function _produceImageMedia({ description, messageId, chat, chatId, chatType, preset, availability }) {
+    const localCacheKey = computeImageCacheKey(chatType, chatId, messageId);
+
+    // 风格文本按聊天存，和画面比例一起在 API 层并进提示词
+    const generated = await generateImage({
+        prompt: description,
+        preset,
+        stylePrompt: (chat && chat.imageStylePrompt) || ''
+    });
+
+    const bytes = generated && generated.bytes;
+    const mime = (generated && generated.mime) || 'image/jpeg';
+    if (!bytes || !bytes.byteLength) {
+        throw Object.assign(new Error('生图接口没有返回有效图片'), { code: 'image-empty' });
+    }
+
+    let localResult = { stored: false, reason: 'local-disabled' };
+    if (availability.localEnabled && typeof putImageCache === 'function') {
+        localResult = await putImageCache({
+            key: localCacheKey,
+            chatId,
+            chatType,
+            messageId,
+            mime,
+            bytes,
+            cloudBacked: false,
+            protectedKeys: [localCacheKey]
+        });
+    }
+
+    let cloudResult = null;
+    let cloudError = null;
+    if (availability.cloudTarget) {
+        const cloudPath = _imageArchivePath(availability.cloudTarget, messageId, mime);
+        try {
+            if (typeof uploadGithubFile !== 'function') throw new Error('GitHub 上传模块未加载');
+            cloudResult = await uploadGithubFile(
+                availability.cloudTarget.repo,
+                cloudPath,
+                bytes,
+                { message: `image: ${messageId}` }
+            );
+            if (localResult.stored && typeof markImageCacheCloudBacked === 'function') {
+                await markImageCacheCloudBacked(localCacheKey);
+            }
+        } catch (error) {
+            cloudError = error;
+            console.warn('[图片] GitHub 归档失败：', error.message);
+        }
+    }
+
+    if (!localResult.stored && !cloudResult) {
+        throw Object.assign(new Error(
+            localResult.reason === 'image-too-large'
+                ? '图片超过本地缓存上限，且没有成功上传到 GitHub，未保存真实图片'
+                : '真实图片保存失败，描述仍已保留，请稍后重试'
+        ), {
+            code: localResult.reason || 'image-persist-failed',
+            cause: cloudError || undefined,
+            imageMime: mime,
+            imageSize: bytes.byteLength
+        });
+    }
+
+    const cloud = availability.cloudTarget && cloudResult
+        ? {
+            cloudState: 'uploaded',
+            cloudRepoId: availability.cloudTarget.repo.id || '',
+            cloudOwner: availability.cloudTarget.repo.username || '',
+            cloudRepo: availability.cloudTarget.repo.repo || '',
+            cloudPath: cloudResult.path || _imageArchivePath(availability.cloudTarget, messageId, mime),
+            sha: cloudResult.sha || ''
+        }
+        : {
+            cloudState: availability.cloudTarget ? 'failed' : 'none',
+            errorCode: cloudError ? 'image-cloud-upload-failed' : ''
+        };
+
+    return {
+        readyPatch: {
+            source: 'generated', localCacheKey, mime, size: bytes.byteLength,
+            presetId: preset.id, ...cloud, errorCode: cloudError ? 'image-cloud-upload-failed' : ''
+        },
+        localOnly: !!localResult.stored && !cloudResult
+    };
+}
+
 async function _generateImageForMessage(message, { chatId, chatType, auto = false } = {}) {
     const chat = _imageTargetChat(chatId, chatType);
     if (!chat) throw Object.assign(new Error('找不到这条图片消息所属的聊天'), { code: 'image-chat-missing' });
@@ -320,116 +429,35 @@ async function _generateImageForMessage(message, { chatId, chatType, auto = fals
     await _saveImageMessage(targetMessage, chatId, chatType);
     _refreshImageMessageBubble(targetMessage, chatId, chatType);
 
-    let generated;
+    let produced;
     try {
-        // 风格文本按聊天存，和画面比例一起在 API 层并进提示词
-        generated = await generateImage({
-            prompt: parsed.description,
-            preset,
-            stylePrompt: chat.imageStylePrompt || ''
+        produced = await _produceImageMedia({
+            description: parsed.description,
+            messageId: targetMessage.id,
+            chat, chatId, chatType, preset, availability
         });
     } catch (error) {
         _setImageMediaState(targetMessage, chatId, chatType, 'failed', {
             source: 'generated', localCacheKey, presetId: preset.id,
+            ...(error && error.imageMime ? { mime: error.imageMime, size: error.imageSize } : {}),
             cloudState: availability.cloudTarget ? 'failed' : 'none',
-            errorCode: error.code || 'image-generation-failed'
+            errorCode: (error && error.code) || 'image-generation-failed'
         });
         await _saveImageMessage(targetMessage, chatId, chatType);
         _refreshImageMessageBubble(targetMessage, chatId, chatType);
         throw error;
     }
 
-    const bytes = generated && generated.bytes;
-    const mime = (generated && generated.mime) || 'image/jpeg';
-    if (!bytes || !bytes.byteLength) {
-        const error = Object.assign(new Error('生图接口没有返回有效图片'), { code: 'image-empty' });
-        _setImageMediaState(targetMessage, chatId, chatType, 'failed', {
-            localCacheKey, presetId: preset.id, errorCode: error.code,
-            cloudState: availability.cloudTarget ? 'failed' : 'none'
-        });
-        await _saveImageMessage(targetMessage, chatId, chatType);
-        _refreshImageMessageBubble(targetMessage, chatId, chatType);
-        throw error;
-    }
-
-    let localResult = { stored: false, reason: 'local-disabled' };
-    if (availability.localEnabled && typeof putImageCache === 'function') {
-        localResult = await putImageCache({
-            key: localCacheKey,
-            chatId,
-            chatType,
-            messageId: targetMessage.id,
-            mime,
-            bytes,
-            cloudBacked: false,
-            protectedKeys: [localCacheKey]
-        });
-    }
-
-    let cloudResult = null;
-    let cloudError = null;
-    if (availability.cloudTarget) {
-        const cloudPath = _imageArchivePath(availability.cloudTarget, targetMessage.id, mime);
-        try {
-            if (typeof uploadGithubFile !== 'function') throw new Error('GitHub 上传模块未加载');
-            cloudResult = await uploadGithubFile(
-                availability.cloudTarget.repo,
-                cloudPath,
-                bytes,
-                { message: `image: ${targetMessage.id}` }
-            );
-            if (localResult.stored && typeof markImageCacheCloudBacked === 'function') {
-                await markImageCacheCloudBacked(localCacheKey);
-            }
-        } catch (error) {
-            cloudError = error;
-            console.warn('[图片] GitHub 归档失败：', error.message);
-        }
-    }
-
-    const durable = !!localResult.stored || !!cloudResult;
-    if (!durable) {
-        const error = Object.assign(new Error(
-            localResult.reason === 'image-too-large'
-                ? '图片超过本地缓存上限，且没有成功上传到 GitHub，未保存真实图片'
-                : '真实图片保存失败，描述仍已保留，请稍后重试'
-        ), { code: localResult.reason || 'image-persist-failed', cause: cloudError || undefined });
-        _setImageMediaState(targetMessage, chatId, chatType, 'failed', {
-            source: 'generated', localCacheKey, mime, size: bytes.byteLength,
-            presetId: preset.id,
-            cloudState: availability.cloudTarget ? 'failed' : 'none',
-            errorCode: error.code
-        });
-        await _saveImageMessage(targetMessage, chatId, chatType);
-        _refreshImageMessageBubble(targetMessage, chatId, chatType);
-        throw error;
-    }
-
-    const cloud = availability.cloudTarget && cloudResult
-        ? {
-            cloudState: 'uploaded',
-            cloudRepoId: availability.cloudTarget.repo.id || '',
-            cloudOwner: availability.cloudTarget.repo.username || '',
-            cloudRepo: availability.cloudTarget.repo.repo || '',
-            cloudPath: cloudResult.path || _imageArchivePath(availability.cloudTarget, targetMessage.id, mime),
-            sha: cloudResult.sha || ''
-        }
-        : {
-            cloudState: availability.cloudTarget ? 'failed' : 'none',
-            errorCode: cloudError ? 'image-cloud-upload-failed' : ''
-        };
-    _setImageMediaState(targetMessage, chatId, chatType, 'ready', {
-        source: 'generated', localCacheKey, mime, size: bytes.byteLength,
-        presetId: preset.id, ...cloud, errorCode: cloudError ? 'image-cloud-upload-failed' : ''
-    });
+    _setImageMediaState(targetMessage, chatId, chatType, 'ready', produced.readyPatch);
     await _saveImageMessage(targetMessage, chatId, chatType);
     _refreshImageMessageBubble(targetMessage, chatId, chatType);
+    _noticeImageLocalOnly(produced.localOnly);
 
-    if (localResult.stored && !cloudResult && !_imageLocalModeNoticeShown) {
-        _imageLocalModeNoticeShown = true;
-        if (typeof showToast === 'function') showToast('图片仅保存在当前浏览器，不能随备份恢复，缓存超限后可能被清理');
-    }
-    return { message: targetMessage, media: targetMessage.media, source: cloudResult ? 'cloud' : 'local' };
+    return {
+        message: targetMessage,
+        media: targetMessage.media,
+        source: produced.localOnly ? 'local' : 'cloud'
+    };
 }
 
 function generateImageForMessage(message, options = {}) {
@@ -462,6 +490,156 @@ function queueAutoImageGeneration(messages, chat, chatId, chatType) {
     return promise;
 }
 
+// ============================================================
+// 推气泡前的预生成
+// ============================================================
+
+// 等待生图的上限。超了就放行，让消息先出来 —— 生成还在后台跑，
+// 落地后由 _reconcilePreparedImage 补写 media 并把气泡翻成真实图片。
+// 定这个数：单张实测几秒到几十秒，90 秒能覆盖绝大多数正常情况，
+// 又不至于在接口卡住时把整条回复无限期压着不发。
+const IMAGE_PREPARE_TIMEOUT_MS = 90000;
+
+/**
+ * 等超时后才落地的那张图：此刻气泡已经在屏幕上（pending 转圈），
+ * 生成一结束就按结果把它翻成真实图片或失败态。
+ */
+function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, availability }) {
+    const settle = async (readyPatch, error) => {
+        // 消息可能压根没被推出来（比如群聊里没匹配到说话人），那就什么都不用做
+        const message = _findImageMessageById(messageId, chatId, chatType);
+        if (!message) return;
+        if (readyPatch) {
+            _setImageMediaState(message, chatId, chatType, 'ready', readyPatch);
+        } else {
+            _setImageMediaState(message, chatId, chatType, 'failed', {
+                source: 'generated',
+                localCacheKey: computeImageCacheKey(chatType, chatId, messageId),
+                presetId: preset.id,
+                ...(error && error.imageMime ? { mime: error.imageMime, size: error.imageSize } : {}),
+                cloudState: availability.cloudTarget ? 'failed' : 'none',
+                errorCode: (error && error.code) || 'image-generation-failed'
+            });
+        }
+        await _saveImageMessage(message, chatId, chatType);
+        _refreshImageMessageBubble(message, chatId, chatType);
+    };
+
+    task.then(
+        produced => settle(produced.readyPatch).then(() => _noticeImageLocalOnly(produced.localOnly)),
+        error => settle(null, error)
+    ).catch(err => console.warn('[图片] 预生成补写失败：', err));
+}
+
+/**
+ * 把这批新回复里的那张图**先生成好**，然后才让打字机开始逐条推送。
+ *
+ * ★ 调用点在打字机循环之前，而且要 await —— 和 prepareVoiceForMessages 同一个道理：
+ *   发请求前界面上已经挂着「"某某"正在输入中…」，生成期间它一直显示，
+ *   所以多等这一会儿看起来就是"他在拍/在发"，很自然。反过来如果先弹气泡再生成，
+ *   用户会看着一张空占位图转半天圈 —— 那才像坏了。
+ *
+ * ★ 关键手法：**提前把消息 id 定下来**。图片的本地缓存键和 GitHub 归档路径都由
+ *   消息 id 推导（computeImageCacheKey / _imageArchivePath），而打字机循环原本是
+ *   在推气泡的那一刻才 `msg_${Date.now()}_${Math.random()}` 现取 id。所以这里先占一个 id，
+ *   连同生成好的 media 一起挂在 item 上，循环里用 applyPreparedImage 装配回去，
+ *   图片字节和消息才对得上号 —— 不然生成的图会成为找不到主人的孤儿。
+ *
+ * ★ 只在「自动生成」开着、且预设可用时才动手；关着立刻返回，气泡照常秒出。
+ *
+ * ★ 绝不抛异常、绝不无限等。接口挂了就把气泡推成 failed（长按可重试）；
+ *   慢过 90 秒就先放行，生成完再自己把气泡翻过来。
+ *
+ * @param {Array<{content: string}>} messages 打字机即将逐条播放的那个列表
+ * @param {{timeoutMs?: number}} [options] timeoutMs 仅供测试注入，默认 IMAGE_PREPARE_TIMEOUT_MS
+ */
+async function prepareImageForMessages(messages, chat, chatId, chatType, options = {}) {
+    try {
+        if (!Array.isArray(messages) || !messages.length || !chat || !chat.imageAutoGenerate) return null;
+        if (typeof resolveImagePresetForChat !== 'function') return null;
+        const preset = resolveImagePresetForChat(chat);
+        if (!preset || !preset.apiKey || !preset.model) return null;
+
+        const availability = _imageStorageAvailability();
+        if (!availability.localEnabled && !availability.cloudTarget) return null;
+
+        // 和 queueAutoImageGeneration 一个口径：每批只取第一条，别一次烧掉几张图的钱
+        let target = null;
+        for (const item of messages) {
+            const parsed = parseImageDescriptionMessage(String((item && item.content) || '').trim());
+            if (parsed) { target = { item, parsed }; break; }
+        }
+        if (!target) return null;
+
+        const messageId = `msg_${Date.now()}_${Math.random()}`;
+        const localCacheKey = computeImageCacheKey(chatType, chatId, messageId);
+        const prepared = { messageId, media: null };
+        target.item._preparedImage = prepared;
+
+        // 进 inflight 表：这样超时放行后，气泡能靠 isImageGenerationPending
+        // 显示「正在生成图片」而不是「生成已中断」
+        const key = _imageTaskKey(chatId, messageId);
+        const task = _enqueueImageTask(() => _produceImageMedia({
+            description: target.parsed.description,
+            messageId, chat, chatId, chatType, preset, availability
+        }));
+        _imageGenerationInflight.set(key, task);
+        task.finally(() => {
+            if (_imageGenerationInflight.get(key) === task) _imageGenerationInflight.delete(key);
+        }).catch(() => {});
+
+        const TIMED_OUT = Symbol('image-prepare-timeout');
+        const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : IMAGE_PREPARE_TIMEOUT_MS;
+        let timer;
+        const outcome = await Promise.race([
+            task.then(produced => ({ produced }), error => ({ error })),
+            new Promise(resolve => { timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs); })
+        ]);
+        clearTimeout(timer);
+
+        if (outcome === TIMED_OUT) {
+            // 先放行，气泡带着 pending 出场，转圈等 _reconcilePreparedImage 补上
+            prepared.media = createImageMedia({
+                source: 'generated', state: 'pending', localCacheKey, presetId: preset.id,
+                cloudState: availability.cloudTarget ? 'pending' : 'none', errorCode: ''
+            });
+            _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, availability });
+            return prepared;
+        }
+
+        if (outcome.error) {
+            console.warn('[图片] 预生成失败，气泡照常展示：', outcome.error.message);
+            prepared.media = createImageMedia({
+                source: 'generated', state: 'failed', localCacheKey, presetId: preset.id,
+                ...(outcome.error.imageMime ? { mime: outcome.error.imageMime, size: outcome.error.imageSize } : {}),
+                cloudState: availability.cloudTarget ? 'failed' : 'none',
+                errorCode: outcome.error.code || 'image-generation-failed'
+            });
+            return prepared;
+        }
+
+        // 正常路径：气泡一出现就是真实图片
+        prepared.media = createImageMedia({ state: 'ready', ...outcome.produced.readyPatch });
+        _noticeImageLocalOnly(outcome.produced.localOnly);
+        return prepared;
+    } catch (error) {
+        console.warn('[图片] 预生成调度失败，消息照常展示：', error);
+        return null;
+    }
+}
+
+/**
+ * 打字机循环里造好消息对象后调一次：把 prepareImageForMessages 预留的 id 和
+ * 生成好的 media 装配上去。必须在 chat.history.push / addMessageBubble 之前调用。
+ */
+function applyPreparedImage(item, message) {
+    const prepared = item && item._preparedImage;
+    if (!prepared || !message) return message;
+    if (prepared.messageId) message.id = prepared.messageId;
+    if (prepared.media) message.media = prepared.media;
+    return message;
+}
+
 window.parseImageDescriptionMessage = parseImageDescriptionMessage;
 window.isImageDescriptionMessage = isImageDescriptionMessage;
 window.isImageGenerationPending = isImageGenerationPending;
@@ -469,3 +647,5 @@ window.getImageStorageAvailability = getImageStorageAvailability;
 window.archiveUploadedImageMessage = archiveUploadedImageMessage;
 window.generateImageForMessage = generateImageForMessage;
 window.queueAutoImageGeneration = queueAutoImageGeneration;
+window.prepareImageForMessages = prepareImageForMessages;
+window.applyPreparedImage = applyPreparedImage;

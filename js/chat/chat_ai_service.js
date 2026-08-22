@@ -333,6 +333,14 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 await prepareVoiceForMessages(messages, chat, targetChatType);
             }
 
+            // ★ 生图同理：整批里那张图也先画完，才让打字机开始推。
+            //   否则气泡先弹出来，用户得盯着一张空占位图转几十秒圈。
+            //   内部会提前占好消息 id（图片缓存键由 id 推导），循环里用
+            //   applyPreparedImage 装配回去；超时/失败都不会把回复压住。
+            if (typeof prepareImageForMessages === 'function') {
+                await prepareImageForMessages(messages, chat, targetChatId, targetChatType);
+            }
+
             let isFirstMsg = true;
 
             for (const item of messages) {
@@ -484,6 +492,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         } else if (giftRegex.test(message.content)) {
                             message.giftStatus = 'sent';
                         }
+                        // 照片/视频描述走这一支：把预生成占的 id 和画好的图装配回来
+                        if (typeof applyPreparedImage === 'function') applyPreparedImage(item, message);
                         if (chat.currentCallSessionId) message.callSessionId = chat.currentCallSessionId;
                         chat.history.push(message);
                         newMessagesForDB.push(message);
@@ -549,6 +559,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                                 timestamp: Date.now(),
                                 senderId: sender.id
                             };
+                            // 群聊的照片/视频也走 standardMatch 这一支，同样要装配预生成结果
+                            if (typeof applyPreparedImage === 'function') applyPreparedImage(item, message);
                             group.history.push(message);
                             addMessageBubble(message, targetChatId, targetChatType);
                             newMessagesForDB.push(message);
@@ -593,7 +605,9 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         await saveSingleChat(targetChatId, targetChatType);
         renderChatList();
 
-        // 图片生成不阻塞文字回复：文字已落库后，每批最多后台处理一条照片描述。
+        // 兜底：正常路径的图已经在推气泡前就画好了（prepareImageForMessages），
+        // 那条消息带着 media 出场，这里会被 !isImageMediaMessage 直接跳过。
+        // 留着是为了照顾没走预生成的分支（线下模式 / 视频通话那一支）。
         if (typeof queueAutoImageGeneration === 'function') {
             queueAutoImageGeneration(newMessagesForDB, chat, targetChatId, targetChatType);
         }
