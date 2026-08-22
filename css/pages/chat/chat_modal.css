@@ -565,6 +565,20 @@
     /* 可选：加一点发光效果 */
 }
 
+/* --- 扩展面板按钮禁用状态（线下模式下的线上功能） --- */
+/* 与 sticker bar 的 .sticker-bar-btn:disabled 保持同一套观感。
+   故意不用 pointer-events:none —— 点击要能走到 JS 里弹"线下模式无法使用"的提示 */
+.expansion-item.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    filter: grayscale(100%);
+}
+
+.expansion-item.disabled:hover .expansion-item-icon {
+    background-color: #fff;
+    /* 抵掉 hover 变色，避免置灰状态下还有可点的暗示 */
+}
+
 /* =========================================
    图像生成设置弹窗专用样式
    ========================================= */
