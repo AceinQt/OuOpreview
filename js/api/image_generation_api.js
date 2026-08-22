@@ -331,6 +331,170 @@ function _buildOpenAIImageEndpoint(apiUrl) {
         : `${endpoint}/v1/images/generations`;
 }
 
+/** 同一个 base 推 /chat/completions；已经指到 images/generations 的地址要先摘掉。 */
+function _buildOpenAIChatEndpoint(apiUrl) {
+    let endpoint = String(apiUrl || 'https://api.openai.com').trim().replace(/\/+$/, '');
+    if (!endpoint) endpoint = 'https://api.openai.com';
+    if (endpoint.endsWith('/chat/completions')) return endpoint;
+    endpoint = endpoint.replace(/\/images\/(generations|edits)$/, '');
+    return /\/v\d+$/.test(endpoint)
+        ? `${endpoint}/chat/completions`
+        : `${endpoint}/v1/chat/completions`;
+}
+
+// 一眼能认出是图片的 base64 头部：PNG iVBOR / JPEG /9j/ / GIF R0lGOD / WEBP UklGR
+const _IMAGE_BASE64_PREFIX = /^(iVBOR|\/9j\/|R0lGOD|UklGR)/;
+
+// 这些键名摆明了就是装图片的，值是字符串时直接当 base64 收下。
+// 其他键上的长字符串要过更严的门槛（见下方 minBase64Length），免得把模型
+// 吐的大段文字误当图片去解码。
+const _IMAGE_BEARING_KEYS = new Set(['b64_json', 'data']);
+
+/**
+ * 在 chat/completions 的响应里捞图片。
+ *
+ * ★ 为什么要"递归乱翻"而不是照某个字段名直取：这条路上跑的全是第三方中转站，
+ *   同一个 Banana 模型，A 站塞在 message.images[].image_url.url，B 站塞在
+ *   message.content 的 markdown 里，C 站学 Gemini 原生放 inlineData.data。
+ *   写死任何一种，换个站就抓瞎。所以按"长得像图片"来找，而不是按位置找。
+ *
+ * ★ 顺带也是安全边界：只认 data:image/、http(s) 图片链接、和 base64 图片头，
+ *   别的字符串一律不碰。真解码了还有 _validateImageBytes 查文件头兜底。
+ *
+ * @param {boolean} [trusted] 当前值来自 _IMAGE_BEARING_KEYS，放宽长度门槛
+ * @returns {{kind: 'dataUrl'|'url'|'base64', value: string}|null}
+ */
+function _findImageInChatResponse(node, depth = 0, trusted = false) {
+    if (node == null || depth > 8) return null;
+
+    if (typeof node === 'string') {
+        const s = node.trim();
+        if (!s) return null;
+        if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(s)) return { kind: 'dataUrl', value: s };
+        // markdown 图片 ![](...) —— 有的站直接把图塞进正文
+        const md = s.match(/!\[[^\]]*\]\((data:image\/[^)\s]+|https?:\/\/[^)\s]+)\)/i);
+        if (md) return { kind: md[1].startsWith('data:') ? 'dataUrl' : 'url', value: md[1] };
+        if (/^https?:\/\//i.test(s) && /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(s)) {
+            return { kind: 'url', value: s };
+        }
+        // base64 图片：必须有图片文件头，且不含空白。
+        // 明确装图片的键不看长度（小图也是图）；其他键要求够长，避免误判文字。
+        const minBase64Length = trusted ? 0 : 512;
+        if (s.length > minBase64Length && !/\s/.test(s) && _IMAGE_BASE64_PREFIX.test(s)) {
+            return { kind: 'base64', value: s };
+        }
+        return null;
+    }
+
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const hit = _findImageInChatResponse(item, depth + 1, trusted);
+            if (hit) return hit;
+        }
+        return null;
+    }
+
+    if (typeof node === 'object') {
+        // 先看最可能的几个键，命中率高且能避免被同级的长文本带偏
+        const preferred = ['b64_json', 'data', 'url', 'image_url', 'inlineData', 'inline_data',
+            'images', 'image', 'content', 'parts', 'message', 'choices'];
+        for (const key of preferred) {
+            if (node[key] !== undefined) {
+                const hit = _findImageInChatResponse(node[key], depth + 1, _IMAGE_BEARING_KEYS.has(key));
+                if (hit) return hit;
+            }
+        }
+        for (const [key, value] of Object.entries(node)) {
+            if (preferred.includes(key)) continue;
+            const hit = _findImageInChatResponse(value, depth + 1, _IMAGE_BEARING_KEYS.has(key));
+            if (hit) return hit;
+        }
+    }
+    return null;
+}
+
+/** 从响应里挖一段人类能看懂的文字，用于"没返回图片"时的报错。 */
+function _extractChatText(payload) {
+    const choice = payload && Array.isArray(payload.choices) ? payload.choices[0] : null;
+    const content = choice && choice.message && choice.message.content;
+    if (typeof content === 'string') return content.trim().slice(0, 200);
+    if (Array.isArray(content)) {
+        const text = content
+            .map(part => (part && typeof part.text === 'string' ? part.text : ''))
+            .filter(Boolean).join(' ').trim();
+        if (text) return text.slice(0, 200);
+    }
+    return '';
+}
+
+/**
+ * 走 chat/completions 的生图：**唯一能带参考图的路**。
+ *
+ * 背景（2026-08 实测企鹅小站 api.penguinsama.com）：
+ *   · /v1/images/generations 存在，但那是纯文生图端点，请求体里没有放图片的位置；
+ *   · /v1/images/edits 直接 404，中转站没实现；
+ *   · /v1/chat/completions 存在 —— Banana / Gemini 系是多模态模型，
+ *     图文一起塞进 messages 就能回图。
+ * 站方文档原话也对得上：「普通模式支持文字与参考图；开启 openai 格式时使用纯文字生图」，
+ * 那个"普通模式"就是这条 chat 路。
+ */
+async function _generateChatImage(apiUrl, apiKey, preset, prompt, referenceImage, signal) {
+    const endpoint = _buildOpenAIChatEndpoint(apiUrl);
+    const reference = String(referenceImage || '').trim();
+
+    const content = [{ type: 'text', text: prompt }];
+    if (reference) content.push({ type: 'image_url', image_url: { url: reference } });
+
+    let response;
+    try {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: preset.model,
+                messages: [{ role: 'user', content }]
+            }),
+            signal
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        throw new Error(`连接生图接口失败：${error.message || '网络错误'}`);
+    }
+
+    if (!response.ok) {
+        const detail = await _readImageApiError(response);
+        if (response.status === 404) {
+            throw new Error(`HTTP 404：该接口地址没有开放对话式生图（${endpoint}），参考图用不了。请去掉参考图，或换一个支持的渠道${detail ? `：${detail}` : ''}`);
+        }
+        throw new Error(`HTTP ${response.status}${detail ? `：${detail}` : ''}`);
+    }
+
+    let payloadData;
+    try {
+        payloadData = await response.json();
+    } catch (_) {
+        throw new Error('接口返回格式异常：响应不是有效 JSON');
+    }
+
+    const found = _findImageInChatResponse(payloadData);
+    if (!found) {
+        // 把响应结构打进控制台：换了中转站、格式没见过时靠这个定位
+        console.warn('[图片] 对话式生图没找到图片，响应结构：', payloadData);
+        const text = _extractChatText(payloadData);
+        throw new Error(
+            `模型「${preset.model}」没有返回图片${text ? `，它回的是文字：${text}` : ''}。`
+            + '带参考图需要多模态生图模型（如 Nano Banana、Gemini 系），纯文生图模型（dall-e、Flux 等）用不了参考图'
+        );
+    }
+
+    if (found.kind === 'url') return _downloadGeneratedImage(found.value, signal);
+    const decoded = _decodeBase64Image(found.value, 'image/png');
+    return { ...decoded, source: found.kind === 'dataUrl' ? 'url' : 'b64_json' };
+}
+
 /**
  * OpenAI 格式图像生成请求
  * 支持 DALL-E 2, DALL-E 3，以及部分中转站封装的 Midjourney 等。
@@ -429,18 +593,21 @@ function _createImageRequestScope(parentSignal, slowAfterMs, onSlow) {
 
 /**
  * 统一生图入口，根据预设的 provider 路由到不同的请求函数。
- * 
+ *
  * @param {object} args
  * @param {string} args.prompt    画面描述（文字模型写出来的那段）
  * @param {object} [args.preset]  当前选中的生图预设；省略时解析全局默认
  * @param {string} [args.stylePrompt] 该聊天的风格文本（如"写实风格"），拼进 prompt
+ * @param {string} [args.referenceImage] 参考图 dataURL。**给了就自动改走对话式生图**
+ *   （/chat/completions），因为 images/generations 请求体里没有放图片的位置。
+ *   不给则照旧走 images/generations —— 原有行为一行不动。
  * @param {object} [args.settings] 覆盖 db.imageSettings (给设置页试听用)
  * @param {AbortSignal} [args.signal] 外部取消信号
  * @param {number} [args.slowAfterMs] 慢请求提醒阈值，默认 120 秒；提醒后请求继续运行
  * @param {(info: {elapsedMs: number}) => void|Promise<void>} [args.onSlow] 超过提醒阈值时调用
  * @returns {Promise<{bytes: Uint8Array, mime: string, source: 'b64_json'|'url'}>}
  */
-async function generateImage({ prompt, preset, stylePrompt, settings, signal, slowAfterMs, onSlow } = {}) {
+async function generateImage({ prompt, preset, stylePrompt, referenceImage, settings, signal, slowAfterMs, onSlow } = {}) {
     const promptText = String(prompt || '').trim();
     if (!promptText) throw new Error('提示词不能为空');
 
@@ -459,17 +626,30 @@ async function generateImage({ prompt, preset, stylePrompt, settings, signal, sl
         size: imagePreset.size
     });
 
+    // 有没有参考图决定走哪条路。刻意不做成开关：参考图框本身就是开关，
+    // 设了就生效、清掉就还原，不额外引入"开着但没图 / 有图但没开"这两种别扭状态。
+    const reference = String(referenceImage || '').trim();
+
     const requestScope = _createImageRequestScope(signal, slowAfterMs, onSlow);
     try {
         switch (imagePreset.provider) {
             case 'openai':
-                return await _generateOpenAIImage(
-                    imagePreset.apiUrl,
-                    imagePreset.apiKey,
-                    imagePreset,
-                    finalPrompt,
-                    requestScope.signal
-                );
+                return reference
+                    ? await _generateChatImage(
+                        imagePreset.apiUrl,
+                        imagePreset.apiKey,
+                        imagePreset,
+                        finalPrompt,
+                        reference,
+                        requestScope.signal
+                    )
+                    : await _generateOpenAIImage(
+                        imagePreset.apiUrl,
+                        imagePreset.apiKey,
+                        imagePreset,
+                        finalPrompt,
+                        requestScope.signal
+                    );
 
             default:
                 throw new Error(`暂不支持的生图服务商: ${imagePreset.provider}`);
