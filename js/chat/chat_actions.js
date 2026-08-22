@@ -171,6 +171,17 @@ function createContextMenu(items, x, y) {
                         });
                     }
 
+                    // 语音消息：把音频存成 mp3 文件
+                    // ★ 不检查"有没有生成过"就放这一项 —— 那要查一次 IndexedDB，
+                    //   而长按菜单是同步构建的。没生成过的情况由 downloadVoiceClip
+                    //   自己提示"先点播放键生成"。
+                    if (isVoiceMessage && typeof downloadVoiceClip === 'function') {
+                        menuItems.push({
+                            label: '下载语音',
+                            action: () => downloadVoiceClip(messageId, chat, currentChatType)
+                        });
+                    }
+
                     // 图片消息：转文字描述（省 token）
                     if (isImageRecognitionMsg) {
                         const isConverting = (typeof isImageConverting === 'function') && isImageConverting(messageId);

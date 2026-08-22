@@ -16,7 +16,7 @@
 //
 // 对外符号：
 //   handleVoiceBubbleClick / refreshVoiceBubbleState / toggleVoiceTranscript
-//   stopVoicePlayback / regenerateVoiceClip
+//   stopVoicePlayback / regenerateVoiceClip / downloadVoiceClip
 // ============================================================
 
 // ── 播放器单例 ────────────────────────────────────────────────
@@ -354,4 +354,134 @@ async function regenerateVoiceClip(messageId, chat, chatType) {
     await deleteVoiceClip(voiceKey);
     if (btn) _setVoiceBubbleState(btn, 'idle');
     showToast('已删除，点播放键会用当前音色重新生成');
+}
+
+// ============================================================
+// 下载
+// ============================================================
+
+/** 音频 MIME → 文件后缀。合成出来的一律是 mp3，其余几个是为兼容将来换服务商 */
+function _voiceFileExtension(mime) {
+    const clean = String(mime || '').toLowerCase().split(';')[0].trim();
+    const map = {
+        'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/aac': 'aac',
+        'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/opus': 'opus',
+        'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/webm': 'webm'
+    };
+    return map[clean] || 'mp3';
+}
+
+/**
+ * 下载文件名：语音_20260822_1431.mp3
+ * ★ 用本机时间，不用 toISOString —— 那个是 UTC，在中国会显示成前一天的晚上。
+ * 同一分钟内下载多条会重名，浏览器自己会加 (1)(2)，不用我们操心。
+ */
+function _voiceDownloadName(mime) {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
+        + `_${p(d.getHours())}${p(d.getMinutes())}`;
+    return `语音_${stamp}.${_voiceFileExtension(mime)}`;
+}
+
+// iOS Safari 对 <a download> 的支持很不稳（常见表现是直接在当前页开始播放，
+// 而不是存成文件）。那边优先走系统分享面板，用户能选「存到文件」或发给自己。
+function _voiceIsIOS() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    // iPadOS 13+ 的 UA 伪装成 Mac，靠触摸点数区分真 Mac 和 iPad
+    return /iPad|iPhone|iPod/.test(ua)
+        || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+}
+
+/** 走系统分享面板。返回 false = 这条路走不通（没 API 或不支持文件），该退回 <a download> */
+async function _voiceShareFile(blob, filename) {
+    try {
+        if (typeof navigator === 'undefined' || typeof navigator.share !== 'function'
+            || typeof File !== 'function') return false;
+        const file = new File([blob], filename, { type: blob.type || 'audio/mpeg' });
+        if (typeof navigator.canShare === 'function' && !navigator.canShare({ files: [file] })) {
+            return false;
+        }
+        await navigator.share({ files: [file] });
+        return true;
+    } catch (error) {
+        // 用户点了「取消」也会走到这里（AbortError）。那是正常操作，不该再退回去
+        // 触发一次下载 —— 那等于无视了用户的取消。
+        if (error && error.name === 'AbortError') return true;
+        return false;
+    }
+}
+
+/**
+ * 把一条已生成的语音存成文件。
+ *
+ * ★ 绝不合成：allowSynthesize: false。这个入口是"把已经有的音频拿出来"，
+ *   顺手花掉一次合成额度（20 秒 + 真金白银）不是用户点「下载」时预期的事。
+ *   本地字节被 LRU 淘汰过、但归档在 GitHub 上的，会自动拉回来 —— 那只花流量。
+ *
+ * @param {string} messageId
+ * @param {object} chat
+ * @param {string} chatType
+ */
+async function downloadVoiceClip(messageId, chat, chatType) {
+    const bubble = document.querySelector(
+        `.voice-bubble[data-voice-msg-id="${messageId}"]`);
+    if (!bubble) return;
+
+    const parsed = typeof parseVoiceMessage === 'function'
+        ? parseVoiceMessage(bubble.dataset.voiceRaw || '') : null;
+    if (!parsed) return;
+
+    const wrapper = bubble.closest('.message-wrapper');
+    const profile = _voiceProfileForBubble(
+        bubble, chat, chatType, wrapper && wrapper.dataset.senderId);
+    if (!profile) {
+        // 自己发的语音从来没合成过音频（见 _voiceProfileForBubble），没有东西可下载
+        showToast(_voiceIsSentBubble(bubble)
+            ? '自己发的语音没有音频文件'
+            : '这条消息没有可用的音色');
+        return;
+    }
+
+    let clip;
+    try {
+        clip = await ensureVoiceClip({
+            text: parsed.text,
+            profile,
+            chatId: bubble.dataset.voiceChatId || '',
+            msgId: messageId,
+            allowSynthesize: false
+        });
+    } catch (error) {
+        showToast(error.message || '取音频失败，请稍后重试');
+        return;
+    }
+    if (!clip || !clip.bytes) {
+        // 没合成过 —— 说清楚下一步该干什么，而不是只说"失败"
+        showToast('这条语音还没生成，先点播放键生成后再下载');
+        return;
+    }
+
+    const blob = new Blob([clip.bytes], { type: clip.mime || 'audio/mpeg' });
+    const filename = _voiceDownloadName(clip.mime);
+
+    if (_voiceIsIOS() && await _voiceShareFile(blob, filename)) return;
+
+    let url = '';
+    try {
+        url = URL.createObjectURL(blob);
+    } catch (error) {
+        showToast('当前浏览器不支持下载');
+        return;
+    }
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    // 立刻 revoke 会让部分浏览器拿不到内容，给它一点时间
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
+    showToast(`已保存 ${filename}`);
 }

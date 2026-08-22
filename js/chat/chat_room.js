@@ -450,10 +450,16 @@ let isTouchLongPress = false; // 用于标记是否是由触摸触发的长按
     // ==========================================
     // 聊天室临时 UI 复位
     // ==========================================
+// "+"面板里属于"隔着手机才成立"的线上功能，线下模式（面对面）下要禁用。
+// sticker bar 上的转账/语音/照片由 updateOfflineModeUI 用 disabled 属性禁；
+// 面板项是 div，只能靠 class 置灰 + 点击拦截，所以清单放在这里。
+const OFFLINE_DISABLED_EXPANSION_ACTIONS = ['send-gift-modal', 'send-location-modal'];
+
 /**
- * 把"+"面板里与会话绑定的开关（线下模式 / 后台消息）对齐到当前会话的真实状态。
+ * 把"+"面板里与会话绑定的开关（线下模式 / 后台消息）对齐到当前会话的真实状态，
+ * 并按线下模式置灰面板里的线上功能（送礼物 / 发送位置）。
  * 面板是全局单例、只在启动时构建一次，所以每次打开面板、每次进聊天室都得重新对齐，
- * 否则会挂着上一个会话残留的蓝色高亮。
+ * 否则会挂着上一个会话残留的蓝色高亮 / 置灰状态。
  */
 function syncChatExpansionActiveState(chatId = currentChatId, chatType = currentChatType) {
     const chat = (chatType === 'private' && chatId && Array.isArray(window.db?.characters))
@@ -472,6 +478,14 @@ function syncChatExpansionActiveState(chatId = currentChatId, chatType = current
         proactiveBtn.classList.toggle('active',
             !!chat && (chat.proactiveMode === 'fixed' || chat.proactiveMode === 'timer'));
     }
+
+    // 线下模式是面对面互动，隔着手机才成立的功能要跟 sticker bar 上的转账/语音一样禁掉。
+    // 这些是 div 不是 button，disabled 无效，只能靠 .disabled class + 点击处的拦截。
+    const isOffline = !!(chat && chat.offlineModeEnabled);
+    OFFLINE_DISABLED_EXPANSION_ACTIONS.forEach(action => {
+        const el = document.querySelector(`.expansion-item[data-action="${action}"]`);
+        if (el) el.classList.toggle('disabled', isOffline);
+    });
 }
 
 /**
@@ -1785,6 +1799,14 @@ function formatSmartTime(timestamp) {
                     if (!item) return;
 
                     const action = item.dataset.action;
+
+                    // 线下模式下的线上功能：按数据判断，不依赖 DOM 上的置灰 class 是否刷新过
+                    // （置灰用的是 class 而非 pointer-events:none，点击照样会走到这里）
+                    if (OFFLINE_DISABLED_EXPANSION_ACTIONS.includes(action)
+                        && typeof isOfflineModeActive === 'function' && isOfflineModeActive()) {
+                        showToast('线下模式下无法使用该功能');
+                        return;
+                    }
 
 switch (action) {
     case 'memory-journal':
