@@ -890,40 +890,196 @@
     overflow: hidden;
 }
 
-/* === 图片查看器弹窗：深色全屏遮罩 + 适应屏幕的大图 + 底部按钮组 ===
-   复用 .modal-overlay 体系：main.js 负责点遮罩关闭，system_back.js 负责返回键关闭 */
+/* === 图片查看器弹窗：深色遮罩 + 图片区 + 底部固定工具栏 ===
+   复用 .modal-overlay 体系：main.js 负责点遮罩关闭，system_back.js 负责返回键关闭。
+   布局分两层：.image-viewer-stage 弹性占据剩余空间，.image-viewer-toolbar 固定高度。
+   画框紧贴图片（fit-content），所以关闭按钮永远压在图片右上角，不会飘出空隙。 */
 #image-viewer-modal {
     z-index: 300;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.88);
+    /* 工具栏高度只在这里写一次：图片的高度上限要减掉它，两处必须同步。
+       想调工具栏高矮就改这一个值。 */
+    --viewer-toolbar-h: 60px;
+    --viewer-stage-pad: 12px;
 }
 
 #image-viewer-modal .image-viewer-content {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
     width: 100%;
     height: 100%;
-    padding: calc(var(--safe-top, 0px) + 16px) 12px calc(var(--safe-bottom, 0px) + 16px);
+    padding-top: var(--safe-top, 0px);
     box-sizing: border-box;
     /* 空白处穿透给 overlay，让「点黑幕关闭」生效；图片和按钮单独恢复可点 */
     pointer-events: none;
 }
 
-#image-viewer-modal #image-viewer-img {
+/* 图片区：拿走工具栏以外的全部高度，图片在其中居中 */
+#image-viewer-modal .image-viewer-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--viewer-stage-pad) 12px;
+    box-sizing: border-box;
+}
+
+/* 画框紧贴内容：正常时等于图片尺寸，图裂时等于占位块尺寸。
+   用 inline-flex + fit-content 让宽高都跟着内容走，按钮才能贴在图片真实边缘上。 */
+#image-viewer-modal .image-viewer-frame {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     max-width: 100%;
-    /* 给底部按钮组留出位置，图片再高也不会顶穿屏幕 */
-    max-height: calc(100% - 90px);
-    object-fit: contain;
-    border-radius: 8px;
+    max-height: 100%;
+    pointer-events: none;
+}
+
+#image-viewer-modal #image-viewer-img,
+#image-viewer-modal .image-viewer-fallback,
+#image-viewer-modal .image-viewer-btn,
+#image-viewer-modal .image-viewer-toolbar {
     pointer-events: auto;
 }
 
-#image-viewer-modal .btn-group {
-    flex-shrink: 0;
-    margin-top: 18px;
-    pointer-events: auto;
+/* 用百分比而不是写死像素：手机上能占满宽度，桌面上也会跟着窗口一起放大。
+   生图只有 1024/1792 这些尺寸，恒比屏幕大，所以永远是缩小渲染，不会模糊。
+   高度必须写成绝对表达式：画框是 fit-content（高度 auto），max-height:100%
+   在 auto 父级上会退化成 none，竖图就会按原始 1792px 撑出去顶穿工具栏。 */
+#image-viewer-modal #image-viewer-img {
+    display: block;
+    max-width: 92vw;
+    max-height: calc(100dvh - var(--safe-top, 0px) - var(--viewer-toolbar-h) - var(--safe-bottom, 0px) - var(--viewer-stage-pad) * 2);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
 }
+
+#image-viewer-modal #image-viewer-img[hidden] {
+    display: none;
+}
+
+/* 加载失败占位：固定尺寸，替代那个塌成一团的小裂图标 */
+#image-viewer-modal .image-viewer-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: min(78vw, 320px);
+    height: min(52vh, 300px);
+    padding: 24px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.72);
+}
+
+#image-viewer-modal .image-viewer-fallback[hidden] {
+    display: none;
+}
+
+#image-viewer-modal .image-viewer-fallback svg {
+    width: 46px;
+    height: 46px;
+    stroke: currentColor;
+    fill: none;
+    opacity: 0.8;
+}
+
+#image-viewer-modal .image-viewer-fallback p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+/* 右上角关闭：半透明圆底 + 白色描边图标，和气泡上的 .image-zoom-btn 同一套观感 */
+#image-viewer-modal .image-viewer-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    padding: 6px;
+    border: 0;
+    border-radius: 50%;
+    color: white;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+#image-viewer-modal .image-viewer-btn:hover {
+    background: rgba(0, 0, 0, 0.68);
+}
+
+#image-viewer-modal .image-viewer-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+}
+
+/* 底部工具栏：固定高度对齐项目底部栏约定（layout.css 用的是 60px + safe-bottom）。
+   按钮靠右排，以后再加工具往左长，图片区高度不受影响。 */
+#image-viewer-modal .image-viewer-toolbar {
+    flex-shrink: 0;
+    min-height: calc(var(--viewer-toolbar-h) + var(--safe-bottom, 0px));
+    padding: 0 14px var(--safe-bottom, 0px);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.55);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#image-viewer-modal .image-viewer-tool {
+    width: 40px;
+    height: 40px;
+    padding: 9px;
+    border: 0;
+    border-radius: 50%;
+    color: white;
+    background: rgba(255, 255, 255, 0.14);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.18s ease, opacity 0.18s ease;
+}
+
+#image-viewer-modal .image-viewer-tool:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.26);
+}
+
+#image-viewer-modal .image-viewer-tool.is-danger:hover:not(:disabled) {
+    background: rgba(231, 76, 60, 0.72);
+}
+
+/* 图片读不出来时下载必然失败，直接置灰；删除保持可用（清理 + 重新生成的入口） */
+#image-viewer-modal .image-viewer-tool:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#image-viewer-modal .image-viewer-tool svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+}
+
 
 /* 位置卡片：路网是纯 CSS 渐变画的，不联网也不占天气额度 */
 .location-card {
