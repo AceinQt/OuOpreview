@@ -2,7 +2,7 @@ const appVersion = "Q.1.9"; // Current app version
             const updateLog = [
             {
                     version: "Q.1.9",
-                    date: "2026-07-27", // 注：日期占位，您可以修改为实际发布的日期
+                    date: "2026-07-27",
                     notes: [
                         "✨ 新功能",
                         "1.系统返回功能",
