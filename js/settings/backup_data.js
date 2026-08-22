@@ -205,6 +205,31 @@ window.exportPartialData = async function(categoryKey) {
                 partialData.groups = db.groups || [];
                 partialData.peekData = db.peekData || {};
                 break;
+            // ★ ToDouo：存储页一直给这一类显示"导出"按钮，但这里从来没有对应的 case，
+            //   点下去只会弹"导出错误: 未知分类"。补上。
+            //   元数据走 db 数组（导入时按 id 合并），正文/共读/章节总结在独立表里，
+            //   得显式读出来 —— importBackupData 末尾已有对应的 bulkPut，能原样还原。
+            //   studyPageCache 故意不导出：它是按正文重算出来的分页缓存，
+            //   导入端也没有还原逻辑，带上只是白白撑大文件。
+            case 'study':
+                partialData.studyBooks = db.studyBooks || [];
+                partialData.studyQuestions = db.studyQuestions || [];
+                partialData.studyRecords = db.studyRecords || [];
+                partialData.studyBanks = db.studyBanks || [];
+                partialData.studyExams = db.studyExams || [];
+                partialData.studyExamRecords = db.studyExamRecords || [];
+                partialData.studySettings = db.studySettings;
+                if (typeof dexieDB !== 'undefined') {
+                    const [contents, coreadMsgs, bookSummaries] = await Promise.all([
+                        dexieDB.studyBookContents.toArray(),
+                        dexieDB.studyCoreadMessages.toArray(),
+                        dexieDB.studyBookSummaries.toArray()
+                    ]);
+                    partialData.studyBookContents = contents;
+                    partialData.studyCoreadMessages = coreadMsgs;
+                    partialData.studyBookSummaries = bookSummaries;
+                }
+                break;
             default: throw new Error("未知分类");
         }
 
