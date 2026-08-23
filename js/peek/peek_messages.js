@@ -486,7 +486,7 @@ async function _revealPeekConvoMessages(partnerName, newMessages, charName) {
 async function continuePeekConversation(partnerName) {
     if (!partnerName) return;
     if (PeekDeleteManager?.isEditMode) { showToast('请先退出多选模式'); return; }
-    if (_peekConvoGenerating.has(partnerName)) { showToast('正在推演中，请稍候...'); return; }
+    if (_peekConvoGenerating.has(partnerName)) { showToast('正在生成中，请稍候...'); return; }
 
     const convo = peekContentCache?.messages?.conversations?.find(c => c.partnerName === partnerName);
     if (!convo) { showToast('找不到对话记录'); return; }
@@ -498,8 +498,8 @@ async function continuePeekConversation(partnerName) {
     if (!url || !key || !model) { showToast('请先配置 API！'); return switchScreen('api-settings-screen'); }
 
     const ok = await AppUI.confirm(
-        `将基于「${partnerName}」这段对话继续往下推演，生成后续消息。`,
-        '继续推演', '开始推演', '取消'
+        `确认将等待与「${partnerName}」的对话窗口继续生成后续消息。`,
+        '等待后续消息', '确认', '取消'
     );
     if (!ok) return;
     // 确认弹窗期间可能已被再次触发
@@ -528,15 +528,15 @@ async function continuePeekConversation(partnerName) {
 
         let systemPrompt = `你正在模拟角色 ${char.realName} 手机里的一段私聊对话。\n`;
         systemPrompt += baseContextPrompt;
-        systemPrompt += `\n【本次任务】\n下面是 ${char.realName} 与「${partnerName}」这段对话目前的记录（最多只给出最近${PEEK_CONTINUE_CONTEXT_LIMIT}条）。请**紧接着最后一条消息**继续往下推演，写出这段对话接下来自然发生的内容。\n`;
+        systemPrompt += `\n【本次任务】\n下面是 ${char.realName} 与「${partnerName}」这段对话目前的记录（展示的是最近${PEEK_CONTINUE_CONTEXT_LIMIT}条）。请**紧接着最后一条消息**继续往下推演，写出这段对话接下来自然发生的内容。\n`;
         systemPrompt += `\n【当前对话记录】\n---\n${convoText || '（这段对话还没有任何消息，请自然地开启它）'}\n---\n`;
         systemPrompt += `\n【要求】\n`;
-        systemPrompt += `1. 只推演 ${char.realName} 和「${partnerName}」之间的这一段对话，不要引入其他联系人，也不要另起一段新对话。\n`;
+        systemPrompt += `1. 只推演 ${char.realName} 和「${partnerName}」之间的这一段对话，不要另起一段新对话。\n`;
         systemPrompt += `2. 严禁复述、总结或改写上面已有的消息，只输出**新增**的后续内容。\n`;
         systemPrompt += `3. 承接最后一条消息的语气和话题自然往下写，允许话题自然推进、转移或让对话自然收尾；内容要符合 ${char.realName} 的人设，并与上面的主线聊天上下文保持一致。\n`;
-        systemPrompt += `4. 本次输出 6-12 条消息，口吻是真人线上聊天，简短口语化。\n`;
+        systemPrompt += `4. 口吻是真人线上聊天，简短口语化。\n`;
         systemPrompt += `5. 严格按行输出，每条消息单独一行：${char.realName} 发送的以 "char: " 开头；「${partnerName}」发送的以 "partner: " 开头。\n`;
-        systemPrompt += `6. 直接输出消息行，不要输出 #PARTNER#、#HISTORY#、===SEP=== 等任何标签，也不要编号、解释或额外说明。\n`;
+        systemPrompt += `6. 直接输出消息行，不要输出任何标签，也不要编号、解释或额外说明。\n`;
         systemPrompt += `\n输出格式示例：\npartner: 对方发送的消息内容\nchar: ${char.realName}发送的消息内容\npartner: 对方发送的消息内容\n`;
 
         const contentStr = await callPeekApi({
@@ -546,7 +546,7 @@ async function continuePeekConversation(partnerName) {
         });
 
         const newMessages = parsePeekConversationLines(contentStr);
-        if (newMessages.length === 0) throw new Error('解析推演内容失败，未获取到有效消息。');
+        if (newMessages.length === 0) throw new Error('解析内容失败，未获取到有效消息。');
 
         // 直接续在本组对话末尾，不插时间分割线（是同一段对话的延续）
         convo.history = [...(convo.history || []), ...newMessages];
@@ -563,12 +563,12 @@ async function continuePeekConversation(partnerName) {
         // 数据已经落库，这里只是把气泡一条条放出来；中途切走也不会丢内容
         await _revealPeekConvoMessages(partnerName, newMessages, char.realName || char.name);
 
-        if (typeof showToast === 'function') showToast(`已推演出 ${newMessages.length} 条新消息`);
+        if (typeof showToast === 'function') showToast(`已发现 ${newMessages.length} 条新消息`);
 
     } catch (error) {
         console.error(error);
         if (typeof showApiError === 'function') showApiError(error);
-        else if (typeof showToast === 'function') showToast('推演失败: ' + error.message);
+        else if (typeof showToast === 'function') showToast('生成失败: ' + error.message);
     } finally {
         _peekConvoGenerating.delete(partnerName);
         _syncPeekContinueUI(_peekConvoPartnerName);

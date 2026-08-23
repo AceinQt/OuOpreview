@@ -182,17 +182,8 @@ function createContextMenu(items, x, y) {
                         });
                     }
 
-                    // 图片消息：转文字描述（省 token）
-                    if (isImageRecognitionMsg) {
-                        const isConverting = (typeof isImageConverting === 'function') && isImageConverting(messageId);
-                        menuItems.push({
-                            label: isConverting ? '转化中…' : '转文字',
-                            action: () => {
-                                if (isConverting) { showToast('该图片正在转化中'); return; }
-                                convertImageMessageToText(messageId);
-                            }
-                        });
-                    }
+                    // 图片消息的"转文字"不在这里 —— 已挪到图片气泡右下角的按钮
+                    // （chat_bubble_factory.js 的 .image-ocr-btn），和生图键同一个位置。
                 }
                 menuItems.push({label: '删除', action: () => enterMultiSelectMode(messageId)});
             }

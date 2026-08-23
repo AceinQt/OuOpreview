@@ -591,6 +591,31 @@ function createMessageBubbleElement(message) {
             if (legacyImage.src && typeof openImageViewer === 'function') openImageViewer(message, legacyImage.src);
         });
         bubbleElement.appendChild(legacyZoom);
+
+        // 右下角转文字按钮：和 pv-card 的生图按钮同一个位置，两种图片气泡的
+        // "右下角动作键"就统一了。只有真的带 base64 的图片能转 —— 纯 URL 图片
+        // 走的是同一个分支但没有 parts，convert 那边也拿不到数据。
+        if (imagePart && typeof convertImageMessageToText === 'function') {
+            const ocrButton = document.createElement('button');
+            ocrButton.type = 'button';
+            ocrButton.className = 'image-ocr-btn';
+            ocrButton.title = '转文字';
+            ocrButton.setAttribute('aria-label', '转文字');
+            ocrButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9h6"/><path d="M12 9v6"/></svg>';
+            ocrButton.addEventListener('click', event => {
+                event.preventDefault();
+                // 多选模式下不吞事件：交给 chat_room 的委托去勾选这条消息。
+                // 转文字不可逆，误触的代价比"少一次转化"大得多。
+                if (typeof isInMultiSelectMode !== 'undefined' && isInMultiSelectMode) return;
+                event.stopPropagation();
+                if (typeof isImageConverting === 'function' && isImageConverting(message.id)) {
+                    if (typeof showToast === 'function') showToast('该图片正在转化中');
+                    return;
+                }
+                convertImageMessageToText(message.id);
+            });
+            bubbleElement.appendChild(ocrButton);
+        }
     } else if (textMatch) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
