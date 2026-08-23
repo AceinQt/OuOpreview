@@ -566,12 +566,32 @@
 }
 
 /* --- 扩展面板按钮禁用状态（线下模式下的线上功能） --- */
-/* 与 sticker bar 的 .sticker-bar-btn:disabled 保持同一套观感。
+/* 只淡化"墨色"：白底卡片和阴影跟其他按钮完全一致，只有图标和文字转灰。
+   原来照搬 sticker bar 的 opacity:0.3 + grayscale，那是给"透明小图标"设计的，
+   套到这种白卡片上会把卡片本身也压透，一排按钮里两个发灰发虚，很难看。
    故意不用 pointer-events:none —— 点击要能走到 JS 里弹"线下模式无法使用"的提示 */
 .expansion-item.disabled {
-    opacity: 0.3;
+    /* ★ 想调深浅只改这两行（越深越接近可用态的 #555 / #666）。
+       这两个值挨着 --dgray-color(#AAB4BE)，是全项目"弱化态"惯用的那档灰 */
+    --expansion-disabled-icon: #AEB6BD;
+    --expansion-disabled-text: #A0A8B0;
     cursor: not-allowed;
-    filter: grayscale(100%);
+}
+
+/* 面性图标（礼物）：必须和上面 .expansion-item-icon svg 的 fill 一一对应地盖掉，
+   svg 上没写 fill 的子元素（如定位图标的圆圈）靠继承拿到同一个灰 */
+.expansion-item.disabled .expansion-item-icon svg {
+    fill: var(--expansion-disabled-icon);
+}
+
+/* 线性图标（定位）：颜色写死在元素的 stroke="#555" 表现属性上，
+   表现属性优先级低于任何 CSS 规则，所以这条能盖掉，不用改 JS 里的 SVG 字符串 */
+.expansion-item.disabled .expansion-item-icon svg [stroke] {
+    stroke: var(--expansion-disabled-icon);
+}
+
+.expansion-item.disabled .expansion-item-name {
+    color: var(--expansion-disabled-text);
 }
 
 .expansion-item.disabled:hover .expansion-item-icon {

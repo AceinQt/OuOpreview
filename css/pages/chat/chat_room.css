@@ -847,8 +847,11 @@
     stroke: currentColor;
 }
 
-/* 图片气泡右上角的放大按钮：纯图片和文字图片共用 */
-.image-zoom-btn {
+/* 图片气泡右上角的放大按钮：纯图片和文字图片共用
+   .image-ocr-btn 是真实图片右下角的"转文字"键，占位对应 pv-card 的生图键，
+   两种图片气泡的右下角动作键因此统一；除了位置以外和放大键完全同一套观感。 */
+.image-zoom-btn,
+.image-ocr-btn {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -866,15 +869,23 @@
     cursor: pointer;
 }
 
-.image-zoom-btn[hidden] {
+.image-ocr-btn {
+    top: auto;
+    bottom: 8px;
+}
+
+.image-zoom-btn[hidden],
+.image-ocr-btn[hidden] {
     display: none;
 }
 
-.image-zoom-btn:hover {
+.image-zoom-btn:hover,
+.image-ocr-btn:hover {
     background: rgba(0, 0, 0, 0.62);
 }
 
-.image-zoom-btn svg {
+.image-zoom-btn svg,
+.image-ocr-btn svg {
     width: 17px;
     height: 17px;
     fill: none;
