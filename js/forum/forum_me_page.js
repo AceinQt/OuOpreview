@@ -360,7 +360,7 @@ function setupMePageFeature() {
     await saveForumMeta();
     console.log("✅ 论坛设置已精准保存");
             } else {
-                    console.error("❌ saveData 函数不存在");
+                    console.error("❌ saveForumMeta 函数不存在");
                 }
 
                 if (typeof showToast === 'function') {
