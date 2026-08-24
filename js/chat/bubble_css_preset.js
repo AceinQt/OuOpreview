@@ -126,6 +126,35 @@ function _saveBubblePresets(arr) {
     db.bubbleCssPresets = arr ||[];
    saveGlobalKeys(['bubbleCssPresets']);
 }
+
+// 预设的保存/删除/重命名会把新 CSS 直接注入用到该预设的每个聊天的
+// customBubbleCss / useCustomBubbleCss / bubbleThemeName 三个字段。
+// 渲染读的是 chat.customBubbleCss 而不是预设列表，所以这三个字段必须落盘；
+// 过去只保存了 bubbleCssPresets，改动仅存在内存里靠切后台的全量 saveData 兜底，
+// App 被系统杀掉就会整体回退到旧 CSS，用户看到的是"刚改的外观没了"。
+// 落盘口径与 saveSingleChat 一致：剥掉 history 与独立存储的记忆字段。
+async function _persistChatsAfterPresetChange() {
+    try {
+        if (typeof dexieDB === 'undefined') return;
+        const strip = (src) => {
+            const o = { ...src };
+            delete o.history;
+            delete o.memorySummaries;
+            delete o.memoryJournals;
+            delete o.longTermSummaries;
+            if (window.isChunkMigrated) delete o.memoryChunks;
+            return o;
+        };
+        if (dexieDB.characters && db.characters && db.characters.length) {
+            await dexieDB.characters.bulkPut(db.characters.map(strip));
+        }
+        if (dexieDB.groups && db.groups && db.groups.length) {
+            await dexieDB.groups.bulkPut(db.groups.map(strip));
+        }
+    } catch (e) {
+        console.error('❌ 气泡预设同步到聊天的保存失败:', e);
+    }
+}
 // =================================== 更新预览区域核心逻辑 ===================================
 
 // 全景气泡预览生成器：将所有的气泡都放在一个窗口里
@@ -964,7 +993,7 @@ function syncBasicUiFromCss(css) {
                 return updated;
             };
             let updatedP = updateChats(db.characters ||[]); let updatedG = updateChats(db.groups ||[]);
-            if (updatedP || updatedG) await saveGlobalKeys(['bubbleCssPresets']);
+            if (updatedP || updatedG) { await saveGlobalKeys(['bubbleCssPresets']); await _persistChatsAfterPresetChange(); }
 
             showToast('外观保存成功！');
             if (typeof window.populateChatThemeSelects === 'function') window.populateChatThemeSelects();
@@ -1005,7 +1034,7 @@ function syncBasicUiFromCss(css) {
                     return updated;
                 };
                 let updatedP = resetChats(db.characters ||[]); let updatedG = resetChats(db.groups ||[]);
-                if (updatedP || updatedG) await saveGlobalKeys(['bubbleCssPresets']);
+                if (updatedP || updatedG) { await saveGlobalKeys(['bubbleCssPresets']); await _persistChatsAfterPresetChange(); }
 
                 if(window.showToast) showToast('预设删除成功');
                 if(addBtn) document.getElementById('global-bubble-add-btn').click();
@@ -1069,7 +1098,7 @@ function syncBasicUiFromCss(css) {
                         return updated;
                     };
                     let updatedP = updateChats(db.characters ||[]); let updatedG = updateChats(db.groups ||[]);
-                    if (updatedP || updatedG) await saveGlobalKeys(['bubbleCssPresets']);
+                    if (updatedP || updatedG) { await saveGlobalKeys(['bubbleCssPresets']); await _persistChatsAfterPresetChange(); }
 
                     openManagePresetsModal(); 
                     if (typeof window.populateChatThemeSelects === 'function') window.populateChatThemeSelects();
@@ -1104,7 +1133,7 @@ function syncBasicUiFromCss(css) {
                         return updated;
                     };
                     let updatedP = resetChats(db.characters ||[]); let updatedG = resetChats(db.groups ||[]);
-                    if (updatedP || updatedG) await saveGlobalKeys(['bubbleCssPresets']);
+                    if (updatedP || updatedG) { await saveGlobalKeys(['bubbleCssPresets']); await _persistChatsAfterPresetChange(); }
 
                     openManagePresetsModal(); 
                     if (typeof window.populateChatThemeSelects === 'function') window.populateChatThemeSelects();

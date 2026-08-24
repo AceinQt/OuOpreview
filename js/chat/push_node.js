@@ -34,7 +34,9 @@
     }
 
     async function persist() {
-        try { if (typeof window.saveData === 'function') await window.saveData(); }
+        // 只写自己这一项设置（含 Web Push 订阅凭证 subscription）。
+        // 过去调 saveData() 全量覆盖，改一个开关就会盖掉另一个窗口的改动。
+        try { if (typeof window.saveGlobalKeys === 'function') await window.saveGlobalKeys(['globalPushSettings']); }
         catch (e) { console.warn('[推送节点] 保存设置失败:', e); }
     }
 

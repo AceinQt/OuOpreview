@@ -490,7 +490,9 @@ function updateHint() {
 
     async function persist() {
         try {
-            if (typeof window.saveData === 'function') await window.saveData();
+            // 只写自己这一项设置。过去这里调 saveData() 做全量覆盖——改一个通知开关
+            // 就把本窗口内存里的所有表整个盖到库上，多窗口下会覆盖另一个窗口的改动。
+            if (typeof window.saveGlobalKeys === 'function') await window.saveGlobalKeys(['globalNotifySettings']);
         } catch (e) {
             console.warn('[通知] 保存设置失败:', e);
         }
