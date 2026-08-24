@@ -502,7 +502,7 @@ async function* createFullBackupStream() {
     // ── 6. 论坛帖子：每 50 条一行（帖子含楼层可能较大）──
     // ★ [论坛懒加载 F1] 一律从 Dexie 表分批读，不再用内存 db.forumPosts。
     //   懒加载下内存只是窗口（最新100+收藏+在看），从内存导出会静默丢掉窗口外的全部帖子。
-    //   表在两种模式下都是全量权威数据（发帖 saveSinglePost、删帖先删表、saveData bulkPut 均为 upsert）。
+    //   表在两种模式下都是全量权威数据（发帖 saveSinglePost、删帖先删表、restoreAllTablesToDB bulkPut 均为 upsert）。
     //   先取主键再 bulkGet，避免全量帖子同时驻留内存（照抄下面书籍正文的做法）。
     try {
         const postKeys = await dexieDB.forumPosts.toCollection().primaryKeys();
@@ -764,7 +764,7 @@ async function importJsonlStream(byteStream, onProgress) {
     }
 
     // 保存 + 应用设置
-    if (typeof saveData === 'function') await saveData(db);
+    if (typeof restoreAllTablesToDB === 'function') await restoreAllTablesToDB();
     if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
     if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
 
@@ -1251,7 +1251,7 @@ async function lazyImportBackupData(jsonString) {
     }
 
     // 13) 保存 + 应用设置（与原逻辑一致）
-    if (typeof saveData === 'function') await saveData(db);
+    if (typeof restoreAllTablesToDB === 'function') await restoreAllTablesToDB();
     if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
     if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
 
@@ -1393,7 +1393,7 @@ if (typeof dexieDB !== 'undefined') {
             // 4) flush 剩余不足一批的尾巴
             await flush();
             // 5) 所有批次入库完成后才标记迁移完成
-            window.isMessageMigrated = true; // ★ 修复：导入后标记迁移完成，防止 saveData 把 history 写回 IndexedDB 导致下次加载重复触发升级弹窗
+            window.isMessageMigrated = true; // ★ 修复：导入后标记迁移完成，防止 restoreAllTablesToDB 把 history 写回 IndexedDB 导致下次加载重复触发升级弹窗
         }
 
         // ★ V6：将备份中 character/group 携带的记忆字段写入 memories 独立表
@@ -1468,7 +1468,7 @@ if (typeof dexieDB !== 'undefined') {
     }
 }
 
-        if (typeof saveData === 'function') await saveData(db);
+        if (typeof restoreAllTablesToDB === 'function') await restoreAllTablesToDB();
         if (typeof applySafeAreaSettings === 'function') applySafeAreaSettings();
         if (typeof applyScreenAdaptation === 'function') applyScreenAdaptation();
         
