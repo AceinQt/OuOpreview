@@ -576,15 +576,14 @@ db.studyBooks.forEach(b => {
             if (!c.peekScreenSettings) c.peekScreenSettings = { wallpaper: '', customIcons: {}, unlockAvatar: '' };
         });
 
-        // ⭐⭐⭐ 新增：记录加载时间戳(用于多标签页同步) ⭐⭐⭐
+        // 记录本窗口这次把数据读进内存的时刻，用于和 app_metadata.lastUpdateTime
+        // （数据最后被"写入"的时刻）比较，判断内存是否已过期。
         window.dbLoadTimestamp = Date.now();
 
-        // 同时在 IndexedDB 中记录(用于跨标签页对比)
-        try {
-            await dexieDB.globalSettings.put({ key: 'app_metadata', lastUpdateTime: window.dbLoadTimestamp });
-        } catch (e) {
-            console.warn('⚠️ 元数据保存失败:', e);
-        }
+        // 注意：这里【不能】写 app_metadata。那个字段的语义是「数据最后被写入的时间」，
+        // 读数据时去写它会造成多窗口 ping-pong：A 载入→B 载入→A 切回前台发现
+        // 「时间戳比我新」→全量重载→又刷新时间戳→B 切回来又重载……无限空转。
+        // 只有真正写库的地方才该更新它（目前是备份恢复的 restoreAllTablesToDB）。
 
         console.log("✅ 数据加载完成 (V11), 时间戳:", window.dbLoadTimestamp);
 
@@ -594,8 +593,25 @@ db.studyBooks.forEach(b => {
     }
 };
 
-// 5. 核心：保存数据
-window.saveData = async () => {
+// 5. 全量写回：把内存 db 的所有表整个覆盖到 IndexedDB。
+//
+// ★ 这个函数过去叫 saveData，曾经在「每次切后台」和「pagehide」时被调用，
+//   是消息丢失、卡顿和多窗口互相覆盖的根源：
+//     - 全量 bulkPut 十几张表，切后台那一刻正是系统决定要不要回收页面的时刻，
+//       在这里制造内存与 IO 尖峰，等于主动提高被杀概率；
+//     - 多窗口下用本窗口的内存整个盖掉库，另一个窗口的改动就没了；
+//     - 它是一长串 await，pagehide 之后浏览器随时可能销毁页面，
+//       结果是「写了一半、时间戳没更新」的半保存状态。
+//   日常持久化现已全部改为精准保存（见下方 saveSingleChat / saveMessageToDB /
+//   saveGlobalKeys / saveStickerTable 等），改内存的同时就落盘，不再需要兜底全量写。
+//
+// ★ 现在它【只】给备份恢复用：恢复流程把备份解析进内存 db 之后，
+//   需要把 characters/groups/globalSettings/myStickers/userPersonas/peekData/
+//   forumMetadata/worldBooks/rpgProfiles/studyBooks 等表整体写回
+//   （这些表恢复流程自身没有逐张显式写，依赖这里兜底）。
+//   刻意改名而不是保留 saveData 这个名字，是为了让任何遗漏的旧调用点
+//   直接抛 TypeError 暴露出来，而不是静默地继续做全量覆盖。
+window.restoreAllTablesToDB = async () => {
     // 1. 聊天 & 角色 & 组
     try {
         await dexieDB.transaction('rw', [dexieDB.characters, dexieDB.groups], async () => {
@@ -690,18 +706,21 @@ window.saveData = async () => {
         if (db.studyBanks && db.studyBanks.length > 0) await dexieDB.studyBanks.bulkPut(db.studyBanks);
     } catch (e) { console.error("❌ 学习模块保存失败:", e); }
 
-    // ⭐⭐⭐ 新增：更新保存时间戳(用于多标签页同步) ⭐⭐⭐
+    // 记录「数据最后被写入」的时刻。这是 app_metadata.lastUpdateTime 的唯一写入点，
+    // 其他窗口下次切回前台时会拿它和自己的 dbLoadTimestamp 比较，发现库更新了就重载。
     const now = Date.now();
     window.dbLoadTimestamp = now;
 
-    // 同时在 IndexedDB 中记录
     try {
         await dexieDB.globalSettings.put({ key: 'app_metadata', lastUpdateTime: now });
     } catch (e) {
         console.warn('⚠️ 元数据更新失败:', e);
     }
 
-    console.log('✅ 数据保存完成, 时间戳:', now);
+    // 告诉其他窗口整个库被换掉了，它们的内存已经是旧库的内容，必须重新载入
+    if (typeof window.notifyDataWritten === 'function') window.notifyDataWritten();
+
+    console.log('✅ 全量写回完成（备份恢复）, 时间戳:', now);
 };
 
 // --- 元数据保存 ---
@@ -927,6 +946,20 @@ window.saveUserPersonaTable = async () => {
         await dexieDB.userPersonas.clear();
         if (db.userPersonas.length > 0) await dexieDB.userPersonas.bulkPut(db.userPersonas);
     } catch (e) { console.error("❌ 用户档案表保存失败:", e); }
+};
+
+// --- [表情包] 整表保存 ---
+// 表情包过去调 saveGlobalKeys(['myStickers'])，但那个函数是往 globalSettings 表写
+// {key,value}，而 loadData 读表情包是从独立的 myStickers 表读（且 myStickers 不在
+// globalSettingKeys 白名单里）——写的地方和读的地方不是同一处，那次保存等于空操作，
+// 新增的表情包只能靠切后台的 saveData 兜底，一旦 App 被系统杀掉来不及保存就丢了。
+// 这里改成直接写真正被读取的那张表。
+window.saveStickerTable = async () => {
+    try {
+        await dexieDB.myStickers.clear();
+        if (db.myStickers && db.myStickers.length > 0) await dexieDB.myStickers.bulkPut(db.myStickers);
+        console.log("✅ [Sticker] 表情包表已保存");
+    } catch (e) { console.error("❌ 表情包表保存失败:", e); }
 };
 
 // ============================================================
