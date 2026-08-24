@@ -7393,6 +7393,8 @@
 </div>   
 
 <!-- js文件引入开始 -->
+<!-- 重启原因记录器：必须第一个执行，才能在其它代码之前读到 document.wasDiscarded -->
+<script src="js/core/restart_diag.js"></script>
 <script src="js/core/globals.js"></script>
 <script src="js/core/database.js"></script>
 <script src="js/core/lazy_load.js"></script>
