@@ -63,19 +63,36 @@ function switchScreen(targetId) {
         window._screenEnterHooks[targetId]();
     }
 }             
-                                                        function processToastQueue() {
-                if (isToastVisible || notificationQueue.length === 0) {
-                    return;
-                }
+            // ── 顶部通知条 ────────────────────────────────────────────
+            const TOAST_HOLD_RICH = 3500;   // 可点击的新消息通知：留够反应时间
+            const TOAST_HOLD_PLAIN = 1500;  // 纯文字提示
+            const TOAST_MAX_TOTAL = 8000;   // 同一条就地刷新最多占用这么久，免得别的会话一直排不上
+            const TOAST_MIN_TAIL = 1500;    // 预算不足这么多时就不再顺延，让它到点收起（内容仍是最新的）
 
-                isToastVisible = true;
-                const notification = notificationQueue.shift(); // 取出队列中的第一个通知
+            // 收起动作：自动超时和"点击跳转"共用一份，
+            // 免得点击跳转后旧的超时定时器又把 isToastVisible 复位一次、把下一条提前挤出来。
+            let _toastHideTimer = null;
+            let _toastNextTimer = null;
+            let _toastCurrentChatId = null; // 正在显示的是哪个会话（同会话的后续消息就地替换，不排队）
+            let _toastShownAt = 0;          // 这一条最初出现的时刻（就地刷新不更新它，用于算总占用上限）
+            function dismissToast(toastElement) {
+                clearTimeout(_toastHideTimer);
+                clearTimeout(_toastNextTimer);
+                _toastCurrentChatId = null;
+                toastElement.classList.remove('show');
+                // 等隐藏动画（0.5秒）结束后，处理下一条
+                _toastNextTimer = setTimeout(() => {
+                    isToastVisible = false;
+                    processToastQueue();
+                }, 500);
+            }
 
-                const toastElement = document.getElementById('toast-notification');
+            // 把一条通知的内容填进通知条，返回可跳转的会话 id（没有则 null）。
+            // 新弹一条和"就地换成最新那条"共用这段，两条路径的外观/点击行为不会漂移。
+            function renderToastContent(toastElement, notification) {
                 const avatarEl = toastElement.querySelector('.toast-avatar');
                 const nameEl = toastElement.querySelector('.toast-name');
                 const messageEl = toastElement.querySelector('.toast-message');
-
                 const isRichNotification = typeof notification === 'object' && notification !== null && notification.name;
 
                 if (isRichNotification) {
@@ -83,7 +100,9 @@ function switchScreen(targetId) {
                     avatarEl.style.display = 'block';
                     nameEl.style.display = 'block';
                     messageEl.style.textAlign = 'left';
-                    avatarEl.src = notification.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                    const avatarUrl = notification.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                    // 就地替换时头像多半没变，同一个 URL 别重新赋值，免得闪一下
+                    if (avatarEl.getAttribute('src') !== avatarUrl) avatarEl.src = avatarUrl;
                     nameEl.textContent = notification.name;
                     messageEl.textContent = notification.message;
                 } else {
@@ -94,21 +113,79 @@ function switchScreen(targetId) {
                     messageEl.textContent = notification;
                 }
 
+                // ── 点击跳转 ──
+                // 带了 chatId 的通知（在别的页面收到新消息时弹的那种）可以点，
+                // 点一下直接进对应聊天室；纯文字提示不给点击态。
+                const jumpId = isRichNotification ? notification.chatId : null;
+                const jumpType = isRichNotification ? (notification.chatType || 'private') : null;
+                toastElement.classList.toggle('clickable', !!jumpId);
+                toastElement.onclick = jumpId ? () => {
+                    dismissToast(toastElement);
+                    if (typeof openChatRoom !== 'function') return;
+                    window.currentChatId = jumpId;
+                    window.currentChatType = jumpType;
+                    openChatRoom(jumpId, jumpType);
+                } : null;
+                return jumpId || null;
+            }
+
+
+                                                        function processToastQueue() {
+                if (isToastVisible || notificationQueue.length === 0) {
+                    return;
+                }
+
+                isToastVisible = true;
+                const notification = notificationQueue.shift(); // 取出队列中的第一个通知
+
+                const toastElement = document.getElementById('toast-notification');
+                const jumpId = renderToastContent(toastElement, notification);
+                _toastCurrentChatId = jumpId;
+                _toastShownAt = Date.now();
+
                 toastElement.classList.add('show');
 
                 // 设置定时器，在通知显示一段时间后将其隐藏
-                setTimeout(() => {
-                    toastElement.classList.remove('show');
-
-                    // 等待隐藏动画（0.5秒）结束后，处理下一个通知
-                    setTimeout(() => {
-                        isToastVisible = false;
-                        processToastQueue(); // 尝试处理队列中的下一个通知
-                    }, 500);
-
-                }, 1500); // 通知显示时间（1.5秒）
+                // 可点击的通知留久一点，1.5 秒不够手指反应过来
+                _toastHideTimer = setTimeout(() => dismissToast(toastElement), jumpId ? TOAST_HOLD_RICH : TOAST_HOLD_PLAIN);
             }
+
             const showToast = (notification) => {
+                // ★ 同一会话连发多条时不排队。
+                // AI 一次回复会连着推好几条消息，逐条排队的话每条至少占 3.5+0.5 秒，
+                // 聊天列表那边消息早就出完了，通知条还在一条条慢慢演，点进去看到的和通知里
+                // 写的不是同一条。所以同会话的后续消息直接把当前这条的内容换成最新的，
+                // 频率跟着消息走；只有跨会话才真正排队。
+                const isRich = typeof notification === 'object' && notification !== null && notification.name;
+                if (isRich && notification.chatId && isToastVisible
+                    && _toastCurrentChatId === notification.chatId) {
+                    const toastElement = document.getElementById('toast-notification');
+                    if (toastElement && toastElement.classList.contains('show')) {
+                        renderToastContent(toastElement, notification);
+                        // 内容换成最新的了，但收起时间不是无条件顺延：
+                        // 整条通知的总驻留有 TOAST_MAX_TOTAL 上限，一直刷屏时不能让它无限续命
+                        // 把别的会话饿死。预算够就重新计时，见底就沿用已排好的定时器
+                        // ——内容仍是最新的，只是不再延长，到点收起。
+                        const budget = TOAST_MAX_TOTAL - (Date.now() - _toastShownAt);
+                        if (budget >= TOAST_MIN_TAIL) {
+                            clearTimeout(_toastHideTimer);
+                            _toastHideTimer = setTimeout(
+                                () => dismissToast(toastElement),
+                                Math.min(TOAST_HOLD_RICH, budget)
+                            );
+                        }
+                        return;
+                    }
+                }
+                // 队列里已经有同会话的待弹项时，同样只留最新那条，不要堆一串
+                if (isRich && notification.chatId) {
+                    for (let i = notificationQueue.length - 1; i >= 0; i--) {
+                        const q = notificationQueue[i];
+                        if (q && typeof q === 'object' && q.chatId === notification.chatId) {
+                            notificationQueue.splice(i, 1);
+                        }
+                    }
+                }
                 notificationQueue.push(notification); // 将通知加入队列
                 processToastQueue(); // 尝试处理队列
             };
