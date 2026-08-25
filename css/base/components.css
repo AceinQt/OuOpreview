@@ -553,6 +553,16 @@ label.btn-primary {
     visibility: visible;
 }
 
+/* 带 chatId 的新消息通知条可点击跳转，给个手势和按下反馈 */
+.toast.clickable {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.toast.clickable:active {
+    transform: translateX(-50%) scale(0.97);
+}
+
 .toast-spinner {
     width: 20px;
     height: 20px;
