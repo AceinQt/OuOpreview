@@ -1321,8 +1321,11 @@ async function renderNewerMessages(startIndex) {
                         // 如果消息不是系统内部不可见的消息，才增加未读计数
                         // --- 从这里开始是新增的代码 ---
 // 如果消息不是系统内部不可见的消息，才增加未读计数
-const invisibleRegex = /\[system:.*\]|\[.*?更新状态为：.*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]/;
-if (!invisibleRegex.test(message.content)) {
+// 这份名单要和 chat_bubble_factory.js 里 return null 的那条对齐（外加时间分割线）：
+// 聊天室里画不出气泡的消息，既不该算未读，也不该弹顶部通知条。
+const invisibleRegex = /\[system:[\s\S]*?\]|\[.*?更新状态为[:：].*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[系统情景通知[:：][\s\S]*?\]/;
+const isInvisible = message.content === '[time-divider]' || invisibleRegex.test(message.content);
+if (!isInvisible) {
     senderChat.unreadCount = (senderChat.unreadCount || 0) + 1;
     saveSingleChat(targetChatId, targetChatType); // 异步保存数据
 
@@ -1334,9 +1337,12 @@ if (!invisibleRegex.test(message.content)) {
     // 【优化2】将耗时的“重绘聊天列表”任务延后 100 毫秒
     // 优先保证顶部的 Toast 提示框能够无比丝滑地弹出
     setTimeout(() => {
-        if (typeof renderChatList === 'function') renderChatList(); 
+        if (typeof renderChatList === 'function') renderChatList();
     }, 100);
 }
+
+// 不可见消息（改状态、收转账/礼物、情景注入、时间分割线）到此为止，不弹通知条
+if (isInvisible) return;
 
 
                         let senderName, senderAvatar;
@@ -1357,25 +1363,43 @@ if (!invisibleRegex.test(message.content)) {
                         let previewText = message.content;
 
                         // Extract clean text for preview
-                        const textMatch = previewText.match(/\[.*?的消息：([\s\S]+?)\]/);
-                        if (textMatch) {
+                        const textMatch = previewText.match(/\[.*?的消息[:：]([\s\S]+?)\]/);
+                        if (message.isWithdrawn) {
+                            // 撤回的消息在聊天室里只显示"撤回了一条消息"，通知条也别把原文抖出来
+                            previewText = '撤回了一条消息';
+                        } else if (textMatch) {
                             previewText = textMatch[1];
                         } else {
+                            // 线下模式的旁白气泡：正文就是给人看的，只把 [system-narration: ] 这层壳剥掉
+                            const narrationMatch = previewText.match(/\[system-narration[:：]([\s\S]+?)\]/);
+                            const displayMatch = previewText.match(/\[system-display[:：]([\s\S]+?)\]/);
                             // Handle other message types for preview
-                            if (/\[.*?的表情包：.*?\]/.test(previewText)) previewText = '[表情包]';
-                            else if (/\[.*?的语音：.*?\]/.test(previewText)) previewText = '[语音]';
-                            else if (/\[.*?发来的照片\/视频：.*?\]/.test(previewText)) previewText = '[照片/视频]';
-                            else if (/\[.*?的转账：.*?\]/.test(previewText)) previewText = '[转账]';
-                            else if (/\[.*?送来的礼物：.*?\]/.test(previewText)) previewText = '[礼物]';
-                            else if (/\[.*?发送了位置：.*?\]/.test(previewText)) previewText = '[位置]';
-                            else if (/\[.*?发来了一张图片：\]/.test(previewText)) previewText = '[图片]';
+                            // 转账/礼物的正则放宽到不带"的"字，群聊的「向X转账」「向X送来了礼物」也能命中
+                            if (narrationMatch) previewText = narrationMatch[1].trim();
+                            else if (displayMatch) previewText = displayMatch[1].trim();
+                            else if (/\[.*?表情包[:：].*?\]/.test(previewText)) previewText = '[表情包]';
+                            else if (/\[.*?的语音[:：].*?\]/.test(previewText)) previewText = '[语音]';
+                            else if (/\[.*?照片\/视频[:：].*?\]/.test(previewText)) previewText = '[照片/视频]';
+                            else if (/\[.*?转账[:：].*?\]/.test(previewText)) previewText = '[转账]';
+                            else if (/\[.*?礼物[:：].*?\]/.test(previewText)) previewText = '[礼物]';
+                            else if (/\[.*?发送了位置[:：].*?\]/.test(previewText)) previewText = '[位置]';
+                            else if (/\[.*?发来了一张图片[:：]\]/.test(previewText)) previewText = '[图片]';
                             else if (message.parts && message.parts.some(p => p.type === 'html')) previewText = '[互动]';
+                            else {
+                                // 兜底：上面都没命中（群聊改名/踢人这类可见通知、或没见过的新格式），
+                                // 只把外层方括号剥掉、保留整句，别把原始标记直接摆给用户看。
+                                // 这里刻意不按冒号切——「阿花修改群名为：喵喵星球」切掉前半句就读不懂了。
+                                previewText = previewText.replace(/^\[+/, '').replace(/\]+$/, '').trim();
+                            }
                         }
 
                         showToast({
                             avatar: senderAvatar,
                             name: senderName,
-                            message: previewText.substring(0, 30)
+                            message: previewText.substring(0, 30),
+                            // 带上会话标识，顶部通知条就能点进这个聊天室（见 utils.js processToastQueue）
+                            chatId: targetChatId,
+                            chatType: targetChatType
                         });
                     }
                     return; // IMPORTANT: Stop further execution

@@ -229,6 +229,9 @@
         }
         // 系统 / 视觉类不通知
         if (t.includes('[time-divider]') || t.includes('system-display') || t.startsWith('[system')) return '';
+        // 聊天室里画不出气泡的消息（改状态、收转账/礼物、情景注入）同样不该弹通知，
+        // 名单与 chat_bubble_factory.js 的 invisibleRegex、chat_room.js 顶部通知条那份对齐
+        if (/\[.*?更新状态为[:：].*?\]|\[.*?已接收礼物\]|\[.*?(?:接收|退回).*?的转账\]|\[系统情景通知[:：][\s\S]*?\]/.test(t)) return '';
         // 特殊消息类型 → 占位
         if (/(发来的?照片|照片\/视频|的照片)/.test(t)) return '[照片]';
         if (/(发来的?语音|的语音)/.test(t)) return '[语音]';
