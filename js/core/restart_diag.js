@@ -21,7 +21,15 @@
     const LIVE_KEY = 'ouo_session_live';    // 本次会话的「进行中」标记
     const MAX_ENTRIES = 30;
 
-    const nowIso = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+    // 必须用本地时间。用 toISOString() 会得到 UTC，而后面 new Date(那个字符串)
+    // 又按本地时间解析，两者一减就凭空多出一个时区差（国内 +8 会算出多活 480 分钟）；
+    // 而且报告里的时间跟用户看表的时间对不上，没法和"我刚才几点碰到重启"对照。
+    const nowIso = () => {
+        const d = new Date();
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+               `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    };
     const mb = n => (typeof n === 'number' ? +(n / 1048576).toFixed(1) : null);
 
     function heap() {
@@ -79,7 +87,9 @@
             logLines: prev.logLines,
             hiddenCount: prev.hiddenCount,
             froze: prev.froze,
-            cleanExit: prev.cleanExit
+            cleanExit: prev.cleanExit,
+            activeScreen: prev.activeScreen ?? null,
+            screenTrail: prev.screenTrail || []
         } : null,
         device: {
             deviceMemoryGB: navigator.deviceMemory ?? null,
@@ -107,9 +117,16 @@
         logLines: null,
         hiddenCount: 0,
         froze: false,
-        cleanExit: false
+        cleanExit: false,
+        activeScreen: null,   // 被杀那一刻停留在哪个页面
+        screenTrail: []       // 最近的页面切换轨迹（最新在后）
     };
     writeJSON(LIVE_KEY, live);
+
+    function currentScreenId() {
+        const el = document.querySelector('.screen.active');
+        return el ? el.id : null;
+    }
 
     function sample() {
         const h = heap();
@@ -121,8 +138,31 @@
         live.domNodes = document.getElementsByTagName('*').length;
         const out = document.getElementById('dev-console-output');
         live.logLines = out ? out.children.length : null;
+        live.activeScreen = currentScreenId();
         writeJSON(LIVE_KEY, live);
     }
+
+    // 页面切换轨迹。用户报告"基本都是返回主屏时重启"，光有"被杀时停在哪一页"不够——
+    // 需要知道死之前的几步操作，才能判断是不是某条特定的跳转路径触发的。
+    // 用 MutationObserver 监听 .screen 的 class 变化，不依赖 switchScreen
+    // （restart_diag 必须最先加载，那时 switchScreen 还没定义，包不了）。
+    let lastTrailId = null;
+    try {
+        const trailMo = new MutationObserver(() => {
+            const id = currentScreenId();
+            if (!id || id === lastTrailId) return;
+            lastTrailId = id;
+            live.screenTrail.push(nowIso().slice(11) + ' ' + id);
+            while (live.screenTrail.length > 12) live.screenTrail.shift();
+            live.activeScreen = id;
+            writeJSON(LIVE_KEY, live);
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            lastTrailId = currentScreenId();
+            if (lastTrailId) live.screenTrail.push(nowIso().slice(11) + ' ' + lastTrailId);
+            trailMo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+        });
+    } catch (_) { /* 观察器不可用时静默降级，诊断其余部分照常工作 */ }
 
     // 30 秒采样一次，持续更新「还活着 + 当前内存」快照
     setInterval(sample, 30000);
@@ -145,7 +185,7 @@
 
     // ── 3. 查看接口 ───────────────────────────────────────────────
     window.OuODiag = {
-        // 控制台里敲 OuODiag.report() 看历史
+        // 控制台里敲 OuODiag.report() 看历史；手机上点「系统日志」页右上角的三角按钮
         report() {
             const log = readJSON(LOG_KEY, []);
             if (!log.length) { console.log('[重启诊断] 暂无异常重启记录'); return log; }
@@ -156,7 +196,12 @@
                     `${e.at}  ${e.reason}\n  ${e.detail}` +
                     (p ? `\n  上次会话：存活 ${p.aliveMin ?? '?'} 分钟，切后台 ${p.hiddenCount ?? '?'} 次，` +
                          `峰值堆 ${p.peakHeapMB ?? '?'}MB / 上限 ${e.device.heapLimitMB ?? '?'}MB，` +
-                         `DOM ${p.domNodes ?? '?'} 节点，日志 ${p.logLines ?? '?'} 行` : '')
+                         `DOM ${p.domNodes ?? '?'} 节点，日志 ${p.logLines ?? '?'} 行` +
+                         `\n  死前停留页面：${p.activeScreen ?? '(未记录)'}` +
+                         (p.screenTrail && p.screenTrail.length
+                             ? '\n  死前页面轨迹：\n    ' + p.screenTrail.join('\n    ')
+                             : '\n  死前页面轨迹：(未记录)')
+                       : '')
                 );
             });
             return log;
@@ -179,4 +224,27 @@
         },
         clear() { try { localStorage.removeItem(LOG_KEY); } catch (_) {} console.log('[重启诊断] 已清空'); }
     };
+
+    // ── 4. 手机上的入口 ──────────────────────────────────────────
+    // 手机上没有 devtools，「系统日志」页也只有输出区、没有输入框，
+    // 所以 OuODiag.report() 在真机上根本没法调用——加个按钮把报告打到输出区。
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('diag-report-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            console.log('──────── 重启诊断报告 ────────');
+            const s = window.OuODiag.summary();
+            console.log('汇总：' + JSON.stringify(s, null, 2));
+            window.OuODiag.report();
+            const n = window.OuODiag.now();
+            console.log('本次会话（进行中）：\n' +
+                `  已存活 ${+((Date.now() - new Date(n.startedAt).getTime()) / 60000).toFixed(1)} 分钟，` +
+                `切后台 ${n.hiddenCount} 次\n` +
+                `  当前堆 ${n.lastHeapMB ?? '?'}MB / 峰值 ${n.peakHeapMB ?? '?'}MB / 上限 ${n.heapLimitMB ?? '?'}MB\n` +
+                `  DOM ${n.domNodes ?? '?'} 节点，日志 ${n.logLines ?? '?'} 行\n` +
+                `  当前页面：${n.activeScreen ?? '?'}\n` +
+                '  页面轨迹：\n    ' + (n.screenTrail || []).join('\n    '));
+            console.log('──────── 报告结束 ────────');
+        });
+    });
 })();
