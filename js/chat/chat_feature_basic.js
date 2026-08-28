@@ -156,7 +156,7 @@
                                 role: 'user',
                                 parts: [
                                     { text: VISION_DESCRIBE_PROMPT },
-                                    { inline_data: { mime_type: mimeType, data: data } }
+                                    { inlineData: { mimeType: mimeType, data: data } }
                                 ]
                             }],
                             generationConfig: { temperature: 0.4 }
@@ -193,7 +193,9 @@
 
                     const json = await response.json();
                     return (provider === 'gemini')
-                        ? (json.candidates?.[0]?.content?.parts?.[0]?.text || '')
+                        ? (json.candidates?.[0]?.content?.parts || [])
+                            .filter(p => !p.thought && typeof p.text === 'string')
+                            .map(p => p.text).join('')
                         : (json.choices?.[0]?.message?.content || '');
                 } catch (err) {
                     if (err.name === 'AbortError') throw new Error('请求超时（60秒）');

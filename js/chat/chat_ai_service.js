@@ -808,15 +808,17 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
                                 mimeType = match[1];
                                 data = match[3];
                             }
-                            return { inline_data: { mime_type: mimeType, data: data } };
+                            return { inlineData: { mimeType: mimeType, data: data } };
                         }
                         return null;
                     }).filter(p => p);
                 } else {
-                    parts = [{ text: processingContent }];
+                    // 老消息没有 parts 字段（早期数据 / 旧备份恢复），退回读 content，
+                    // 与下面 OpenAI 分支的 `content = msg.content` 保持一致
+                    parts = [{ text: String(msg.content ?? '') }];
                 }
                 return { role, parts };
-}).filter(c => c.parts && c.parts.length > 0 && c.parts.some(p => p.text?.trim() || p.inline_data));
+}).filter(c => c.parts && c.parts.length > 0 && c.parts.some(p => p.text?.trim() || p.inlineData));
             
             if (activeReinforcement){
                 let targetIndex = -1;
@@ -849,7 +851,9 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
 
             requestBody = {
     contents: contents,
-    system_instruction: { parts: [{ text: systemPrompt }] },
+    // 字段名必须用 camelCase：新版代理只认 systemInstruction，
+    // 收到 system_instruction 会当未知字段静默丢掉（世界书/人设全部失效）。
+    systemInstruction: { parts: [{ text: systemPrompt }] },
     generationConfig: {
         temperature: effectiveApiSettings.temperature !== undefined ? effectiveApiSettings.temperature : 0.8
     }
@@ -929,7 +933,10 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
 requestBody = { model: model, messages: apiMessages, stream: streamEnabled, temperature: _temp };
         }
 
-        const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
+        const _geminiAction = streamEnabled ? 'streamGenerateContent' : 'generateContent';
+        const endpoint = (provider === 'gemini')
+            ? `${url}/v1beta/models/${model}:${_geminiAction}?key=${getRandomValue(key)}${streamEnabled ? '&alt=sse' : ''}`
+            : `${url}/v1/chat/completions`;
         const headers = (provider === 'gemini') ? { 'Content-Type': 'application/json' } : {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${key}`
@@ -954,7 +961,11 @@ const response = await fetch(endpoint, {
             const result = await response.json();
             let fullResponse = "";
             if (provider === 'gemini') {
-                fullResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                // 同样要跳过 thought part，否则思考内容会被当成正文
+                fullResponse = (result.candidates?.[0]?.content?.parts || [])
+                    .filter(p => !p.thought && typeof p.text === 'string')
+                    .map(p => p.text)
+                    .join('');
             } else {
                 fullResponse = result.choices[0].message.content || "";
             }
@@ -993,43 +1004,60 @@ document.getElementById('call-mic-btn')?.removeAttribute('disabled');
 // ==========================================
 async function processStream(response, chat, apiType, targetChatId, targetChatType) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
-    let fullResponse = "", accumulatedChunk = "";
+    const isGemini = apiType === "gemini";
+    let fullResponse = "", buffer = "", raw = "";
+
+    // Gemini 原生：思考是 parts 里带 thought:true 的一项，内容同样放在 text 字段，
+    // 必须按 part 逐个判断丢弃，光靠正则刮 "text" 会把思考混进正文。
+    const collectGemini = (json) => {
+        for (const p of json.candidates?.[0]?.content?.parts || []) {
+            if (p.thought) continue;
+            if (typeof p.text === 'string') fullResponse += p.text;
+        }
+    };
+
     for (; ;) {
         const { done, value } = await reader.read();
         if (done) break;
-        accumulatedChunk += decoder.decode(value, { stream: true });
-        if (apiType === "openai" || apiType === "deepseek" || apiType === "claude" || apiType === "newapi") {
-            const parts = accumulatedChunk.split("\n\n");
-            accumulatedChunk = parts.pop();
-            for (const part of parts) {
-                if (part.startsWith("data: ")) {
-                    const data = part.substring(6);
-                    if (data.trim() !== "[DONE]") {
-                        try {
-                            fullResponse += JSON.parse(data).choices[0].delta?.content || "";
-                        } catch (e) { /* ignore */ }
-                    }
+        const chunk = decoder.decode(value, { stream: true });
+        raw += chunk;
+        buffer += chunk;
+
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop();   // 末尾可能是半个事件，留到下一轮
+        for (const ev of events) {
+            // 一个 SSE 事件可能有多行 data:，拼起来才是完整 JSON
+            const data = ev.split(/\r?\n/)
+                .filter(l => l.startsWith("data:"))
+                .map(l => l.slice(5).trim())
+                .join("");
+            if (!data || data === "[DONE]") continue;
+            try {
+                const json = JSON.parse(data);
+                if (isGemini) {
+                    collectGemini(json);
+                } else {
+                    fullResponse += json.choices?.[0]?.delta?.content || "";
                 }
+            } catch (e) { /* 半包或非 JSON，忽略 */ }
+        }
+    }
+
+    // 兜底：旧版代理的 :streamGenerateContent 不发 SSE，而是返回一个 JSON 数组
+    if (isGemini && !fullResponse && raw.trim()) {
+        try {
+            const arr = JSON.parse(raw.trim());
+            (Array.isArray(arr) ? arr : [arr]).forEach(collectGemini);
+        } catch (e) {
+            const textRegex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
+            let match;
+            while ((match = textRegex.exec(raw)) !== null) {
+                try { fullResponse += JSON.parse(`"${match[1]}"`); }
+                catch (_) { fullResponse += match[1]; }
             }
         }
     }
 
-    if (apiType === "gemini") {
-        try {
-            const textRegex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
-            let match;
-            fullResponse = ""; 
-            while ((match = textRegex.exec(accumulatedChunk)) !== null) {
-                let contentText = match[1];
-                try {
-                    contentText = JSON.parse(`"${contentText}"`); 
-                } catch (e) { /* ignore */ }
-                fullResponse += contentText;
-            }
-        } catch (e) {
-            console.error("Error parsing Gemini stream:", e);
-        }
-    }
     await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType);
 }
 

@@ -1127,9 +1127,10 @@ async function generateBackgroundProactiveMessages(chat, maxCalls, type, queueTy
             );
             if (preset && preset.data) effectiveApi = { ...db.apiSettings, ...preset.data };
         }
-        const { url, key, model, provider } = effectiveApi;
+        const { url, key, model } = effectiveApi;
         const temperature = effectiveApi.temperature !== undefined ? effectiveApi.temperature : 0.85;
         const streamEnabled = !!effectiveApi.streamEnabled;
+        if (!url || !key || !model) return;   // 配置不全直接放弃这次后台生成
         // ────────────────────────────────────────────────────────
 
         let systemPrompt = '';
@@ -1258,62 +1259,21 @@ const memoryLength = chat.maxMemory || 15;
 
         let textBlock = "";
 
-        // 🌟【双轨制安全网】：哪怕用户没选 API，硬生生用 Gemini，这里也做好了兼容！
-        if (provider === 'gemini') {
-            // Gemini API 发送逻辑
-            const endpoint = `${url}/v1beta/models/${model}:generateContent?key=${typeof getRandomValue === 'function' ? getRandomValue(key) : key}`;
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [ { role: 'user', parts: [{ text: systemPrompt + '\n\n' + userMessage }] } ],
-                    generationConfig: { temperature: temperature }
-                })
-            });
-
-            if (!response.ok) return;
-            const result = await response.json();
-            textBlock = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-        } else {
-            // OpenAI 兼容 API 发送逻辑 (采用 Claude 提供的 SSE 流式解析防超时)
-            const response = await fetch(`${url}/v1/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-                body: JSON.stringify({
-                    model: model,
-                    messages:[{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-                    temperature: temperature,
-                    stream: streamEnabled
-                })
-            });
-
-            if (!response.ok) return;
-
-            if (streamEnabled) {
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop(); // 保留不完整行
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-                        try {
-                            const chunk = JSON.parse(line.slice(6));
-                            const delta = chunk.choices?.[0]?.delta?.content;
-                            if (delta) textBlock += delta;
-                        } catch {}
-                    }
-                }
-                textBlock = textBlock.trim();
-            } else {
-                const result = await response.json();
-                textBlock = result.choices[0].message.content.trim();
-            }
+        // 端点/字段/流式协议的两家差异统一由 callLLM 处理（js/api/llm_client.js）。
+        // 这里固定拿完整文本，下面要按 #SECRET_CHAT_...# 标签整体解析。
+        try {
+            textBlock = (await callLLM({
+                cfg: effectiveApi,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ],
+                temperature,
+                stream: streamEnabled
+            })).trim();
+        } catch (e) {
+            console.error('[主动消息] API 调用失败:', e);
+            return;
         }
 
         let proactiveOptions = {};
