@@ -7410,6 +7410,9 @@
 <script src="js/core/utils.js"></script>
 
 <!-- API 层：凭据 / 额度 / 请求封装。必须排在 settings 和 chat 之前，两边都依赖它 -->
+    <!-- 文本 LLM 统一适配层：gemini 原生 / openai 兼容两种格式的差异都收在这里，
+         必须排在所有会调 AI 的模块之前 -->
+    <script src="js/api/llm_client.js"></script>
     <script src="js/api/weather_api.js"></script>
     <script src="js/api/doubao_tts_api.js"></script>
     <script src="js/api/github_repo_api.js"></script>
