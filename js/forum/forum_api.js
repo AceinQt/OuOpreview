@@ -212,6 +212,7 @@ function _getForumApiConfig() {
     url: d.url || d.apiUrl || '',
     key: d.key || d.apiKey || '',
     model: d.model || '',
+    provider: d.provider || 'newapi',
     stream: d.streamEnabled !== false,
     temperature: d.temperature ?? 1.0   // ← 加这行
 };
@@ -222,46 +223,30 @@ function _getForumApiConfig() {
         url: s.url || s.apiUrl || '',
         key: s.key || s.apiKey || '',
         model: s.model || '',
+        provider: s.provider || 'newapi',
         stream: s.streamEnabled !== false,
     temperature: s.temperature
     };
 }
 
-/** 流式 fetch，返回完整文本；onChunk(delta, accumulated) 实时回调 */
-async function _forumStreamFetch(url, key, requestBody, onChunk) {
-    const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ ...requestBody, stream: true })
+/**
+ * 论坛统一 API 调用：流式和非流式都返回完整文本。
+ * gemini 原生 / openai 兼容两种格式的差异由 callLLM 处理（js/api/llm_client.js）。
+ * @param {object} cfg      _getForumApiConfig() 的返回值
+ * @param {object} body     { messages, temperature }
+ * @param {Function} [onChunk] (delta, accumulated) 实时回调；传了就走流式
+ * @param {object} [meta]   传空对象进来，返回后可读 meta.finishReason
+ */
+async function _forumCallApi(cfg, body, onChunk, meta) {
+    return callLLM({
+        cfg,
+        messages: body.messages,
+        temperature: body.temperature,
+        stream: typeof onChunk === 'function' ? true : !!cfg.stream,
+        onChunk,
+        meta
     });
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let full = '';
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data: ')) continue;
-            const data = trimmed.slice(6);
-            if (data === '[DONE]') continue;
-            try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content || '';
-                if (delta) {
-                    full += delta;
-                    if (onChunk) onChunk(delta, full);
-                }
-            } catch { /* 忽略解析错误 */ }
-        }
-    }
-    return full;
 }
+
+/** 流式 fetch 已被 _forumCallApi 取代（统一走 js/api/llm_client.js） */
 

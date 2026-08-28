@@ -218,7 +218,8 @@
 
             async function handleForumRefresh() {
 savedForumScrollY = 0;
-                const { url, key, model, stream, temperature } = _getForumApiConfig();
+                const _forumCfg = _getForumApiConfig();
+                const { url, key, model, stream, temperature } = _forumCfg;
                 if (!url || !key || !model) {
                     showToast('请先配置API');
                     return;
@@ -340,19 +341,12 @@ let contentStr;
 if (stream) {
     const streamSpan = loadingDiv.querySelector('span');
     let charCount = 0;
-    contentStr = await _forumStreamFetch(url, key, requestBody, (delta) => {
+    contentStr = await _forumCallApi(_forumCfg, requestBody, (delta) => {
         charCount += delta.length;
         if (streamSpan) streamSpan.textContent = `正在生成帖子内容... (${charCount} 字)`;
     });
 } else {
-    const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify(requestBody)
-    });
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-    const result = await response.json();
-    contentStr = result.choices[0].message.content;
+    contentStr = await _forumCallApi(_forumCfg, requestBody);
 }
  // --- 强力清理：兼容 <think> <thought> thinking 等所有思考标签 ---
 let cleanContent = contentStr;
@@ -461,7 +455,8 @@ const rawPosts = cleanContent.split('===SEP===');
             }
 
             async function handleGenerateComments(post) {
-                const { url, key, model, stream, temperature } = _getForumApiConfig();
+                const _forumCfg2 = _getForumApiConfig();
+                const { url, key, model, stream, temperature } = _forumCfg2;
 if (!url || !key || !model) {
     showToast('请先配置 API');
     return;
@@ -512,32 +507,21 @@ ${commentsHistoryStr}
 };
 
 let contentStr;
-let finishReason = null;   // 流式分支拿不到 result，单独记下来供下面判断内容审查
+const _forumMeta = {};     // callLLM 回填 finishReason，供下面判断内容审查
 if (stream) {
     let charCount = 0;
-    const hideLoadingRef = hideLoading; // 保留引用
-    contentStr = await _forumStreamFetch(url, key, requestBody, (delta) => {
+    contentStr = await _forumCallApi(_forumCfg2, requestBody, (delta) => {
         charCount += delta.length;
         // 可选：通过 toast 文字反映进度（不强制）
-    });
+    }, _forumMeta);
 } else {
-    const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify(requestBody)
-    });
-    if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
-    const result = await response.json();
-    if (result.error) throw new Error('API 返回错误: ' + result.error.message);
-    if (!result.choices?.[0]?.message) throw new Error('API 返回结构异常，未包含 choices');
-    contentStr = result.choices[0].message.content;
-    finishReason = result.choices[0].finish_reason || null;
+    contentStr = await _forumCallApi(_forumCfg2, requestBody, undefined, _forumMeta);
 }
 
                     // 检查是否被内容审查拦截 (返回空内容)
                     if (!contentStr || contentStr.trim() === "") {
-                        // 检查结束原因（原代码在这里引用块级作用域的 result，流式下必然 ReferenceError）
-                        const reason = finishReason;
+                        // finishReason 由 callLLM 归一化（gemini 的 SAFETY 等也会映射成 content_filter）
+                        const reason = _forumMeta.finishReason;
                         if (reason === 'content_filter') {
                             throw new Error('生成失败：内容被AI模型的安全过滤器拦截（可能是由于关键词误判）。');
                         }
