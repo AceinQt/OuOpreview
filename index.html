@@ -2060,6 +2060,7 @@
                             <option value="deepseek">DeepSeek</option>
                             <option value="claude">Claude</option>
                             <option value="gemini">Gemini</option>
+                            <option value="vertexExpress">Vertex Express（Google）</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -2070,7 +2071,11 @@
                         <label for="api-chat-key">密钥 (Key)</label>
                         <input type="password" id="api-chat-key" placeholder="请输入 API 密钥">
                     </div>
-                    
+                    <div class="form-group" id="api-chat-project-row" hidden>
+                        <label for="api-chat-project">Project ID <span class="field-hint">留空则由 Google 自选区域，部分模型会 404；填写则钉定 global</span></label>
+                        <input type="text" id="api-chat-project" placeholder="可留空">
+                    </div>
+
                     <button type="button" class="btn btn-secondary" style="margin-bottom: 20px;" id="api-chat-fetch-btn">
                         <span class="btn-text">点击拉取模型</span>
                         <div class="spinner"></div>
