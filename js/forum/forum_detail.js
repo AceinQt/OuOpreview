@@ -1,7 +1,7 @@
 // forum_detail.js - 帖子详情页：渲染、评论回复/删除、删帖、复制、匿名回复
 
             // --- 修改部分 1：详情页渲染 (统一头像颜色) ---
-            function renderPostDetail(post) {
+            async function renderPostDetail(post) {
                 db.currentViewingPostId = post.id;
 
                 // 设置返回按钮
@@ -52,10 +52,7 @@
                 const myIdentity = db.forumUserIdentity || { nickname: '我', avatar: '' };
 
                 // 标题
-                let displayTitle = post.title;
-                if (displayTitle.startsWith('[New!] ')) displayTitle = displayTitle.substring(7);
-                else if (displayTitle.startsWith('【新】')) displayTitle = displayTitle.substring(3);
-                titleEl.textContent = displayTitle;
+                titleEl.textContent = forumCleanTitle(post.title);
 
                 // 正文
                 if (post.content) {
@@ -199,6 +196,16 @@
 
                 // 【新增】应用自定义CSS
                 applyCustomPostCss();
+
+                // 进入详情即已读：评论已经按当前 isNew 渲染完了（所以这一次还能看到 New!），
+                // 现在统一清掉。没有全量保存兜底，改了内存必须当场落盘；
+                // 只在真有改动时才写，避免每次点开帖子都产生一次 Dexie 写。
+                let hadNew = false;
+                if (post.isNew) { post.isNew = false; hadNew = true; }
+                (post.comments || []).forEach(c => {
+                    if (c.isNew) { delete c.isNew; hadNew = true; }
+                });
+                if (hadNew) await saveSinglePost(post.id);
             }
 
             // 代理点击事件处理“回复”
@@ -266,11 +273,7 @@
                     // 【修改】使用 getAnonymousName()
                     const author = isAnon ? getAnonymousName() : (myIdentity.nickname || '我');
 
-                    if (post.comments) {
-                        post.comments.forEach(c => delete c.isNew);
-                    } else {
-                        post.comments = [];
-                    }
+                    if (!post.comments) post.comments = [];
 
                     let commentAvatar = null;
                     let isUserComment = false;
@@ -280,11 +283,11 @@
                         isUserComment = true;
                     }
 
+                    // 自己写的回复不标 New!
                     const newComment = {
                         username: author,
                         content: content,
                         timestamp: new Date().toLocaleString(),
-                        isNew: true,
                         avatar: commentAvatar,
                         isUser: isUserComment
                     };

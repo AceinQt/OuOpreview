@@ -8,6 +8,9 @@
 //   · 原先 9 个模块各写一份 SSE 解析，同一个 bug 要修 9 遍。
 //
 // 调用方永远只提供 OpenAI 形状的 messages，转换由本文件负责。
+//
+// 三家 provider 的形状差异全收在 buildLLMRequestTarget()（端点+鉴权）
+// 和 llmIsGeminiShape()（请求体/响应体形状）这两个函数里，加新 provider 只改那两处。
 
 // ── Gemini 请求体字段必须是 camelCase ────────────────────────
 // 新版代理用 Go 结构体 tag 解析，只认 systemInstruction / inlineData / mimeType。
@@ -66,6 +69,7 @@ function normalizeLLMConfig(cfg) {
         key: (cfg.key || cfg.apiKey || '').trim(),
         model: cfg.model || '',
         provider: cfg.provider || 'newapi',
+        projectId: String(cfg.projectId || '').trim(),
         temperature: cfg.temperature,
         streamEnabled: cfg.streamEnabled !== false
     };
@@ -74,6 +78,121 @@ function normalizeLLMConfig(cfg) {
 /** 多 key 轮询：utils.js 里的 getRandomValue，缺失时退化为原值 */
 function _pickKey(key) {
     return (typeof getRandomValue === 'function') ? getRandomValue(key) : key;
+}
+
+// ── provider 形状 ───────────────────────────────────────────
+// vertexExpress（Google Agent Platform / Vertex AI Express Mode）的请求体与
+// 响应体和 Gemini 原生**完全相同**，只有端点和鉴权方式不同：
+//   端点  https://aiplatform.googleapis.com/v1/{modelPath}:{action}
+//   鉴权  请求头 x-goog-api-key（不是 gemini 那种 ?key=）
+// 所以 _readSSE / _extractNonStream / _extractFinishReason 的 isGemini
+// 对它同样为 true，那三个函数不需要任何改动。
+//
+// Express Mode 的 REST 面只有 countTokens / generateContent /
+// streamGenerateContent —— 没有 embedding，也没有 /v1/chat/completions，
+// 列模型端点要 OAuth 而不是 API Key（所以模型清单只能内置，见下）。
+
+/** Express 可用的模型清单。列模型端点拉不动，只能内置。 */
+const VERTEX_EXPRESS_MODELS = [
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-image',
+    'gemini-3-flash-preview',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash'
+];
+
+/** 请求体/响应体是不是 Gemini 原生形状（gemini 和 vertexExpress 共用一套解析） */
+function llmIsGeminiShape(provider) {
+    return provider === 'gemini' || provider === 'vertexExpress';
+}
+
+/**
+ * vertexExpress 的 model 段。
+ *
+ * 留空 Project ID → 裸模型名 `publishers/google/models/{model}`，
+ *   此时区域由 Google 后端自行路由，**可能落到不提供该模型的区域并 404**
+ *   （实测：gemini-2.5-pro 被路由到 asia-southeast1 → 404 not found）。
+ * 填了 Project ID → `projects/{pid}/locations/global/publishers/google/models/{model}`，
+ *   区域由我们钉定。多数 Gemini 模型只在 global 提供，所以固定 global。
+ *
+ * 拿不到项目 ID 就退回裸模型名，绝不拼出半截路径。
+ */
+function _vertexExpressModelPath(cfg) {
+    const model = cfg.model || '';
+    // 调用方已自带完整路径时尊重它
+    if (/^(projects|publishers|models)\//.test(model)) return model;
+
+    // 一个人通常只有一个 Express 项目，所以没在本预设填就回落到全局设置那份
+    let projectId = cfg.projectId;
+    if (!projectId) {
+        try {
+            projectId = String(
+                (typeof db !== 'undefined' && db && db.apiSettings && db.apiSettings.projectId) || ''
+            ).trim();
+        } catch (e) { projectId = ''; }
+    }
+
+    if (!projectId) {
+        console.warn('[LLM] Vertex Express 未填 Project ID，区域由 Google 后端自选，'
+            + '部分模型可能 404（在 API 设置里填 Project ID 即可钉定 global）');
+        return `publishers/google/models/${model}`;
+    }
+    return `projects/${projectId}/locations/global/publishers/google/models/${model}`;
+}
+
+/**
+ * 端点 + 鉴权头的唯一来源 —— 加新 provider 只改这个函数。
+ * 内部已做多 key 轮询，调用方传原始（可能逗号分隔的）key 即可。
+ *
+ * @param {object} cfg 已过 normalizeLLMConfig 的配置（或含同名字段的裸对象）
+ * @param {object} [o] { stream }
+ * @returns {{endpoint: string, headers: object, isGeminiShape: boolean}}
+ */
+function buildLLMRequestTarget(cfg, o = {}) {
+    cfg = cfg || {};
+    const provider = cfg.provider || 'newapi';
+    const model = cfg.model || '';
+    const key = _pickKey(cfg.key || '');
+    const stream = !!o.stream;
+    let url = String(cfg.url || '').trim();
+    if (url.endsWith('/')) url = url.slice(0, -1);
+
+    const isGeminiShape = llmIsGeminiShape(provider);
+    const action = stream ? 'streamGenerateContent' : 'generateContent';
+
+    if (provider === 'vertexExpress') {
+        // 从 gemini 预设切过来时 URL 里常残留 /v1beta，会拼出坏路径，这里削掉。
+        // 只在本分支做，对 gemini 零影响。
+        const base = url.replace(/\/v1(beta)?$/, '');
+        // 注意：这条路径里没有 query，所以 alt=sse 前面是问号而不是 &
+        return {
+            endpoint: `${base}/v1/${_vertexExpressModelPath(cfg)}:${action}`
+                + (stream ? '?alt=sse' : ''),
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            isGeminiShape
+        };
+    }
+
+    if (provider === 'gemini') {
+        return {
+            endpoint: `${url}/v1beta/models/${model}:${action}?key=${encodeURIComponent(key)}`
+                + (stream ? '&alt=sse' : ''),
+            headers: { 'Content-Type': 'application/json' },
+            isGeminiShape
+        };
+    }
+
+    return {
+        endpoint: `${url}/v1/chat/completions`,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        isGeminiShape
+    };
 }
 
 // ── SSE 解析 ────────────────────────────────────────────────
@@ -192,10 +311,8 @@ function _extractFinishReason(json, isGemini) {
 async function callLLM(opts = {}) {
     const cfg = normalizeLLMConfig(opts.cfg);
     const { url, model } = cfg;
-    const key = _pickKey(cfg.key);
-    if (!url || !key || !model) throw new Error('API 未配置完整（缺少地址、密钥或模型）');
+    if (!url || !cfg.key || !model) throw new Error('API 未配置完整（缺少地址、密钥或模型）');
 
-    const isGemini = cfg.provider === 'gemini';
     const stream = opts.stream !== undefined
         ? !!opts.stream
         : (typeof opts.onChunk === 'function' ? true : cfg.streamEnabled);
@@ -211,21 +328,17 @@ async function callLLM(opts = {}) {
         signal = ac.signal;
     }
 
-    let endpoint, headers, body;
-    if (isGemini) {
+    // 端点与鉴权头统一由 buildLLMRequestTarget 决定，这里只负责请求体
+    const { endpoint, headers, isGeminiShape } = buildLLMRequestTarget(cfg, { stream });
+    let body;
+    if (isGeminiShape) {
         const { contents, systemInstruction } = _toGeminiPayload(opts.messages);
-        const action = stream ? 'streamGenerateContent' : 'generateContent';
-        endpoint = `${url}/v1beta/models/${model}:${action}?key=${encodeURIComponent(key)}`
-            + (stream ? '&alt=sse' : '');
-        headers = { 'Content-Type': 'application/json' };
         body = {
             contents,
             generationConfig: { temperature, ...(opts.extraBody?.generationConfig || {}) }
         };
         if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
     } else {
-        endpoint = `${url}/v1/chat/completions`;
-        headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
         body = { model, messages: opts.messages, temperature, stream, ...(opts.extraBody || {}) };
     }
 
@@ -245,10 +358,10 @@ async function callLLM(opts = {}) {
             throw err;
         }
 
-        if (stream) return await _readSSE(response, isGemini, opts.onChunk, opts.meta);
+        if (stream) return await _readSSE(response, isGeminiShape, opts.onChunk, opts.meta);
         const json = await response.json();
-        if (opts.meta) opts.meta.finishReason = _extractFinishReason(json, isGemini);
-        return _extractNonStream(json, isGemini);
+        if (opts.meta) opts.meta.finishReason = _extractFinishReason(json, isGeminiShape);
+        return _extractNonStream(json, isGeminiShape);
     } finally {
         if (timer) clearTimeout(timer);
     }

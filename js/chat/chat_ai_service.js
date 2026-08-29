@@ -784,7 +784,7 @@ if (chatType === 'private' && chat.callMode === 'video') {
 // 两者互斥，取其一作为本次请求的写作手册注入
 const activeReinforcement = offlineReinforcement || callReinforcement;
 
-        if (provider === 'gemini') {
+        if (llmIsGeminiShape(provider)) {
             const contents = historySlice.map(msg => {
                 const role = (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user';
                 let parts;
@@ -933,15 +933,13 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
 requestBody = { model: model, messages: apiMessages, stream: streamEnabled, temperature: _temp };
         }
 
-        const _geminiAction = streamEnabled ? 'streamGenerateContent' : 'generateContent';
-        const endpoint = (provider === 'gemini')
-            ? `${url}/v1beta/models/${model}:${_geminiAction}?key=${getRandomValue(key)}${streamEnabled ? '&alt=sse' : ''}`
-            : `${url}/v1/chat/completions`;
-        const headers = (provider === 'gemini') ? { 'Content-Type': 'application/json' } : {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${key}`
-        };
-        
+        // 端点与鉴权头统一由 llm_client.js 的 buildLLMRequestTarget 决定
+        // （多 key 轮询也在它内部做，所以这里不用再 getRandomValue）
+        const { endpoint, headers } = buildLLMRequestTarget(
+            normalizeLLMConfig(effectiveApiSettings),
+            { stream: streamEnabled }
+        );
+
         callAbortController = new AbortController();          // ← 每次请求前重置
 const response = await fetch(endpoint, {
     method: 'POST',
@@ -960,7 +958,7 @@ const response = await fetch(endpoint, {
         } else {
             const result = await response.json();
             let fullResponse = "";
-            if (provider === 'gemini') {
+            if (llmIsGeminiShape(provider)) {
                 // 同样要跳过 thought part，否则思考内容会被当成正文
                 fullResponse = (result.candidates?.[0]?.content?.parts || [])
                     .filter(p => !p.thought && typeof p.text === 'string')
@@ -1004,7 +1002,7 @@ document.getElementById('call-mic-btn')?.removeAttribute('disabled');
 // ==========================================
 async function processStream(response, chat, apiType, targetChatId, targetChatType) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
-    const isGemini = apiType === "gemini";
+    const isGemini = llmIsGeminiShape(apiType);
     let fullResponse = "", buffer = "", raw = "";
 
     // Gemini 原生：思考是 parts 里带 thought:true 的一项，内容同样放在 text 字段，

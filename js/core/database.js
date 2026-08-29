@@ -306,6 +306,22 @@ dexieDB.version(16).stores({
     console.log("Upgrading database to version 16 (imageCache table added)...");
 });
 
+// ★★★ Version 17（论坛 New! 标记语义改版：洗掉写进标题的遗留前缀）★★★
+// 旧实现把 New! 写成标题前缀 "[New!] xxx"，靠「下一次刷新时遍历 db.forumPosts 洗掉」清除。
+// 论坛转懒加载后内存里只有窗口（最新 100 条 + 收藏 + 在看），窗口外的老帖永远扫不到，
+// 前缀就永久留在表里 —— 于是 New! 只增不减。
+// 新实现改用帖子/评论上的 isNew 字段，点开详情即已读；标题里不再写任何标记。
+// 这里必须走 Dexie upgrade 而不是启动时扫内存，原因正是上面那句：只有全表 modify
+// 才能碰到窗口之外的帖子。历史帖一律视为已读，所以只洗前缀、不置 isNew。
+dexieDB.version(17).stores({}).upgrade(async tx => {
+    console.log("Upgrading database to version 17 (strip legacy [New!] title prefix)...");
+    await tx.table('forumPosts').toCollection().modify(post => {
+        if (typeof post.title === 'string') {
+            post.title = post.title.replace(/^\[New!\]\s*/, '').replace(/^【新】/, '');
+        }
+    });
+});
+
 window.loadData = async () => {
     try {
         console.log("📦 正在加载数据...");

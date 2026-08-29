@@ -372,15 +372,6 @@ const rawPosts = cleanContent.split('===SEP===');
 
                     const newPostsToAdd = [];
 
-                    // 清除旧帖子的 [New!] 标记
-                    if (db.forumPosts && db.forumPosts.length > 0) {
-                        db.forumPosts.forEach(p => {
-                            if (p.title) {
-                                p.title = p.title.replace(/^\[New!\]\s*/, '').replace(/^【新】/, '');
-                            }
-                        });
-                    }
-
                     rawPosts.forEach(rawText => {
                         if (!rawText.trim()) return;
 
@@ -416,13 +407,14 @@ const rawPosts = cleanContent.split('===SEP===');
                             const newPost = {
                                 id: `post_${Date.now()}_${Math.random()}`,
                                 username: authorName,
-                                title: '[New!] ' + parsedData.title,
+                                title: parsedData.title,
                                 content: parsedData.content,
                                 likeCount: viewCount,
                                 comments: parsedData.comments || [],
                                 timestamp: Date.now(),
                                 isUser: false,
-                                avatar: null
+                                avatar: null,
+                                isNew: true   // 未读，点开详情即已读
                             };
                             newPostsToAdd.push(newPost);
                         }
@@ -485,7 +477,7 @@ if (!url || !key || !model) {
   论坛的背景世界观：${context}                  
   请为以下帖子追加【10-15条】新评论。
                     
-帖子标题：${post.title}
+帖子标题：${forumCleanTitle(post.title)}
 发帖人：${post.username}
 帖子完整内容：${post.content}
 
@@ -571,11 +563,7 @@ const lines = cleanContentComments.split('\n');
                     });
 
                     if (newComments.length > 0) {
-                        if (post.comments) {
-                            post.comments.forEach(c => delete c.isNew);
-                        } else {
-                            post.comments = [];
-                        }
+                        if (!post.comments) post.comments = [];
 
                         post.comments = post.comments.concat(newComments);
 

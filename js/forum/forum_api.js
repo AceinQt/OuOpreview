@@ -11,7 +11,7 @@
                     if (post) {
                         const timeStr = new Date(post.timestamp).toLocaleString();
                         context += `\n--- 帖子 ${index + 1} ---\n`;
-                        context += `标题：${post.title.replace(/^\[New!\]\s*/, '')}\n`;
+                        context += `标题：${forumCleanTitle(post.title)}\n`;
                         context += `作者：${post.username}\n`;
                         context += `发布时间：${timeStr}\n`;
                         context += `正文内容：${post.content}\n`;
@@ -208,7 +208,9 @@ function _getForumApiConfig() {
         const preset = (db.apiPresets || []).find(p => p.name === presetName && (!p.type || p.type === 'chat'));
         if (preset && preset.data) {
             const d = preset.data;
+            // 展开兜底：projectId 之类的新字段不用回来逐个加
             return {
+    ...d,
     url: d.url || d.apiUrl || '',
     key: d.key || d.apiKey || '',
     model: d.model || '',
@@ -220,6 +222,7 @@ function _getForumApiConfig() {
     }
     const s = db.apiSettings || {};
     return {
+        ...s,
         url: s.url || s.apiUrl || '',
         key: s.key || s.apiKey || '',
         model: s.model || '',

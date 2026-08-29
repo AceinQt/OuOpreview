@@ -138,13 +138,8 @@
                 const groupList = document.getElementById('share-group-list');
                 const detailsElement = modal.querySelector('details');
 
-                // --- 1. 清理标题中的 [New!] 标记 ---
-                let cleanTitle = post.title || "无标题";
-                if (cleanTitle.startsWith('[New!] ')) {
-                    cleanTitle = cleanTitle.substring(7);
-                } else if (cleanTitle.startsWith('【新】')) {
-                    cleanTitle = cleanTitle.substring(3);
-                }
+                // --- 1. 清理标题中的遗留 [New!] 前缀（旧备份导入的数据可能还带着） ---
+                const cleanTitle = forumCleanTitle(post.title) || "无标题";
 
                 // --- 2. 将数据存入 dataset ---
                 // 存入清理后的标题
