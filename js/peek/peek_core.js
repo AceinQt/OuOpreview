@@ -269,7 +269,9 @@ function getPeekApiConfig(charId) {
             .find(p => p.name === presetName);
         if (preset?.data) {
             const d = preset.data;
+            // 展开兜底：projectId 之类的新字段不用回来逐个加
             return {
+                ...d,
                 url:           d.url || d.apiUrl || '',
                 key:           d.key || d.apiKey || '',
                 model:         d.model || '',
@@ -289,6 +291,7 @@ function getPeekApiConfig(charId) {
         if (preset?.data) {
             const d = preset.data;
             return {
+                ...d,
                 url:           d.url || d.apiUrl || '',
                 key:           d.key || d.apiKey || '',
                 model:         d.model || '',
@@ -302,6 +305,7 @@ function getPeekApiConfig(charId) {
     // 最终兜底（旧格式兼容）
     const s = db.apiSettings || {};
     return {
+        ...s,
         url:           s.url || s.apiUrl || '',
         key:           s.key || s.apiKey || '',
         model:         s.model || '',
@@ -316,11 +320,13 @@ function getPeekApiConfig(charId) {
 // 支持流式（读完再返回）和非流式，对外统一返回 Promise<string>
 // Peek内容需要结构化解析，流式也必须等全部传输完毕
 // ==========================================
-async function callPeekApi({ url, key, model, provider, messages, temperature = 0.85, streamEnabled = false }) {
-    // gemini 原生 / openai 兼容两种格式的差异统一由 callLLM 处理（js/api/llm_client.js）。
-    // Peek 内容要整体结构化解析，所以流式也只在读完后一次性返回。
+async function callPeekApi(opts = {}) {
+    const { messages, temperature = 0.85, streamEnabled = false } = opts;
+    // gemini 原生 / openai 兼容 / vertexExpress 三种形状的差异统一由 callLLM 处理
+    //（js/api/llm_client.js）。Peek 内容要整体结构化解析，所以流式也只在读完后一次性返回。
+    // cfg 整体透传：调用方多带的字段（如 projectId）不会在这里被丢掉。
     const text = await callLLM({
-        cfg: { url, key, model, provider },
+        cfg: opts,
         messages,
         temperature,
         stream: !!streamEnabled

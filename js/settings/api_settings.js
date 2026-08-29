@@ -19,8 +19,11 @@ const CHAT_PROVIDER_URLS = {
     newapi:   '',
     deepseek: 'https://api.deepseek.com',
     claude:   'https://api.anthropic.com',
-    gemini:   'https://generativelanguage.googleapis.com'
+    gemini:   'https://generativelanguage.googleapis.com',
+    vertexExpress: 'https://aiplatform.googleapis.com'
 };
+// 注意：embedding 没有 vertexExpress —— Express Mode 的 REST 面只有
+// countTokens / generateContent / streamGenerateContent，没有 embedding 端点。
 const EMB_PROVIDER_URLS = {
     newapi: '',
     openai:  'https://api.openai.com',
@@ -37,6 +40,8 @@ const EMB_PROVIDER_URLS = {
 //   nameBase         新增预设时的默认名前缀
 //   modelRequiredMsg 未选模型时的提示语
 //   providerUrls     服务商 → 自动填入的 URL
+//   providerFields   仅对特定服务商显示的整行：[{ rowId, providers: [...] }]
+//                    由 _syncApiProviderFields() 按当前 provider 切 hidden
 // 字段级（fields）：
 //   key         预设 data 里的字段名
 //   id          元素 id 后缀（省略则用 key）
@@ -53,10 +58,16 @@ const API_TAB_DEFS = {
         nameBase: 'api预设',
         modelRequiredMsg: '请选择模型后保存！',
         providerUrls: CHAT_PROVIDER_URLS,
+        providerFields: [
+            { rowId: 'api-chat-project-row', providers: ['vertexExpress'] }
+        ],
         fields: [
             { key: 'provider', kind: 'text',        blank: 'newapi', get: s => s.provider || 'newapi' },
             { key: 'url',      kind: 'text',        blank: '',       get: s => s.url || s.apiUrl || '' },
             { key: 'key',      kind: 'text',        blank: '',       get: s => s.key || s.apiKey || '' },
+            // 仅 vertexExpress 用：留空则区域由 Google 后端自选（部分模型会 404），
+            // 填了就钉定 projects/{id}/locations/global/...
+            { key: 'projectId', id: 'project', kind: 'text', blank: '', get: s => s.projectId || '' },
             { key: 'model',    kind: 'modelSelect', blank: '',       get: s => s.model || '' },
             {
                 key: 'streamEnabled', id: 'stream', kind: 'check', blank: false,
@@ -288,6 +299,21 @@ function _apiDataFromSource(def, src) {
 }
 
 /**
+ * 按当前 provider 显示/隐藏专属字段行（如 vertexExpress 的 Project ID）。
+ * 用 hidden 属性而非 style.display —— .form-group 只声明 margin-bottom，不会盖掉它。
+ * def 没写 providerFields 的 tab（如 embedding）直接跳过。
+ */
+function _syncApiProviderFields(type) {
+    const def = _apiDef(type);
+    if (!def || !def.providerFields) return;
+    const provider = _getVal(_apiId(def, 'provider'));
+    def.providerFields.forEach(pf => {
+        const row = document.getElementById(pf.rowId);
+        if (row) row.hidden = !pf.providers.includes(provider);
+    });
+}
+
+/**
  * 把数据写进表单字段（纯数据，不动 select / name input）
  * @param {boolean} legacy true = 来源是裸 db 配置（无 activePreset 的回落路径），
  *                         写了 getLegacy 的字段按那个口径取值
@@ -300,6 +326,7 @@ function _applyDataToForm(type, src, { legacy = false } = {}) {
         const get = (legacy && f.getLegacy) ? f.getLegacy : f.get;
         _writeApiField(def, f, get(src));
     });
+    _syncApiProviderFields(type);
 }
 
 /** 清空表单字段 */
@@ -314,6 +341,7 @@ function _clearFormFields(type) {
         }
         _writeApiField(def, f, f.blank);
     });
+    _syncApiProviderFields(type);
 }
 
 // ── 应用预设到表单（对外接口，含 name input + 默认开关同步） ──
@@ -633,6 +661,26 @@ async function fetchModels(type) {
 
     if (!url || !key) return showToast('请先填写 API 地址和密钥！');
     if (url.endsWith('/')) url = url.slice(0, -1);
+
+    // Vertex Express 的列模型端点要 OAuth 而不是 API Key，拉不动。
+    // 直接填 llm_client.js 里的内置清单，不发任何网络请求。
+    if (provider === 'vertexExpress') {
+        const cur = modelSel.value;
+        const list = (typeof VERTEX_EXPRESS_MODELS !== 'undefined' ? VERTEX_EXPRESS_MODELS : []).slice();
+        if (cur && !list.includes(cur)) list.unshift(cur);   // 别把用户已存的模型弄丢
+        modelSel.innerHTML = '';
+        list.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            modelSel.appendChild(opt);
+        });
+        if (cur) modelSel.value = cur;
+        // 代码改的值不触发事件，手动派发让 _watchDirty 点亮保存按钮
+        modelSel.dispatchEvent(new Event('change', { bubbles: true }));
+        showToast('已载入内置 Vertex Express 模型清单');
+        return;
+    }
 
     let endpoint;
     if (provider === 'gemini') {
@@ -2036,11 +2084,12 @@ function _initApiTab(type) {
     if (!def) return;
     _refreshApiTabUI(type);
 
-    // 服务商切换 → 自动填 URL
+    // 服务商切换 → 自动填 URL + 切换该服务商专属字段的显隐
     const providerEl = document.getElementById(_apiId(def, 'provider'));
     if (providerEl) providerEl.addEventListener('change', () => {
         const autoUrl = def.providerUrls[providerEl.value];
         if (autoUrl !== undefined) _setVal(_apiId(def, 'url'), autoUrl);
+        _syncApiProviderFields(type);
     });
 
     // 拉取模型

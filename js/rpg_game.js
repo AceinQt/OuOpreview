@@ -765,9 +765,11 @@ function rpgGetApiConfig() {
     const chatPresets = (db.apiPresets || []).filter(p => !p.type || p.type === 'chat');
     
     // 优先用RPG专属选择
+    // 各分支都展开兜底：projectId 之类的新字段不用回来逐个加
     if (window.rpgSelectedApiPreset) {
         const p = chatPresets.find(p => p.name === window.rpgSelectedApiPreset);
         if (p?.data) return {
+            ...p.data,
             url:   p.data.url || p.data.apiUrl || '',
             key:   p.data.key || p.data.apiKey || '',
             model: p.data.model || '',
@@ -781,6 +783,7 @@ function rpgGetApiConfig() {
     if (activeName) {
         const p = chatPresets.find(p => p.name === activeName);
         if (p?.data) return {
+            ...p.data,
             url:   p.data.url || p.data.apiUrl || '',
             key:   p.data.key || p.data.apiKey || '',
             model: p.data.model || '',
@@ -791,6 +794,7 @@ function rpgGetApiConfig() {
     }
     // 最终兜底旧版 db.apiSettings
     return {
+        ...(db.apiSettings || {}),
         url:   db.apiSettings?.url || '',
         key:   db.apiSettings?.key || '',
         model: db.apiSettings?.model || '',
