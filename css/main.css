@@ -12,7 +12,7 @@
 
 /* chat */
 @import './pages/chat/chat_list.css';
-@import './pages/chat/chat_room.css';
+@import './pages/chat/chat_room.css?v=2026090405';
 @import './pages/chat/settings_sidebar.css';
 @import './pages/chat/chat_search.css';
 @import './pages/chat/chat_modal.css';
