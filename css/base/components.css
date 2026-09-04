@@ -131,9 +131,14 @@
 .online-indicator {
     width: 8px;
     height: 8px;
+    max-width: 8px;
+    max-height: 8px;
+    min-width: 8px;
+    min-height: 8px;
     border-radius: 50%;
     background-color: var(--online-status-color);
     margin-right: 5px;
+    flex-shrink: 0;
 }
 
 .app-header .placeholder {
@@ -909,4 +914,20 @@ input[type="range"]::-moz-range-thumb {
     color: #8a9399;
     font-size: 12px;
     line-height: 1.6;
+}
+
+/* ── AppUI.promptMultiline 的 textarea ─────────────────────────── */
+/* 弹窗里的 input-container 是 .form-group，全局已给 textarea 上了宽度/边框，
+   这里只补 form-group 没管的：可读的行高、禁掉手动拖拽（弹窗高度是算好的）。 */
+.appui-textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    line-height: 1.6;
+    font-size: 14px;
+    max-height: 40vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
