@@ -90,9 +90,15 @@ function _pickKey(key) {
 //
 // Express Mode 的 REST 面只有 countTokens / generateContent /
 // streamGenerateContent —— 没有 embedding，也没有 /v1/chat/completions，
-// 列模型端点要 OAuth 而不是 API Key（所以模型清单只能内置，见下）。
+// 列模型端点要 OAuth 而不是 API Key（所以拉不到模型清单，见下）。
 
-/** Express 可用的模型清单。列模型端点拉不动，只能内置。 */
+/**
+ * Express 可用模型的**内置种子清单**。列模型端点拉不动，只能先内置一份。
+ * 注意这不再是唯一来源：每条 API 预设自带 modelList，用户可以在
+ * 「API 设置 → 选择模型」右边那个方块按钮里自己编辑（见 api_settings.js 的
+ * editModelList）。这里只负责给新预设一个起点，以及点「拉取模型」时并进去。
+ * 所以这份清单过期了不影响用户加新模型，不用急着跟着 Google 更新。
+ */
 const VERTEX_EXPRESS_MODELS = [
     'gemini-3.7-flash',
     'gemini-3.6-flash',
