@@ -267,6 +267,13 @@ if (watchingContext) {
                 if (imageContentRule) {
                     prompt += `14.1 **照片/视频描述的内容约束**：当你使用 [${character.realName}发来的照片/视频：{描述}] 格式时，{描述}部分必须遵守：${imageContentRule}。这条只约束你怎么写画面描述，不影响你的普通聊天内容。\n`;
                 }
+                // 语音语气：只约束语音消息的文字怎么写。句子本体在 chat_voice_settings.js，
+                // 群聊那边用的是同一个函数 —— 两处各抄一份必然漂移。
+                if (typeof buildVoiceTonePromptLine === 'function') {
+                    const voiceToneLine = buildVoiceTonePromptLine(
+                        character, `[${character.realName}的语音：{语音内容}]`);
+                    if (voiceToneLine) prompt += `14.2 ${voiceToneLine}`;
+                }
                 if (character.bilingualModeEnabled) {
                     prompt += `✨双语模式特别指令✨：当你的角色的母语为中文以外的语言时，你的消息回复必须严格遵循双语模式下的普通消息格式：[${character.realName}的消息：{外语原文}（中文翻译）],例如: [${character.realName}的消息：Of course, I'd love to.（当然，我很乐意。）],中文翻译文本视为系统自翻译，不视为角色的原话;当你的角色想要说中文时，需要根据你的角色设定自行判断对于中文的熟悉程度来造句，并使用普通消息的标准格式: [${character.realName}的消息：{中文消息内容}] 。这条规则的优先级非常高，请务必遵守。\n`;
                     prompt += `**注意：括号内中文翻译为纯文本翻译，原句中的颜文字、表情等内容禁止翻译！如："なので、メッセージを頂けて、めちゃくちゃ嬉しいです！(ฅ́˘ฅ̀)♡（笑） （所以，能收到你的消息，我超级开心的！）"此句，颜文字和"（笑）"禁止出现在中文翻译中**`;

@@ -514,6 +514,32 @@ function setupGroupChatSystem() {
             _refreshGroupImageGenerationDisplay();
         });
     }
+
+    // 语音：群级只有语气要求，写在群对象上，对群里所有成员生效
+    //（音色是按成员选的，在「编辑成员」弹窗里 —— 弹窗会自己把音色那节换成指路说明）。
+    // 取消不写；空语气照写，那是"清空语气要求"。
+    const groupVoiceItem = document.getElementById('setting-group-voice-item');
+    if (groupVoiceItem) {
+        groupVoiceItem.addEventListener('click', async () => {
+            if (typeof openVoiceSettingDialog !== 'function') return;
+            const input = document.getElementById('setting-group-voice-tone');
+            const result = await openVoiceSettingDialog(
+                { voiceTonePrompt: input ? input.value : '' },
+                { includePreset: false }
+            );
+            if (!result) return;
+            if (input) input.value = result.voiceTonePrompt;
+            _refreshGroupVoiceDisplay();
+        });
+    }
+}
+
+/** 按隐藏 input 的当前值刷新群聊侧栏语音行文案（群级只有语气） */
+function _refreshGroupVoiceDisplay() {
+    const display = document.getElementById('setting-group-voice-display');
+    const input = document.getElementById('setting-group-voice-tone');
+    if (!display || !input || typeof formatVoiceToneOnlyLabel !== 'function') return;
+    display.textContent = formatVoiceToneOnlyLabel({ voiceTonePrompt: input.value });
 }
 
 /** 按隐藏 input 的当前值刷新群聊侧栏天气行文案 */
@@ -645,6 +671,12 @@ if (groupImagePresetInput && groupImageAutoInput) {
     if (groupImageStyleInput) groupImageStyleInput.value = binding.imageStylePrompt;
     if (groupImageRefInput) groupImageRefInput.value = binding.imageReference;
     _refreshGroupImageGenerationDisplay();
+}
+const groupVoiceToneInput = document.getElementById('setting-group-voice-tone');
+if (groupVoiceToneInput) {
+    groupVoiceToneInput.value = typeof normalizeVoiceTonePrompt === 'function'
+        ? normalizeVoiceTonePrompt(group) : (group.voiceTonePrompt || '');
+    _refreshGroupVoiceDisplay();
 }
     // ── 气泡外观 ─────────────────────────────────────────
     if (typeof window.populateChatThemeSelects === 'function') {
@@ -835,6 +867,10 @@ if (groupImagePresetInputSave && groupImageAutoInputSave) {
     if (groupImageRuleSave) group.imageContentRule = groupImageRuleSave.value || '';
     if (groupImageStyleSave) group.imageStylePrompt = groupImageStyleSave.value || '';
     if (groupImageRefSave) group.imageReference = groupImageRefSave.value || '';
+}
+const groupVoiceToneSave = document.getElementById('setting-group-voice-tone');
+if (groupVoiceToneSave) {
+    group.voiceTonePrompt = groupVoiceToneSave.value || '';
 }
     await saveSingleChat(currentChatId, 'group');
     showToast('群聊设置已保存！');

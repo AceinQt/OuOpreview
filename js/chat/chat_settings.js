@@ -267,6 +267,29 @@ function setupChatSettings() {
         });
     }
 
+    // 语音：音色 + 语气要求合并进一个折叠弹窗（同图像那套），只回填侧栏草稿，
+    // 提交侧栏时才落库。
+    // 取消（result === null）绝不能写 —— 空语气是"清空语气要求"这个合法意图，
+    // 和"我点错了想退出"必须分开，否则误触一次就把设置好的语气悄悄清了。
+    const voiceItem = document.getElementById('setting-chat-voice-item');
+    if (voiceItem) {
+        voiceItem.addEventListener('click', async () => {
+            if (typeof openVoiceSettingDialog !== 'function') return;
+            const presetInput = document.getElementById('setting-chat-voice-preset');
+            const toneInput = document.getElementById('setting-chat-voice-tone');
+            const result = await openVoiceSettingDialog({
+                voicePresetId: presetInput ? presetInput.value : '',
+                voiceTonePrompt: toneInput ? toneInput.value : ''
+            });
+            if (!result) return;
+            if (presetInput && result.voicePresetId !== undefined) {
+                presetInput.value = result.voicePresetId;
+            }
+            if (toneInput) toneInput.value = result.voiceTonePrompt;
+            _refreshChatVoiceDisplay();
+        });
+    }
+
     // 清理图片：批量把本聊天的图片转成文字描述
     const cleanupImagesBtn = document.getElementById('cleanup-images-btn');
     if (cleanupImagesBtn) {
@@ -408,20 +431,19 @@ function loadSettingsToSidebar() {
             apiPresetSel.value = e.chatApiPreset || '';
         }
 
-        // 音色：预设在「API 设置 > 语音」里建，这里只选一个
-        const voiceSel = document.getElementById('setting-chat-voice-preset');
-        if (voiceSel && typeof getVoicePresetOptions === 'function') {
-            voiceSel.innerHTML = '';
-            getVoicePresetOptions().forEach(o => {
-                const opt = document.createElement('option');
-                opt.value = o.value;
-                opt.textContent = o.label;
-                voiceSel.appendChild(opt);
-            });
-            // 没设过 = 不使用；指定的预设被删掉了也落回不使用，不留悬空选项
-            const want = e.voicePresetId || VOICE_PRESET_OFF;
-            voiceSel.value = [...voiceSel.options].some(o => o.value === want)
-                ? want : VOICE_PRESET_OFF;
+        // 语音：音色 + 语气都存进隐藏 input 暂存，侧栏只显示一行摘要，内容走弹窗
+        const voicePresetInput = document.getElementById('setting-chat-voice-preset');
+        const voiceToneInput = document.getElementById('setting-chat-voice-tone');
+        if (voicePresetInput || voiceToneInput) {
+            const binding = typeof normalizeChatVoiceBinding === 'function'
+                ? normalizeChatVoiceBinding(e)
+                : {
+                    voicePresetId: e.voicePresetId || 'off',
+                    voiceTonePrompt: e.voiceTonePrompt || ''
+                };
+            if (voicePresetInput) voicePresetInput.value = binding.voicePresetId;
+            if (voiceToneInput) voiceToneInput.value = binding.voiceTonePrompt;
+            _refreshChatVoiceDisplay();
         }
 
         // 天气：隐藏 input 暂存，侧栏只显示文案，具体设置走弹窗
@@ -478,6 +500,19 @@ function _refreshChatImageGenerationDisplay() {
         document.getElementById('setting-chat-image-auto').value === '1'
     );
 }
+
+/** 按隐藏 input 的当前值刷新侧栏语音行文案（音色名 + 有没有设语气）。 */
+function _refreshChatVoiceDisplay() {
+    const display = document.getElementById('setting-chat-voice-display');
+    if (!display || typeof formatVoiceSettingLabel !== 'function') return;
+    const presetInput = document.getElementById('setting-chat-voice-preset');
+    const toneInput = document.getElementById('setting-chat-voice-tone');
+    // 侧栏此刻的真值在隐藏 input 里（可能还没保存），不能去读 db 里那份旧的
+    display.textContent = formatVoiceSettingLabel({
+        voicePresetId: presetInput ? presetInput.value : '',
+        voiceTonePrompt: toneInput ? toneInput.value : ''
+    });
+}
             
 // --- 替换 saveSettingsFromSidebar 函数 ---
 async function saveSettingsFromSidebar() {
@@ -527,9 +562,14 @@ async function saveSettingsFromSidebar() {
             e.chatApiPreset = apiPresetSel.value;
         }
 
-        const voiceSel = document.getElementById('setting-chat-voice-preset');
-        if (voiceSel && voiceSel.value) {
-            e.voicePresetId = voiceSel.value;
+        // 语音：音色 + 语气。空语气要照样写回去（那是"清空语气要求"），所以只判元素存不存在
+        const voicePresetSave = document.getElementById('setting-chat-voice-preset');
+        if (voicePresetSave) {
+            e.voicePresetId = voicePresetSave.value || 'off';
+        }
+        const voiceToneSave = document.getElementById('setting-chat-voice-tone');
+        if (voiceToneSave) {
+            e.voiceTonePrompt = voiceToneSave.value || '';
         }
 
         const weatherModeInput = document.getElementById('setting-chat-weather-mode');

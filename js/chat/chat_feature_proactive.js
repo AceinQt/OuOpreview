@@ -1119,17 +1119,22 @@ async function triggerIdleProactiveGeneration() {
 
 async function generateBackgroundProactiveMessages(chat, maxCalls, type, queueType = 'time_window_idle') {
     try {
-        // ── 新增：读取主动消息专用API配置 ──────────────────────
+        // ── 读取主动消息 API 配置 ──────────────────────────────
+        // 优先级同 getAiReply：主动消息专用预设 > 聊天自己的预设 > 全局默认。
+        // 选「和聊天一致」时 proactiveApiPresetName 为空，必须回落到 chatApiPreset。
         let effectiveApi = db.apiSettings || {};
-        if (chat.proactiveApiPresetName) {
+        const _overrideName = chat.proactiveApiPresetName || chat.chatApiPreset || null;
+        if (_overrideName) {
             const preset = (db.apiPresets || []).find(p =>
-                p.name === chat.proactiveApiPresetName && (!p.type || p.type === 'chat')
+                p.name === _overrideName && (!p.type || p.type === 'chat')
             );
             if (preset && preset.data) effectiveApi = { ...db.apiSettings, ...preset.data };
         }
         const { url, key, model } = effectiveApi;
         const temperature = effectiveApi.temperature !== undefined ? effectiveApi.temperature : 0.85;
-        const streamEnabled = !!effectiveApi.streamEnabled;
+        // 与 getAiReply 对齐：预设没显式关流式就当开（?? true，不是 !!），
+        // 否则同一个预设在聊天里走流式、后台生成却退回非流式。
+        const streamEnabled = effectiveApi.streamEnabled ?? true;
         if (!url || !key || !model) return;   // 配置不全直接放弃这次后台生成
         // ────────────────────────────────────────────────────────
 

@@ -365,7 +365,7 @@ function createMessageBubbleElement(message) {
         //   实际只画得出两条竖线。竖条同时兼任播放进度条。
         bubbleElement.innerHTML =
             `<button type="button" class="voice-play-btn" data-voice-state="idle"`
-            + ` aria-label="播放语音（首次需要合成，约 20 秒）">`
+            + ` aria-label="播放语音（首次需要合成，可能要等一会儿）">`
             + `<svg class="vp-icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`
             + `<svg class="vp-icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>`
             + `<svg class="vp-icon-fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6"/><path d="M12 16.5v.5"/></svg>`

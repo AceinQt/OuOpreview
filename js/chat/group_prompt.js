@@ -142,6 +142,13 @@ function generateGroupSystemPrompt(group, retrievedContext = '', weatherText = '
     if (groupImageContentRule) {
         prompt += `   - **照片/视频描述的内容约束**: 任何成员使用 [{成员真名}发来的照片/视频：{内容描述}] 格式时，{内容描述}必须遵守：${groupImageContentRule}。这条只约束画面描述怎么写，不影响普通聊天内容。\n\n`;
     }
+    // 语音语气：句子本体和私聊共用 chat_voice_settings.js 里那一份。
+    // ★ 群里这条对**所有成员**生效 —— 语气要求存在群对象上，不是按成员存的。
+    if (typeof buildVoiceTonePromptLine === 'function') {
+        const groupVoiceToneLine = buildVoiceTonePromptLine(
+            group, '[{成员真名}的语音：{语音转述的文字}]');
+        if (groupVoiceToneLine) prompt += `   - ${groupVoiceToneLine}\n`;
+    }
     prompt += `   - **重要**: 群聊不支持AI成员接收/退回转账或接收礼物的特殊指令，也不支持更新状态。你只需要通过普通消息来回应我发送的转账或礼物即可。\n\n`;
 
     prompt += `5. **模拟群聊氛围**: 为了让群聊看起来真实、活跃且混乱，你的每一次回复都必须遵循以下随机性要求：\n`;
