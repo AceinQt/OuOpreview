@@ -57,20 +57,45 @@
     const gapSec = (prev && prev.exitAt)
         ? Math.round((Date.now() - new Date(prev.exitAt).getTime()) / 1000)
         : null;
+    // ★ 上次"还有动静"到本次启动之间隔了多久。这是区分「系统正常回收后台页面」
+    //   和「用着的时候突然重启」的关键指标：
+    //   离开一两个小时才回来，安卓回收掉后台页面是完全正常的，不是 bug；
+    //   而离开几秒就重启，那才是真问题。
+    const awaySec = (prev && prev.lastSeenAt)
+        ? Math.round((Date.now() - new Date(prev.lastSeenAt).getTime()) / 1000)
+        : null;
+    const awayText = awaySec == null ? ''
+        : (awaySec >= 120 ? `离开 ${(awaySec / 60).toFixed(0)} 分钟后才回来`
+                          : `离开仅 ${awaySec} 秒就回来了`);
+    // 长时间离开后被回收属于系统正常行为，短时间内就重启才值得追
+    const awayLong = awaySec != null && awaySec >= 120;
 
     if (document.wasDiscarded) {
         reason = 'discarded';
-        detail = '系统内存不足，浏览器回收了页面（切回时先看到截图，随后才真正重新载入）';
+        detail = '系统内存不足，浏览器回收了页面（切回时先看到截图，随后才真正重新载入）'
+               + (awayText ? `。${awayText}` : '');
+    } else if (prev && !prev.cleanExit) {
+        // ★ 这一条必须排在 navType 之前判断。
+        //   之前把 navType==='back_forward' 放在前面，结果"上次被强制结束"这个更重要的
+        //   事实被盖成了看起来无害的"前进/后退恢复"——实际上正是被系统回收后重新载入。
+        reason = 'killed';
+        detail = '上次运行没留下正常的结束记录 → 被系统回收或强制结束'
+               + (navType === 'back_forward'
+                    ? '，返回 App 时浏览器只能重新载入页面（所以像是重启）'
+                    : '')
+               + (awayText ? `。${awayText}` : '')
+               + (awayLong
+                    ? ' —— 后台放这么久被系统收回内存属正常现象，不是 App 的问题'
+                    : ' —— 这么短时间就被收走，值得追查');
     } else if (navType === 'reload') {
         reason = 'reload';
         detail = '页面被刷新（下拉刷新，或导入数据/云端恢复后的自动刷新）';
     } else if (navType === 'back_forward') {
-        reason = 'bfcache';
-        detail = '前进/后退恢复';
-    } else if (prev && !prev.cleanExit) {
-        reason = 'killed';
-        detail = '上次运行没留下正常的退出记录 → 被系统强制结束（通常是内存不足），'
-               + '或者被从"最近任务"里手动划掉';
+        // 注意：真正命中后台缓存时文档不会重建，本脚本压根不会重新执行、也不会记这一条。
+        // 能走到这里说明缓存没命中，文档是被重新载入的。
+        reason = 'restored';
+        detail = '通过前进/后退返回，但后台缓存已失效，页面被重新载入'
+               + (awayText ? `。${awayText}` : '');
     } else if (prev && prev.cleanExit && prev.exitAt && gapSec !== null && gapSec >= 0 && gapSec <= 20) {
         // ★ 这就是我们要抓的那种"突然重启"：上一个文档正常走完了 pagehide，
         //   然后几秒内新文档就起来了 —— 说明是页面被导航掉后立刻重新加载，
@@ -119,6 +144,7 @@
             exitScreen: prev.exitScreen ?? null,
             exitPersisted: prev.exitPersisted ?? null,
             gapSec,
+            awaySec,   // 上次还有动静 → 本次启动，隔了多久（判断是不是后台放太久被系统收走）
             // 上次运行里所有的 history 操作。history.go(-N) 这类跳转如果退过了头，
             // 在 standalone PWA 里会把窗口整个关掉，看起来就是"突然重启"。
             histTrail: prev.histTrail || [],
@@ -302,7 +328,12 @@
                           (p.exitPersisted == null ? ''
                              : p.exitPersisted ? '（转入后台缓存）' : '（页面确实被关闭）') +
                           (p.gapSec == null ? '' : `，${p.gapSec} 秒后重新载入`)
-                        : '没有留下正常的结束记录 → 上次是被系统强制结束的'));
+                        : '没有留下正常的结束记录 → 上次是被系统回收或强制结束的') +
+                    // 这一行最关键：离开越久，被系统收走越正常；离开几秒就重启才是真问题
+                    (p.awaySec == null ? ''
+                       : `\n  判断依据：上次有动静到本次启动隔了 ` +
+                         (p.awaySec >= 120 ? `${(p.awaySec / 60).toFixed(0)} 分钟 → 属系统正常回收后台页面`
+                                           : `${p.awaySec} 秒 → 间隔这么短，是需要追查的异常`)));
                 console.log('  结束前的页面轨迹：\n    ' +
                     ((p.screenTrail && p.screenTrail.length) ? p.screenTrail.join('\n    ') : '(未记录)'));
                 console.log('  结束前的跳转记录：\n    ' +
@@ -325,9 +356,19 @@
                 const s = e.prevSession?.exitScreen || e.prevSession?.activeScreen || '(未记录)';
                 byScreen[s] = (byScreen[s] || 0) + 1;
             });
+            // 分开数「后台放久了被系统收走」和「用着的时候突然重启」。
+            // 前者是安卓的正常行为，混在一起统计会把真问题淹掉。
+            let 后台回收 = 0, 短时间异常 = 0;
+            log.filter(e => e.reason !== 'coldstart' && e.reason !== 'nostate').forEach(e => {
+                const a = e.prevSession?.awaySec;
+                if (a == null) return;
+                if (a >= 120) 后台回收++; else 短时间异常++;
+            });
             return {
                 总记录数: log.length,
                 各类型次数: by,
+                后台放久被回收: 后台回收,
+                短时间内异常重启: 短时间异常,
                 结束时停留页面分布: Object.keys(byScreen).length ? byScreen : null,
                 结束前内存峰值MB: peaks.length ? { 最大: Math.max(...peaks), 最小: Math.min(...peaks) } : null,
                 内存上限MB: heap()?.limitMB ?? null,

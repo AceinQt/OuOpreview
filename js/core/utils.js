@@ -537,6 +537,96 @@ async confirm(content, title = "确认操作", confirmText = "确定", cancelTex
     }, // <--- 注意：这里必须要加一个逗号
 
     /**
+     * 多行文本弹窗（textarea 版 prompt）。
+     * 清单/长文本用这个，别用 prompt —— 那个是单行 input，回车会直接当"确定"，换行根本进不去。
+     * 这里回车就是换行，要提交用底部按钮或 Ctrl/Cmd + Enter。
+     * @param {string} content 正文说明
+     * @param {object} opts { value, placeholder, title, rows, confirmText, cancelText }
+     * @returns {Promise<string|null>} 确定=textarea 里的原始文本（不做 trim），取消=null
+     */
+    async promptMultiline(content, {
+        value = '', placeholder = '', title = '编辑',
+        rows = 8, confirmText = '保存', cancelText = '取消'
+    } = {}) {
+        return new Promise((resolve) => {
+            const overlay        = document.getElementById('app-global-dialog');
+            const titleEl        = document.getElementById('global-dialog-title');
+            const contentEl      = document.getElementById('global-dialog-content');
+            const actionsEl      = document.getElementById('global-dialog-actions');
+            const inputContainer = document.getElementById('global-dialog-input-container');
+
+            if (!overlay) return resolve(null);
+
+            titleEl.innerText   = title;
+            contentEl.innerText = content || '';
+            contentEl.classList.remove('is-scrollable');
+            contentEl.scrollTop = 0;
+            actionsEl.innerHTML = '';
+
+            // 和 form() 同一套劫持手法：原有子节点整体存下来，关闭时原样塞回。
+            // 别学 select() 那样关闭时硬拼 innerHTML 还原——两个弹窗叠开时后关的会冲掉前面的 DOM。
+            const savedNodes   = Array.from(inputContainer.childNodes);
+            const savedDisplay = inputContainer.style.display;
+            inputContainer.innerHTML = '';
+            inputContainer.style.display = 'block';
+
+            const area = document.createElement('textarea');
+            area.className   = 'appui-textarea';
+            area.rows        = rows;
+            area.placeholder = placeholder;
+            area.value       = value == null ? '' : String(value);
+            area.autocomplete = 'off';
+            area.spellcheck   = false;
+            inputContainer.appendChild(area);
+
+            const close = () => {
+                overlay.classList.remove('visible');
+                area.onkeydown = null;
+                inputContainer.innerHTML = '';
+                savedNodes.forEach(node => inputContainer.appendChild(node));
+                inputContainer.style.display = savedDisplay || 'none';
+            };
+
+            const createBtn = (text, cls, onClick) => {
+                const btn = document.createElement('button');
+                btn.className     = `btn ${cls}`;
+                btn.style.flex    = '1';
+                btn.style.padding = '10px';
+                btn.innerText     = text;
+                btn.onclick = (e) => { e.stopPropagation(); close(); onClick(); };
+                return btn;
+            };
+
+            // 取值必须在 close() 之前读，close 会把 textarea 从 DOM 里摘掉
+            const cancelBtn  = createBtn(cancelText,  'btn-neutral', () => resolve(null));
+            const confirmBtn = document.createElement('button');
+            confirmBtn.className     = 'btn btn-primary';
+            confirmBtn.style.flex    = '1';
+            confirmBtn.style.padding = '10px';
+            confirmBtn.innerText     = confirmText;
+            confirmBtn.onclick = (e) => {
+                e.stopPropagation();
+                const text = area.value;
+                close();
+                resolve(text);
+            };
+            actionsEl.appendChild(confirmBtn);
+            actionsEl.appendChild(cancelBtn);
+
+            // 回车留给换行，Ctrl/Cmd + Enter 才是提交
+            area.onkeydown = (e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    confirmBtn.click();
+                }
+            };
+
+            overlay.classList.add('visible');
+            setTimeout(() => area.focus(), 50);
+        });
+    },
+
+    /**
      * 下拉选择弹窗
      * @param {Array<{value:string, label:string}>} options  选项列表
      * @param {object} opts  { title, confirmText, cancelText }
@@ -957,7 +1047,7 @@ window.getRandomValue = getRandomValue;
 
 // ================================================================
 // === base64 <-> 字节：语音合成、GitHub 上传下载都要用 ===
-//   放在 core 是因为 js/api/doubao_tts_api.js 和 js/api/github_repo_api.js
+//   放在 core 是因为 js/api/tts_api.js 和 js/api/github_repo_api.js
 //   都需要它。让后者去调前者的私有函数会形成"仓库模块依赖 TTS 模块"的
 //   反向依赖 —— 仓库模块压根不该知道语音的存在。
 // ================================================================
