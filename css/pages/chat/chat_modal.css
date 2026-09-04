@@ -603,22 +603,31 @@
    图像生成设置弹窗专用样式
    ========================================= */
 
-/* 消除多余底边距 */
+/* =========================================
+   统一：图像生成与语音设置弹窗的说明文字
+   ========================================= */
+   
+/* 1. 确保弹窗里的表单元素(包括 select) 底部边距清零，避免双重间距 */
 #image-generation-modal .form-group.mb-0,
 #image-generation-modal textarea.mb-0,
-#image-generation-modal input.mb-0 {
+#image-generation-modal input.mb-0,
+#image-generation-modal select.mb-0,
+#voice-setting-modal .form-group.mb-0,
+#voice-setting-modal textarea.mb-0,
+#voice-setting-modal input.mb-0,
+#voice-setting-modal select.mb-0 {
     margin-bottom: 0;
 }
 
-/* 提示小字说明。
-   ★ margin-top 必须显式归零：reset.css 只重置了滚动条，没有通用 margin reset，
-     而这些说明现在是 <p>，会吃到浏览器默认的 1em 上边距，撑出一道空隙。 */
-#image-generation-modal .field-hint {
+/* 2. 统一小字提示的排版，向右边那张好看的图看齐 */
+#image-generation-modal .field-hint,
+#voice-setting-modal .field-hint {
     font-weight: normal;
     font-size: 12px;
     color: #888;
     display: block;
-    margin: 0;
+    /* 核心：上方留出 8px 距离(不贴脸)，下方归 0 (由外部容器的 padding 撑开底部留白) */
+    margin: 8px 0 0 0; 
     line-height: 1.6;
 }
 
@@ -695,6 +704,21 @@
 
 /* 底部主按钮组 */
 #image-generation-modal .btn-group.main-actions {
+    margin-top: 20px;
+}
+
+/* =========================================
+   语音设置弹窗（音色 + 语气要求）
+   —— 结构和图像生成弹窗同构，所以只复用它那几条通用规则，
+      不重抄一遍：抄一遍就一定会有一天只改了其中一个。
+   ========================================= */
+
+#voice-setting-modal .modal-window {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+#voice-setting-modal .btn-group.main-actions {
     margin-top: 20px;
 }
 
