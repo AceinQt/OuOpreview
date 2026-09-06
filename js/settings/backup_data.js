@@ -117,11 +117,17 @@ window.setupBackupButtons = function() {
 };
 
 // --- 3. 本地备份/导出逻辑 ---
+// ★ 导出/导入期间统一上「页面忙锁」（utils.js 的 beginUiBusy）：
+//   整页控件不可点、返回按钮置灰。isBackupLoading 只防住了重复点同一个按钮，
+//   拦不住"导出跑着又去点导入""导出跑着按返回键"—— 这些操作都在读同一批表，
+//   中途换页或叠加另一个大操作没人清理得干净。解锁一律放 finally。
 async function handleFullBackup(e) {
     if (e) e.preventDefault();
     if (window.isBackupLoading) return;
 
     window.isBackupLoading = true;
+    const endBusy = (typeof window.beginUiBusy === 'function')
+        ? window.beginUiBusy('storage-analysis-screen') : () => {};
     const btn = document.getElementById('btn-backup-full');
     const originalText = btn ? btn.innerHTML : '备份全部数据';
     if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 打包中...'; btn.style.opacity = '0.7'; }
@@ -137,6 +143,7 @@ async function handleFullBackup(e) {
         showToast(`导出失败: ${err.message}`);
     } finally {
         window.isBackupLoading = false;
+        endBusy();
         if (btn) { btn.innerHTML = originalText; btn.style.opacity = '1'; }
     }
 }
@@ -145,6 +152,8 @@ async function handleFullBackup(e) {
 window.exportPartialData = async function(categoryKey) {
     if (window.isBackupLoading) return;
     window.isBackupLoading = true;
+    const endBusy = (typeof window.beginUiBusy === 'function')
+        ? window.beginUiBusy('storage-analysis-screen') : () => {};
 
     try {
         showToast(`正在导出: ${categoryKey}...`);
@@ -241,6 +250,7 @@ window.exportPartialData = async function(categoryKey) {
         showToast(`导出错误: ${err.message}`);
     } finally {
         window.isBackupLoading = false;
+        endBusy();
     }
 };
 
@@ -251,6 +261,10 @@ async function handleImport(event) {
 
     if (await AppUI.confirm('此操作将覆盖当前数据。确定要导入吗?', "系统提示", "确认", "取消")) {
         // ★ 改用持续的 showLoadingToast，覆盖整个导入过程（解析+入库+保存），避免短暂提示后无反馈
+        // ★ 忙锁：导入中途是"表已清空、数据还没填完"的状态，这时候换页去看聊天/论坛
+        //   看到的是半个空库，还可能触发写入把残缺状态固化下来。锁到 finally 为止。
+        const endBusy = (typeof window.beginUiBusy === 'function')
+            ? window.beginUiBusy('storage-analysis-screen') : () => {};
         const hideLoading = (typeof showLoadingToast === 'function') ? showLoadingToast('正在解析文件...') : null;
         try {
             // ★ V5：先只解压文件头部探测格式（几百字节，不占内存，也不动数据库）
@@ -303,6 +317,9 @@ async function handleImport(event) {
             if (hideLoading) hideLoading(); // 异常时也要关闭
             await AppUI.alert(`文件解析错误: ${error.message}`);
         } finally {
+            // 解锁放最后：上面两条路径里的 hideLoading/alert 万一抛错也不能把界面锁死。
+            // 弹窗本身挂在 .screen 之外（#app-global-dialog），锁着也点得动。
+            endBusy();
             event.target.value = null;
         }
     } else {
@@ -1634,7 +1651,10 @@ const GitHubService = {
                 const oldText = btn.innerText;
                 btn.innerText = "上传中";
                 btn.disabled = true;
-                
+                // 忙锁同本地导出：打包读的是同一批表，中途别让人再点别的
+                const endBusy = (typeof window.beginUiBusy === 'function')
+                    ? window.beginUiBusy('storage-analysis-screen') : () => {};
+
                 try {
                     await performOptimizedCloudBackup();
                     showToast("云端备份全部完成!");
@@ -1642,6 +1662,7 @@ const GitHubService = {
                     console.error(e);
                     await AppUI.alert("上传过程中出错: " + e.message);
                 } finally {
+                    endBusy();
                     btn.innerText = oldText;
                     btn.disabled = false;
                 }
@@ -1654,6 +1675,9 @@ const GitHubService = {
                  const oldText = btn.innerText;
                  btn.innerText = "恢复中";
                  btn.disabled = true;
+                 // 忙锁同本地导入：清库到填完之间是半成品状态，不能换页
+                 const endBusy = (typeof window.beginUiBusy === 'function')
+                     ? window.beginUiBusy('storage-analysis-screen') : () => {};
 
                  try {
                      await performOptimizedCloudRestore();
@@ -1668,6 +1692,7 @@ const GitHubService = {
                         window.open(repoUrl, '_blank');
                      }
                  } finally {
+                     endBusy();
                      btn.innerText = oldText;
                      btn.disabled = false;
                  }

@@ -282,15 +282,21 @@ if (typeof getImageCacheStats === 'function') {
 
 window.refreshStorageScreen = async function() {
     const contentEl = document.querySelector('#storage-analysis-screen .content');
-    
+
     // 1. 开始计算前：立即隐藏内容并禁用点击
     if (contentEl) {
         contentEl.style.transition = 'none';
         contentEl.style.opacity = '0';
         contentEl.style.pointerEvents = 'none'; // <--- 新增：加载时禁用点击
-        void contentEl.offsetWidth; 
+        void contentEl.offsetWidth;
         contentEl.style.transition = 'opacity 0.3s ease';
     }
+
+    // ★ 统计要遍历 messages / 论坛 / 学习几张大表，重度用户能跑好几秒。
+    //   这期间返回按钮也一起锁上（置灰）：统计跑在后台，中途返回不会中断它，
+    //   页面已经不在了却还在读表，看着像"点了没反应"。
+    const endBusy = (typeof window.beginUiBusy === 'function')
+        ? window.beginUiBusy('storage-analysis-screen') : () => {};
 
     let hideLoading = () => {};
     if (typeof showLoadingToast === 'function') {
@@ -323,7 +329,8 @@ window.refreshStorageScreen = async function() {
     } catch (e) {
         console.error("加载存储分析数据异常:", e);
     } finally {
-        // 3. 计算完成：隐藏 Toast，内容淡入，恢复点击
+        // 3. 计算完成：解锁，隐藏 Toast，内容淡入，恢复点击
+        endBusy();
         hideLoading();
         if (contentEl) {
             contentEl.style.opacity = '1';
@@ -487,6 +494,12 @@ function setupStorageAnalysisScreen() {
         cleanupBtn.innerText = "扫描中...";
         cleanupBtn.style.opacity = "0.7";
 
+        // 忙锁：全盘扫描要把 messages 整表读进内存，重度用户几秒起步。
+        // 这期间别让人去点导出/导入，也别让人返回（扫描不会因为换页停下）。
+        // 中间那几个 AppUI.confirm/alert 挂在 .screen 之外，锁着照样点得动。
+        const endBusy = (typeof window.beginUiBusy === 'function')
+            ? window.beginUiBusy('storage-analysis-screen') : () => {};
+
         // 引入你 utils.js 中的加载提示动画
         const hideLoading = typeof showLoadingToast === 'function' ? showLoadingToast("正在全盘扫描数据库...") : () => {};
 
@@ -595,6 +608,7 @@ function setupStorageAnalysisScreen() {
             await AppUI.alert("扫描过程中出现异常：" + err.message, "操作失败");
         } finally {
             // 恢复按钮状态
+            endBusy();
             cleanupBtn.disabled = false;
             cleanupBtn.innerText = originalText;
             cleanupBtn.style.opacity = "1";

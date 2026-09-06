@@ -318,6 +318,14 @@ window.init = async () => {
         if (navTarget) {
             e.preventDefault();
 
+            // === 忙锁：长操作进行中（备份导出/导入等）一律不许换页 ===
+            // CSS 的 pointer-events 只挡得住页面内部的点击，这里是第二道闸：
+            // 底部导航栏在 .screen 之外，滑动返回和安卓返回键也都是合成 .back-btn 点击。
+            // 程序自己调 switchScreen（导入完成后的跳转/刷新）不走这里，不受影响。
+            if (typeof window.isUiBusy === 'function' && window.isUiBusy()) {
+                return;
+            }
+
             // === 修复1：拦截 Peek 编辑模式下的返回操作 ===
             // 如果处于多选删除模式，且点击的是返回按钮，则优先退出多选，不跳转页面
             if (window.PeekDeleteManager && window.PeekDeleteManager.isEditMode && navTarget.classList.contains('back-btn')) {

@@ -29,6 +29,12 @@ const EMB_PROVIDER_URLS = {
     openai:  'https://api.openai.com',
     gemini:  'https://generativelanguage.googleapis.com'
 };
+// 生图：vertexExpress 走的是和文字同一个 generateContent 面（生图模型就在那上面），
+// 所以域名与 CHAT_PROVIDER_URLS 一致。openai 那档是任意 OpenAI 兼容中转站。
+const IMAGE_PROVIDER_URLS = {
+    openai: 'https://api.openai.com',
+    vertexExpress: 'https://aiplatform.googleapis.com'
+};
 
 // ============================================================
 // 描述符表：加新 API 类型只改这里
@@ -1965,14 +1971,51 @@ function _applyImagePresetToForm(presetId) {
     // API URL 和 Key 直接从预设里读出，赋给表单
     _setVal('api-image-url', preset ? preset.apiUrl : '');
     _setVal('api-image-key', preset ? preset.apiKey : '');
+    _setVal('api-image-project', preset ? (preset.projectId || '') : '');
 
     _setImageModelSelectValue(preset ? preset.model : 'dall-e-3');
     _setVal('api-image-size', preset ? preset.size : '1024x1024');
     _setVal('api-image-quality', preset ? preset.quality : 'standard');
     _setVal('api-image-style', preset ? preset.style : 'vivid');
 
+    _syncImageProviderFields();
     _updateImageDefaultToggle();
     _populateImagePresetSelect(_imageLoadedPresetId);
+}
+
+/**
+ * 按当前服务商切换只对某一家有意义的行与提示语。
+ * 与文字 tab 的 _syncApiProviderFields 同一个套路，只是图像 tab 是手写表单、
+ * 没有那张描述符表可用，所以单独写一份。
+ */
+function _syncImageProviderFields() {
+    const provider = _getVal('api-image-provider') || 'openai';
+    const isVertex = provider === 'vertexExpress';
+
+    const projectRow = document.getElementById('api-image-project-row');
+    if (projectRow) projectRow.hidden = !isVertex;
+
+    const urlHint = document.getElementById('api-image-url-hint');
+    if (urlHint) {
+        urlHint.textContent = isVertex
+            ? '固定 https://aiplatform.googleapis.com'
+            : 'OpenAI格式，不含 /v1';
+    }
+
+    // Vertex 的列模型端点要 OAuth 而不是 API Key，拉不动（同文字 tab），
+    // 所以按钮改成从内置清单填，而不是让用户点了之后撞一个 401。
+    const fetchBtn = document.getElementById('api-image-fetch-btn');
+    if (fetchBtn) {
+        const label = fetchBtn.querySelector('.btn-text');
+        if (label) label.textContent = isVertex ? '填入内置生图模型' : '点击拉取模型';
+    }
+
+    const modelHint = document.querySelector('label[for="api-image-model"] .field-hint');
+    if (modelHint) {
+        modelHint.textContent = isVertex
+            ? '必须是生图模型，名字里带 image'
+            : 'dall-e-3, dall-e-2, midjourney等';
+    }
 }
 
 function _readImagePresetFromForm() {
@@ -1983,6 +2026,7 @@ function _readImagePresetFromForm() {
         // URL 和 Key 一并保存进预设里
         apiUrl: _getVal('api-image-url').trim(),
         apiKey: _getVal('api-image-key').trim(),
+        projectId: _getVal('api-image-project').trim(),
         model: _getVal('api-image-model').trim(),
         size: _getVal('api-image-size'),
         quality: _getVal('api-image-quality'),
@@ -2072,11 +2116,36 @@ function _setImageTestResult(message, isError = false, hidden = false) {
  * 注意：预设里已选的模型即使不在拉取结果中也保留并维持选中，
  *       防止"拉一次列表"就把当前预设的模型悄悄换成了列表第一项。
  */
+// Vertex Express 的生图模型。列模型端点要 OAuth 而不是 API Key，拉不动，
+// 所以只能内置一份 —— 同 llm_client.js 的 VERTEX_EXPRESS_MODELS。
+const VERTEX_IMAGE_MODELS = [
+    'gemini-3-pro-image',
+    'gemini-3.1-flash-image',
+    'gemini-3.1-flash-lite-image'
+];
+
 async function fetchImageModels() {
     let url = _getVal('api-image-url').trim();
     const key = _getVal('api-image-key').trim();
     const btn = document.getElementById('api-image-fetch-btn');
     const modelSel = document.getElementById('api-image-model');
+
+    // Vertex：拉不动列模型端点，直接把内置清单铺进下拉框，别让用户白撞一次 401。
+    if (_getVal('api-image-provider') === 'vertexExpress') {
+        const current = modelSel.value;
+        const models = VERTEX_IMAGE_MODELS.slice();
+        if (current && !models.includes(current)) models.push(current);
+        modelSel.innerHTML = '';
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            modelSel.appendChild(opt);
+        });
+        modelSel.value = current && models.includes(current) ? current : models[0];
+        modelSel.dispatchEvent(new Event('change', { bubbles: true }));
+        showToast('已填入内置生图模型清单');
+        return;
+    }
 
     if (!url || !key) return showToast('请先填写 API 地址和密钥！');
     if (url.endsWith('/')) url = url.slice(0, -1);
@@ -2196,6 +2265,15 @@ async function previewImageGeneration() {
         const stillCurrent = _imagePreviewAbortController === requestController;
         if (stillCurrent && error && error.name !== 'AbortError') {
             _setImageTestResult(`生图失败: ${error.message}`, true);
+            // 结果框里那行字一切页面就没了，同时进「设置 > 系统日志」留个底。
+            // 只记预设的名字/服务商/模型 —— 那一页会被截图，绝不能带上 Key。
+            // 刻意不把 error 对象一起传：日志面板会展开成整段堆栈，而生图的报错
+            // message 本身已经写清了原因（HTTP 码、被安全策略拦下之类）
+            console.error(
+                `[图片] 测试生成失败 · 预设「${preset.name || '未命名'}」`
+                + `（${imageProviderLabel(preset.provider)} / ${preset.model || '未填模型'}）：`
+                + (error.message || '未知错误')
+            );
         }
     } finally {
         if (_imagePreviewAbortController === requestController) {
@@ -2331,19 +2409,26 @@ function initImageApiTab() {
     const providerSelect = document.getElementById('api-image-provider');
     if (providerSelect) providerSelect.addEventListener('change', () => {
         const urlInput = document.getElementById('api-image-url');
-        if (urlInput && !urlInput.value.trim()) {
-            if (providerSelect.value === 'openai') {
-                urlInput.value = 'https://api.openai.com';
+        // Vertex 的端点是固定的一个域名，用户没有别的可填，所以哪怕框里已经有
+        // OpenAI 中转站的地址也要换掉（否则会拿着中转站地址去拼 Google 的路径）。
+        const isVertex = providerSelect.value === 'vertexExpress';
+        if (urlInput && (isVertex || !urlInput.value.trim())) {
+            if (isVertex) {
+                urlInput.value = IMAGE_PROVIDER_URLS.vertexExpress;
+            } else if (providerSelect.value === 'openai') {
+                urlInput.value = IMAGE_PROVIDER_URLS.openai;
             }
 
             // 触发脏数据标记
             urlInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
+        _syncImageProviderFields();
     });
 
     // 监控表单改动，点亮底部的未保存提示
     _watchDirty('image', [
         'api-image-url', 'api-image-key', 'api-image-preset-name', 'api-image-set-default', 'api-image-provider',
+        'api-image-project',
         'api-image-model', 'api-image-size', 'api-image-quality', 'api-image-style', 'api-image-cache-limit'
     ]);
 
