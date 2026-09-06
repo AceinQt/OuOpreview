@@ -17,7 +17,7 @@
 | 目录 | 子系统 | 详细索引 |
 |---|---|---|
 | `js/core/` | 基础设施：globals 全局状态、database 数据库中枢、lazy_load 懒加载、utils 工具 | [system_other.md](docs/system_other.md) |
-| `js/api/` | 第三方 API 层：llm_client（文本 LLM 统一层）/ weather / doubao_tts / github_repo / image_generation | [system_other.md](docs/system_other.md) |
+| `js/api/` | 第三方 API 层：llm_client（文本 LLM 统一层）/ weather / tts（语音统一层）/ github_repo / image_generation | [system_other.md](docs/system_other.md) |
 | `js/chat/` | 聊天（最大模块） | [chat.md](docs/chat.md) |
 | `js/study/` | 学习：书架/阅读/题库/考卷/番茄钟 | [study.md](docs/study.md) |
 | `js/summary/` | 角色记忆摘要（短期/长期/日记 + 向量检索） | [peek_summary.md](docs/peek_summary.md) |
@@ -65,10 +65,11 @@ CSS 对应：`css/pages/chat/`、`css/pages/study/`、`css/pages/forum.css`、`c
 | **聊天主页面 / 消息列表 / 分页** | `js/chat/chat_room.js`（渲染游标 `_renderTopCeil/_renderBottomFloor`）、`js/chat/chat_list.js` |
 | **消息长按菜单 / 编辑 / 撤回 / 多选** | `js/chat/chat_actions.js` |
 | **AI 回复生成 / 发送流程** | `js/chat/chat_ai_service.js`（`getAiReply`）+ 提示词 `js/chat/private_prompt.js`（私聊）/`group_prompt.js`（群聊）/`proactive_prompt.js` |
-| **AI 服务商/模型/key 设置** | `js/settings/api_settings.js`（chat/embedding tab）。**加新服务商**只需改 `js/api/llm_client.js` 的 `buildLLMRequestTarget`/`llmIsGeminiShape` + `CHAT_PROVIDER_URLS` 一条 + `index.html` 一个 `<option>` |
+| **AI 服务商/模型/key 设置** | `js/settings/api_settings.js`（chat/embedding tab）。**加新服务商**只需改 `js/api/llm_client.js` 的 `buildLLMRequestTarget`/`llmIsGeminiShape` + `CHAT_PROVIDER_URLS` 一条 + `index.html` 一个 `<option>`。**模型下拉的候选清单随预设走**（`modelList` 字段），拉不动接口时点 select 右边方块按钮手改，不用改代码 |
 | **角色/群/人设编辑页** | `js/chat/char_info.js`、`group_info.js`、`user_info.js`、`group_settings.js`、`char_import.js`（角色卡导入） |
-| **图片生成（AI 生图）** | 业务 `js/chat/chat_image_service.js` + 存储 `js/chat/chat_image_store.js` + 绑定UI `js/chat/chat_image_settings.js` + API `js/api/image_generation_api.js`。**有参考图走 `/chat/completions`（只有这条路能带图），没参考图走 `/images/generations`** |
-| **语音消息（TTS）** | 业务 `js/chat/chat_voice_service.js` + 播放 `js/chat/chat_voice_player.js` + 存储 `js/chat/chat_voice_store.js` + API `js/api/doubao_tts_api.js` |
+| **图片生成（AI 生图）** | 业务 `js/chat/chat_image_service.js` + 存储 `js/chat/chat_image_store.js` + 绑定UI `js/chat/chat_image_settings.js` + API `js/api/image_generation_api.js`。两家服务商：**vertexExpress**（Google 直连，原生 `generateContent`，图文同轮，只有一条路）；**openai 兼容**下**有参考图走 `/chat/completions`（只有这条路能带图），没参考图走 `/images/generations`** |
+| **语音消息（TTS）** | 业务 `js/chat/chat_voice_service.js` + 播放 `js/chat/chat_voice_player.js` + 存储 `js/chat/chat_voice_store.js` + API `js/api/tts_api.js`。**加新语音服务商**只需在 `tts_api.js` 的 `TTS_PROVIDERS` 加一条 + 写一个 `_synthesizeXxx`；Key/地址/模型/语速/音调都在单条音色预设里 |
+| **语音设置侧栏（音色 + 语气）** | `js/chat/chat_voice_settings.js` + `index.html` 的 `#voice-setting-modal`。侧栏「语音」**一行**点开折叠弹窗（同图像生成那套），下面挂两个性质不同的旋钮：**音色** `voicePresetId`（TTS 层，花钱）+ **语气要求** `voiceTonePrompt`（注入语言模型，一个字都不进 TTS 请求；空=不注入）。群聊传 `includePreset:false`——群里音色按成员选（`group_settings.js` 成员编辑弹窗），群级只有语气。提示词句子只在这个文件里定义一次，`private_prompt.js` / `group_prompt.js` 都调 `buildVoiceTonePromptLine` |
 | **表情包/贴纸** | `js/chat/chat_feature_sticker.js` |
 | **通话（语音/视频）** | `js/chat/chat_feature_call.js` |
 | **转账/礼物/位置/时间跳过/图片识别** | `js/chat/chat_feature_basic.js` |

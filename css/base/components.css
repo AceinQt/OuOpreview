@@ -34,6 +34,23 @@
     animation: none !important;
 }
 
+/* ── 页面忙锁（配合 utils.js 的 beginUiBusy）──────────────────────
+   长操作进行中：整页控件不可点、返回按钮置灰。
+   拦在容器上而不是逐个按钮上，页面里新加的控件自动被覆盖；
+   加载 toast 和全局弹窗都挂在 body 下（不在 .screen 里），照样能转、能点。
+   !important 是必须的：存储页会给 .content 写 inline 的 pointer-events:auto
+   （统计完淡入时恢复点击），不加权重就会把这里的锁捅开。 */
+.screen.ui-busy .app-header,
+.screen.ui-busy .content,
+.screen.ui-busy .bottom-actions {
+    pointer-events: none !important;
+}
+
+.screen.ui-busy .app-header .back-btn {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
 .app-header {
     display: flex;
     justify-content: space-between;

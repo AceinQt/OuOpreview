@@ -3,7 +3,7 @@
 //       从而能控制根页面（否则 navigator.serviceWorker.ready 会永久挂起），
 //       并让通知点击、图标等相对路径都从根目录解析。
 
-const CACHE_NAME = 'ouo-cache-Q2.0.9';
+const CACHE_NAME = 'ouo-cache-Q2.0.10';
 // 每次部署新版本时，把上面的版本号往上加
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
@@ -49,10 +49,18 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // JS / HTML / JSON 文件：网络优先，保证总是拿到最新代码
+    // 代码类文件（JS / CSS / HTML / JSON）：网络优先，保证总是拿到最新代码
     // 网络失败时才用缓存兜底（离线场景）
+    //
+    // ★ CSS 原先在下面那条「缓存优先」分支里，这就是"手机端改了样式不生效"的根因：
+    //   有缓存就直接用、根本不去网络问，只有升 CACHE_NAME 把旧缓存清掉才会重新拉。
+    //   样式和 JS 一样属于代码、改动频率同级，所以归到同一条规则里。
+    //   这样改 CSS 不需要在文件名后面挂 ?v=123 之类的版本号，刷新一次就是最新的。
+    //   （代价：冷启动时 CSS 也要走网络。CSS 总共 500 多 KB，而 JS 已经有 3 MB 在走
+    //     同一条规则了，多出来的这点可以忽略。）
     if (
         url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.css') ||
         url.pathname.endsWith('.html') ||
         url.pathname.endsWith('.json') ||
         url.pathname === '/'
@@ -73,7 +81,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // CSS / 图片等静态资源：缓存优先，有缓存直接用，没有才去网络拿
+    // 图片 / 字体 / 音频等静态资源：缓存优先，有缓存直接用，没有才去网络拿
+    // （这些是"内容"不是"代码"，换的时候一般是换文件名，不需要每次回源问）
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
