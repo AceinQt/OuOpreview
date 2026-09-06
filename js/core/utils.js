@@ -221,7 +221,46 @@ function switchScreen(targetId) {
                 };
             }
 
-            
+// ── 页面忙锁 ────────────────────────────────────────────────────────
+// 用于"中途离开会留下半成品"的操作（备份导出/导入、全盘扫描等）：
+// 锁住所在页面的全部控件（含返回按钮，靠 .ui-busy 的 CSS 置灰 + 屏蔽点击），
+// 同时让三条返回通道一起失效 —— 界面返回按钮走 main.js 的导航代理，
+// 另外两条是 swipe_back.js 的滑动返回和 system_back.js 的安卓返回键。
+// 只挡用户手势，不挡程序内部的 switchScreen（导入完成后的跳转/刷新照常）。
+//
+// 计数而不是布尔：同一页面可能叠着两个操作（存储统计还在跑就点了导出），
+// 先结束的那个不能把锁提前解掉。
+let _uiBusyDepth = 0;
+
+window.isUiBusy = () => _uiBusyDepth > 0;
+
+/**
+ * 开始一个忙状态。返回解锁函数 —— **必须放在 finally 里调**，
+ * 否则中途抛错会把界面永久锁死（showToast 之类抛错会跳过 catch 段）。
+ * 返回的函数可重复调用，只有第一次生效。
+ * @param {string} [screenId] 要锁的页面 id，省略则锁当前 .screen.active
+ */
+window.beginUiBusy = function (screenId) {
+    const el = screenId
+        ? document.getElementById(screenId)
+        : document.querySelector('.screen.active');
+    if (el) el.classList.add('ui-busy');
+    _uiBusyDepth++;
+
+    let released = false;
+    return function endUiBusy() {
+        if (released) return;
+        released = true;
+        _uiBusyDepth = Math.max(0, _uiBusyDepth - 1);
+        if (_uiBusyDepth === 0) {
+            // 锁全部解开才清 class：叠加的两个操作用的可能是同一个页面元素
+            document.querySelectorAll('.screen.ui-busy')
+                .forEach(s => s.classList.remove('ui-busy'));
+        }
+    };
+};
+
+
 // 动态修改安卓状态栏颜色
 function setAndroidThemeColor(color) {
     let meta = document.querySelector('meta[name="theme-color"]');

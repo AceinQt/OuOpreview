@@ -412,6 +412,12 @@ async function subscribe() {
     async function schedulePeek(chat, type, say) {
         say = say || (() => {});
         if (type === 'private' && chat.offlineModeEnabled) return say('peek: 处于离线模式，不移交');
+        // 【既定规则】peek 只在随机模式投递(与本地路径 checkAndDeliverProactiveMessages 同步)。
+        //   fixed 模式自己付费预生成 idle 池，再叠 peek 就是双份主动消息。
+        //   注意 reconcileChat 上游只挡了 dnd/timer，fixed 会走到这里，故必须在此再判一次。
+        if ((chat.proactiveMode || 'random') !== 'random') {
+            return say('peek: 主动模式是 ' + (chat.proactiveMode || 'random') + '，按设计只有随机模式吃 peek');
+        }
         const q = chat.proactiveMessageQueue;
         if (!Array.isArray(q)) return say('peek: 没有消息池');
         const peek = q.find(m => m.type === 'time_window_peek');

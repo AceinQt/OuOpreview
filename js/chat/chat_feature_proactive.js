@@ -387,8 +387,12 @@ async function checkAndDeliverProactiveMessages() {
             msgIndex = chat.proactiveMessageQueue.findIndex(m => m.type === 'time_window_idle');
         }
         if (msgIndex === -1) {
+            // 【既定规则】peek 只在随机模式投递。
+            //   peek 是“没话可说时补充话题”的存货；fixed 模式自己会付费预生成 idle 池，
+            //   两者叠加就成了双份主动消息 → 从此只让 random 吃 peek。
+            //   fixed/timer 池里已有的 peek 话题不清除，留着切回 random 还能用(3 天自然过期)。
             const isOfflineMode = (type === 'private' && chat.offlineModeEnabled);
-            if (!isOfflineMode) {
+            if (!isOfflineMode && (chat.proactiveMode || 'random') === 'random') {
                 msgIndex = chat.proactiveMessageQueue.findIndex(m => m.type === 'time_window_peek');
                 if (msgIndex !== -1) isPeekSource = true;
             }
@@ -436,9 +440,14 @@ async function checkAndDeliverProactiveMessages() {
         }
 
         const minTimeGap = isPeekSource ? 60 * 60 * 1000 : 5 * 60 * 1000;
-        if (tNow - lastInteractTime < minTimeGap) continue; 
-        
-        if (hasSentProactiveSinceLastReal) continue;
+        if (tNow - lastInteractTime < minTimeGap) continue;
+
+        // 【不连投·仅 peek】“上一条主动消息还没被回复就不再发”这条守卫是为 peek 加的
+        //   (曾出现 peek 连续轰炸)。它原先无条件生效，把预生成的 idle/summary 也拦了:
+        //   生成端一次产出两个时段(getTargetSlots)，第一个时段发出后第二个就永远发不出去,
+        //   只能等 12h expireAt 过期或被用户发言作废 → 表现为“发完一个时段就重新生成”。
+        //   同时段内仍只发一组(见下方发送成功后销毁本轮候选)，跨时段续投由此放开。
+        if (isPeekSource && hasSentProactiveSinceLastReal) continue;
 
         let candidates =[];
 

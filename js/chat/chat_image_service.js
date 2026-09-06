@@ -111,6 +111,45 @@ function _noticeImageLocalOnly(localOnly) {
     if (typeof showToast === 'function') showToast('图片仅保存在当前浏览器，不能随备份恢复，缓存超限后可能被清理');
 }
 
+/**
+ * 生图失败的统一日志出口。
+ *
+ * ★ 为什么非要写日志：失败时界面上只有一句 toast（预生成连 toast 都没有），
+ *   划走就没了，事后问"这张为什么没出图"手上一点线索都没有。console.error
+ *   会被 main.js 的控制台拦截器收进「设置 > 系统日志」，可以事后翻、可以截图。
+ * ★ 只记预设的名字/服务商/模型，**绝不记 apiKey** —— 那一页正是用来截图外发的。
+ * ★ 同一个 error 只记一次（记在 WeakSet 里，不往 error 上挂属性，免得跟着
+ *   消息被序列化进库）：内层手里有预设，先记；外层兜网时自动跳过。
+ *   所以可以放心在多层各加一句，不会刷出重复日志。
+ */
+const _loggedImageFailures = new WeakSet();
+
+function _logImageFailure(scene, error, { chatId = '', chatType = '', messageId = '', preset = null } = {}) {
+    if (error && typeof error === 'object') {
+        if (_loggedImageFailures.has(error)) return;
+        _loggedImageFailures.add(error);
+    }
+
+    const where = [`[图片] ${scene}失败`];
+    if (preset) {
+        const provider = typeof imageProviderLabel === 'function'
+            ? imageProviderLabel(preset.provider)
+            : (preset.provider || '未知服务商');
+        where.push(`预设「${preset.name || preset.id || '未命名'}」（${provider} / ${preset.model || '未填模型'}）`);
+    }
+    if (chatId) where.push(`聊天 ${chatType || '?'}:${chatId}`);
+    if (messageId) where.push(`消息 ${messageId}`);
+
+    const code = error && error.code ? `[${error.code}] ` : '';
+    const reason = (error && error.message) || String(error || '未知错误');
+    // 落地失败那类错误会把真正的起因挂在 cause 上（如 GitHub 上传的报错）
+    const cause = error && error.cause && error.cause.message ? `｜起因：${error.cause.message}` : '';
+    // 带 code 的都是我们自己抛的业务错误，message 已经写清了原因，堆栈只是噪音；
+    // 没 code 的可能是代码 bug（TypeError 之类），那种情况堆栈才是唯一有用的东西
+    const stack = !code && error && error.stack ? `\n${error.stack}` : '';
+    console.error(`${where.join(' · ')}：${code}${reason}${cause}${stack}`);
+}
+
 async function _saveImageMessage(message, chatId, chatType) {
     await _persistImageMessageRecord(message, chatId, chatType);
     if (typeof saveSingleChat === 'function') await saveSingleChat(chatId, chatType);
@@ -445,6 +484,11 @@ async function _generateImageForMessage(message, { chatId, chatType, auto = fals
             cloudState: availability.cloudTarget ? 'failed' : 'none',
             errorCode: (error && error.code) || 'image-generation-failed'
         });
+        // 在这里记：本层手里有预设，日志能写出"哪个预设、哪个模型"，
+        // 比外层兜网只能写一句错误信息有用得多
+        _logImageFailure(auto ? '自动生成' : '生成', error, {
+            chatId, chatType, messageId: targetMessage.id, preset
+        });
         await _saveImageMessage(targetMessage, chatId, chatType);
         _refreshImageMessageBubble(targetMessage, chatId, chatType);
         throw error;
@@ -466,7 +510,11 @@ function generateImageForMessage(message, options = {}) {
     const chatId = options.chatId || (typeof currentChatId !== 'undefined' ? currentChatId : '');
     const chatType = options.chatType || (typeof currentChatType !== 'undefined' ? currentChatType : '');
     const target = _imageChatMessage(message, chatId, chatType) || message;
-    if (!target || !target.id) return Promise.reject(new Error('图片消息无有效 ID'));
+    if (!target || !target.id) {
+        const error = Object.assign(new Error('图片消息无有效 ID'), { code: 'image-message-missing' });
+        _logImageFailure('生成', error, { chatId, chatType });
+        return Promise.reject(error);
+    }
     const key = _imageTaskKey(chatId, target.id);
     if (_imageGenerationInflight.has(key)) return _imageGenerationInflight.get(key);
 
@@ -477,6 +525,12 @@ function generateImageForMessage(message, options = {}) {
     task.finally(() => {
         if (_imageGenerationInflight.get(key) === task) _imageGenerationInflight.delete(key);
     }).catch(() => {});
+    // 兜网：接口失败已经在内层记过（带预设信息），这里补的是那些还没走到接口就
+    // 退出的情况——没预设、没保存位置、找不到聊天。调用方只会弹 toast，
+    // 不在这里记就彻底没有痕迹。重复记会被 _logImageFailure 的标记挡掉。
+    task.catch(error => _logImageFailure(options.auto ? '自动生成' : '生成', error, {
+        chatId, chatType, messageId: target.id
+    }));
     return task;
 }
 
@@ -529,7 +583,9 @@ function queueAutoImageGeneration(messages, chat, chatId, chatType) {
     const message = messages.find(item => isImageDescriptionMessage(item) && !isImageMediaMessage(item));
     if (!message) return null;
     const promise = generateImageForMessage(message, { chatId, chatType, auto: true });
-    promise.catch(error => console.warn('[图片] 自动生成失败：', error.message));
+    // 失败原因已由 generateImageForMessage 内部记进系统日志，这里只是接住
+    // rejection 免得变成 unhandled，别再重复打一遍
+    promise.catch(() => {});
     return promise;
 }
 
@@ -563,6 +619,7 @@ function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, av
                 cloudState: availability.cloudTarget ? 'failed' : 'none',
                 errorCode: (error && error.code) || 'image-generation-failed'
             });
+            _logImageFailure('超时后补写的预生成', error, { chatId, chatType, messageId, preset });
         }
         await _saveImageMessage(message, chatId, chatType);
         _refreshImageMessageBubble(message, chatId, chatType);
@@ -571,7 +628,7 @@ function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, av
     task.then(
         produced => settle(produced.readyPatch).then(() => _noticeImageLocalOnly(produced.localOnly)),
         error => settle(null, error)
-    ).catch(err => console.warn('[图片] 预生成补写失败：', err));
+    ).catch(err => console.error('[图片] 预生成补写失败：', err));
 }
 
 /**
@@ -651,7 +708,9 @@ async function prepareImageForMessages(messages, chat, chatId, chatType, options
         }
 
         if (outcome.error) {
-            console.warn('[图片] 预生成失败，气泡照常展示：', outcome.error.message);
+            // 预生成失败连 toast 都不弹（气泡照常出，只是带失败标记），
+            // 不记日志的话用户完全无从得知失败原因
+            _logImageFailure('预生成', outcome.error, { chatId, chatType, messageId, preset });
             prepared.media = createImageMedia({
                 source: 'generated', state: 'failed', localCacheKey, presetId: preset.id,
                 ...(outcome.error.imageMime ? { mime: outcome.error.imageMime, size: outcome.error.imageSize } : {}),
@@ -666,7 +725,7 @@ async function prepareImageForMessages(messages, chat, chatId, chatType, options
         _noticeImageLocalOnly(outcome.produced.localOnly);
         return prepared;
     } catch (error) {
-        console.warn('[图片] 预生成调度失败，消息照常展示：', error);
+        _logImageFailure('预生成调度', error, { chatId, chatType });
         return null;
     }
 }

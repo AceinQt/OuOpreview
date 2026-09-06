@@ -18,7 +18,8 @@ const IMAGE_GENERATION_SLOW_WARNING_MS = 120000;
 
 // 预留了服务商体系，将来加 NAI、NanoBanana 直接往这里加枚举
 const IMAGE_PROVIDERS = [
-    { value: 'openai', label: 'OpenAI 兼容' }
+    { value: 'openai', label: 'OpenAI 兼容' },
+    { value: 'vertexExpress', label: 'Vertex Express（Google 直连）' }
 ];
 
 function imageProviderLabel(value) {
@@ -60,6 +61,10 @@ function _normalizeImagePreset(raw, legacyConfig) {
         size: String(p.size || '1024x1024').trim(),
         quality: String(p.quality || 'standard').trim(),
         style: String(p.style || 'vivid').trim(),
+        // 仅 vertexExpress 用：留空则区域由 Google 后端自选（部分模型会 404），
+        // 填了就钉定 projects/{id}/locations/global/...。没在本预设填时，
+        // _vertexExpressImageModelPath 会回落到文本 API 设置里那份 Project ID。
+        projectId: String(p.projectId || '').trim(),
         // 预留给未来其他服务商的扩展参数可继续在此添加
     };
 }
@@ -342,6 +347,92 @@ function _buildOpenAIChatEndpoint(apiUrl) {
         : `${endpoint}/v1/chat/completions`;
 }
 
+// ============================================================
+// Vertex Express（Google 直连）
+// ============================================================
+// 为什么值得单独走一条路：生图模型（gemini-3-pro-image 等）本来就在 Express
+// 的 generateContent 面上，中间垫一层 OpenAI 协议的中转/代理只会多一个坏掉的环节
+// —— 图片要先转成 markdown data URI、再被这边正则捞回来，中途任何一环空手
+// 就变成"没返回图片"。直连则是原生 inlineData，一步到位。
+//
+// 端点与鉴权和文本层完全一致（见 llm_client.js 的 buildLLMRequestTarget）：
+//   端点  https://aiplatform.googleapis.com/v1/{modelPath}:generateContent
+//   鉴权  请求头 x-goog-api-key
+// 差别只在请求体要多两样东西：generationConfig.responseModalities 必须含 IMAGE
+// （不给就只回文字），以及 imageConfig 决定分辨率与比例。
+
+/** Vertex Express 生图端点。base 里残留的 /v1、/v1beta 要削掉，否则拼出坏路径。 */
+function _buildVertexImageEndpoint(apiUrl, modelPath) {
+    let base = String(apiUrl || 'https://aiplatform.googleapis.com').trim().replace(/\/+$/, '');
+    if (!base) base = 'https://aiplatform.googleapis.com';
+    base = base.replace(/\/v1(beta)?$/, '');
+    return `${base}/v1/${modelPath}:generateContent`;
+}
+
+/**
+ * 模型资源路径。逻辑与文本层的 _vertexExpressModelPath 完全相同（区域必须钉定，
+ * 留空会被 Google 后端路由到不提供该模型的区域并 404），所以能复用就复用；
+ * 单元测试里本文件是单独加载的，拿不到那个函数时走下面的本地实现。
+ */
+function _vertexExpressImageModelPath(preset) {
+    const model = String((preset && preset.model) || '').trim();
+    if (/^(projects|publishers|models)\//.test(model)) return model;
+
+    if (typeof _vertexExpressModelPath === 'function') {
+        return _vertexExpressModelPath({ model, projectId: preset && preset.projectId });
+    }
+
+    let projectId = String((preset && preset.projectId) || '').trim();
+    if (!projectId) {
+        try {
+            projectId = String(
+                (typeof db !== 'undefined' && db && db.apiSettings && db.apiSettings.projectId) || ''
+            ).trim();
+        } catch (e) { projectId = ''; }
+    }
+    return projectId
+        ? `projects/${projectId}/locations/global/publishers/google/models/${model}`
+        : `publishers/google/models/${model}`;
+}
+
+// Gemini 生图只认这几个比例，给别的值会 400。UI 里那个 size 下拉是按 DALL-E
+// 的像素尺寸做的（1792x1024 算出来是 7:4，不在表里），所以按数值取最接近的一档，
+// 而不是要求用户填出合法比例。
+const _VERTEX_IMAGE_RATIOS = [
+    ['1:1', 1], ['3:2', 1.5], ['2:3', 2 / 3], ['3:4', 0.75], ['4:3', 4 / 3],
+    ['4:5', 0.8], ['5:4', 1.25], ['9:16', 0.5625], ['16:9', 16 / 9], ['21:9', 21 / 9]
+];
+
+/** 像素尺寸 → 最接近的合法 Gemini 比例；认不出尺寸就返回空（交给模型自己决定）。 */
+function _vertexAspectRatio(size) {
+    const match = String(size || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (!match) return '';
+    const w = parseInt(match[1], 10);
+    const h = parseInt(match[2], 10);
+    if (!w || !h) return '';
+    const target = w / h;
+    let best = '';
+    let bestDelta = Infinity;
+    _VERTEX_IMAGE_RATIOS.forEach(([label, value]) => {
+        const delta = Math.abs(value - target);
+        if (delta < bestDelta) { bestDelta = delta; best = label; }
+    });
+    return best;
+}
+
+/**
+ * 像素尺寸 → imageSize 档位。
+ * 刻意只用 1K / 2K 两档：512 只有 flash-image 支持（pro-image 会 400），
+ * 4K 又贵又慢；这两档所有生图模型都收，永远不会因为档位不合法而失败。
+ */
+function _vertexImageSize(size) {
+    const match = String(size || '').match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+    if (!match) return '1K';
+    const longSide = Math.max(parseInt(match[1], 10) || 0, parseInt(match[2], 10) || 0);
+    return longSide > 1280 ? '2K' : '1K';
+}
+
+
 // 一眼能认出是图片的 base64 头部：PNG iVBOR / JPEG /9j/ / GIF R0lGOD / WEBP UklGR
 const _IMAGE_BASE64_PREFIX = /^(iVBOR|\/9j\/|R0lGOD|UklGR)/;
 
@@ -554,6 +645,127 @@ async function _generateOpenAIImage(apiUrl, apiKey, preset, prompt, signal) {
     return _downloadGeneratedImage(firstImage.url, signal);
 }
 
+/**
+ * Vertex Express 生图：Gemini 原生 generateContent，图片以 inlineData 回来。
+ * 参考图直接作为一个 inlineData part 塞进同一轮 user 消息 —— 原生形状本来就支持，
+ * 不像 OpenAI 那边要为了带图另开一条 chat/completions 的路。
+ */
+async function _generateVertexImage(apiUrl, apiKey, preset, prompt, referenceImage, signal) {
+    const modelPath = _vertexExpressImageModelPath(preset);
+    const endpoint = _buildVertexImageEndpoint(apiUrl, modelPath);
+
+    const parts = [{ text: prompt }];
+    const reference = String(referenceImage || '').trim();
+    if (reference) {
+        const m = reference.match(/^data:([^;]+);base64,([\s\S]+)$/);
+        if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    }
+
+    // responseModalities 必须含 IMAGE，否则模型只回文字。
+    const generationConfig = {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: { imageSize: _vertexImageSize(preset.size) }
+    };
+    const aspectRatio = _vertexAspectRatio(preset.size);
+    if (aspectRatio) generationConfig.imageConfig.aspectRatio = aspectRatio;
+
+    let response;
+    try {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts }],
+                generationConfig
+            }),
+            signal
+        });
+    } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        throw new Error(`连接生图接口失败：${error.message || '网络错误'}`);
+    }
+
+    if (!response.ok) {
+        const detail = await _readImageApiError(response);
+        if (response.status === 404) {
+            throw new Error(
+                `HTTP 404：Google 说找不到模型「${preset.model}」（${modelPath}）。`
+                + '通常是模型名写错，或者没填 Project ID 导致区域被后端随便挑'
+                + `${detail ? `：${detail}` : ''}`
+            );
+        }
+        throw new Error(`HTTP ${response.status}${detail ? `：${detail}` : ''}`);
+    }
+
+    let payloadData;
+    try {
+        payloadData = await response.json();
+    } catch (_) {
+        throw new Error('接口返回格式异常：响应不是有效 JSON');
+    }
+
+    const found = _findVertexInlineImage(payloadData);
+    if (found) return { ..._decodeBase64Image(found.data, found.mimeType), source: 'b64_json' };
+
+    // 没图时把原因说清楚。生图被安全过滤器拦掉的典型形状就是
+    // parts 整个空掉、只留一个 finishReason，什么文字都没有。
+    console.warn('[图片] Vertex 生图没找到图片，响应结构：', payloadData);
+    const candidate = payloadData && Array.isArray(payloadData.candidates) ? payloadData.candidates[0] : null;
+    const finishReason = String((candidate && candidate.finishReason) || '').trim();
+    const blockReason = String(
+        (payloadData && payloadData.promptFeedback && payloadData.promptFeedback.blockReason) || ''
+    ).trim();
+    const text = _extractVertexText(candidate);
+
+    if (/SAFETY|PROHIBITED|BLOCKLIST|SPII|RECITATION/i.test(`${finishReason} ${blockReason}`)) {
+        throw new Error(
+            `这张图被 Google 的内容安全策略拦下了（${finishReason || blockReason}），模型没有出图。`
+            + '换个说法或改掉敏感描述再试'
+        );
+    }
+    throw new Error(
+        `模型「${preset.model}」没有返回图片`
+        + (text ? `，它回的是文字：${text}` : '')
+        + (finishReason ? `（结束原因 ${finishReason}）` : '')
+        + '。请确认这是生图模型（名字里带 image，如 gemini-3-pro-image）'
+    );
+}
+
+/** 在 Gemini 原生响应里找第一个 inlineData 图片。 */
+function _findVertexInlineImage(payload) {
+    const candidates = payload && Array.isArray(payload.candidates) ? payload.candidates : [];
+    for (const candidate of candidates) {
+        const parts = candidate && candidate.content && Array.isArray(candidate.content.parts)
+            ? candidate.content.parts
+            : [];
+        for (const part of parts) {
+            const inline = part && (part.inlineData || part.inline_data);
+            if (!inline) continue;
+            const data = String(inline.data || '').trim();
+            const mimeType = String(inline.mimeType || inline.mime_type || 'image/png').trim();
+            if (data && /^image\//i.test(mimeType)) return { data, mimeType };
+        }
+    }
+    return null;
+}
+
+/** 从 Gemini 原生响应里挖一段人类能看懂的文字，用于"没返回图片"时的报错。 */
+function _extractVertexText(candidate) {
+    const parts = candidate && candidate.content && Array.isArray(candidate.content.parts)
+        ? candidate.content.parts
+        : [];
+    const text = parts
+        .filter(p => p && p.thought !== true)
+        .map(p => (p && typeof p.text === 'string' ? p.text : ''))
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+    return text.slice(0, 200);
+}
+
 function _createImageRequestScope(parentSignal, slowAfterMs, onSlow) {
     const controller = new AbortController();
     const slowWarningDelay = Number(slowAfterMs) > 0 ? Number(slowAfterMs) : IMAGE_GENERATION_SLOW_WARNING_MS;
@@ -633,6 +845,18 @@ async function generateImage({ prompt, preset, stylePrompt, referenceImage, sett
     const requestScope = _createImageRequestScope(signal, slowAfterMs, onSlow);
     try {
         switch (imagePreset.provider) {
+            // Vertex 原生只有一条路：参考图就是同一轮消息里多一个 inlineData part，
+            // 不需要像 OpenAI 那样按"有没有参考图"分流到两个不同端点。
+            case 'vertexExpress':
+                return await _generateVertexImage(
+                    imagePreset.apiUrl,
+                    imagePreset.apiKey,
+                    imagePreset,
+                    finalPrompt,
+                    reference,
+                    requestScope.signal
+                );
+
             case 'openai':
                 return reference
                     ? await _generateChatImage(
