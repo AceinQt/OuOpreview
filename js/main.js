@@ -421,8 +421,8 @@ window.init = async () => {
         if (typeof setupPhotoVideoSystem === 'function') setupPhotoVideoSystem();
         if (typeof setupImageRecognition === 'function') setupImageRecognition();
         if (typeof setupWalletSystem === 'function') setupWalletSystem();
-        if (typeof setupGiftSystem === 'function') setupGiftSystem();
         if (typeof setupLocationSystem === 'function') setupLocationSystem();
+        if (typeof setupShareFeature === 'function') setupShareFeature();
         if (typeof setupTimeSkipSystem === 'function') setupTimeSkipSystem();
         if (typeof setupWorldBookApp === 'function') setupWorldBookApp();
         if (typeof setupFontSettingsApp === 'function') setupFontSettingsApp();
