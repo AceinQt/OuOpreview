@@ -453,11 +453,11 @@ let isTouchLongPress = false; // 用于标记是否是由触摸触发的长按
 // "+"面板里属于"隔着手机才成立"的线上功能，线下模式（面对面）下要禁用。
 // sticker bar 上的转账/语音/照片由 updateOfflineModeUI 用 disabled 属性禁；
 // 面板项是 div，只能靠 class 置灰 + 点击拦截，所以清单放在这里。
-const OFFLINE_DISABLED_EXPANSION_ACTIONS = ['send-gift-modal', 'send-location-modal'];
+const OFFLINE_DISABLED_EXPANSION_ACTIONS = ['send-location-modal', 'send-share-modal'];
 
 /**
  * 把"+"面板里与会话绑定的开关（线下模式 / 后台消息）对齐到当前会话的真实状态，
- * 并按线下模式置灰面板里的线上功能（送礼物 / 发送位置）。
+ * 并按线下模式置灰面板里的线上功能（发送位置 / 转发分享）。
  * 面板是全局单例、只在启动时构建一次，所以每次打开面板、每次进聊天室都得重新对齐，
  * 否则会挂着上一个会话残留的蓝色高亮 / 置灰状态。
  */
@@ -1747,8 +1747,9 @@ function formatSmartTime(timestamp) {
                     },
 
                     {
-                        id: 'send-gift-modal',
-                        name: '赠送礼物',
+                        id: 'send-share-modal',
+                        name: '转发分享',
+                        // 图标是原「赠送礼物」的礼盒：赠送礼物功能被分享顶替后，图标留给它了
                         icon: `<svg viewBox="0 0 24 24"><path d="M22,12V20A2,2 0 0,1 20,22H4A2,2 0 0,1 2,20V12A1,1 0 0,1 1,11V8A2,2 0 0,1 3,6H6.17C6.06,5.69 6,5.35 6,5A3,3 0 0,1 9,2C10,2 10.88,2.5 11.43,3.24V3.23L12,4L12.57,3.23V3.24C13.12,2.5 14,2 15,2A3,3 0 0,1 18,5C18,5.35 17.94,5.69 17.83,6H21A2,2 0 0,1 23,8V11A1,1 0 0,1 22,12M4,20H11V12H4V20M20,20V12H13V20H20M9,4A1,1 0 0,0 8,5A1,1 0 0,0 9,6A1,1 0 0,0 10,5A1,1 0 0,0 9,4M15,4A1,1 0 0,0 14,5A1,1 0 0,0 15,6A1,1 0 0,0 16,5A1,1 0 0,0 15,4M3,8V10H11V8H3M13,8V10H21V8H13Z" /></svg>`
                     },
                     {
@@ -1880,16 +1881,9 @@ switch (action) {
                         case 'delete-history-chunk':
                             openDeleteChunkModal();
                             break;
-                        case 'send-gift-modal':
-                            // 打开礼物框
-                            if (currentChatType === 'private') {
-                                sendGiftForm.reset();
-                                sendGiftModal.classList.add('visible');
-                            } else if (currentChatType === 'group') {
-                                currentGroupAction.type = 'gift';
-                                renderGroupRecipientSelectionList('送礼物给');
-                                groupRecipientSelectionModal.classList.add('visible');
-                            }
+                        case 'send-share-modal':
+                            // 万能分享卡片：直接发当前会话，不选收件人
+                            if (typeof openShareModal === 'function') openShareModal();
                             break;
                         case 'send-location-modal':
                             // 打开发送位置弹窗（私聊/群聊直接发送，无需选收件人）

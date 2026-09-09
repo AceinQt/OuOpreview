@@ -627,6 +627,8 @@ function goBackToContacts() {
                             const stickerRegex = /\[.*?的表情包：.*?\]|\[.*?发送的表情包：.*?\]/;
                             const giftRegex = /\[.*?送来的礼物：.*?\]|\[.*?向.*?送来了礼物：.*?\]/;
                             const locationRegex = /\[.*?发送了位置：.*?\]/;
+                            // 分享卡片是多行的，[\s\S] 不能写成 .
+                            const shareRegex = /\[[^\[\]：:\n]+?的分享[:：][\s\S]*?\]/;
 
 
 
@@ -642,6 +644,8 @@ function goBackToContacts() {
                                 lastMessageText = '[转账]';
                             } else if (locationRegex.test(lastMsg.content)) {
                                 lastMessageText = '[位置]';
+                            } else if (shareRegex.test(lastMsg.content) || lastMsg.content.startsWith('[喵坛分享]')) {
+                                lastMessageText = '[分享]';
                             } else if (imageRecogRegex.test(lastMsg.content) || (lastMsg.parts && lastMsg.parts.some(p => p.type === 'image'))) {
                                 lastMessageText = '[图片]';
                             } else if ((lastMsg.parts && lastMsg.parts.some(p => p.type === 'html'))) {

@@ -252,6 +252,13 @@ function createMessageBubbleElement(message) {
     const imageRecogMatch = content.match(imageRecogRegex);
     const textMatch = content.match(textRegex);
     const locationMatch = content.match(locationRegex);
+    // 分享卡片：新格式 [xxx的分享：\n标题：...] 优先，旧格式 [喵坛分享]标题：... 兜底。
+    // 解析统一放在 chat_feature_share.js，正则和字段拆分只有那一份。
+    let shareData = null;
+    if (typeof parseShareMessage === 'function') shareData = parseShareMessage(content);
+    if (!shareData && typeof parseLegacyForumShare === 'function') {
+        shareData = parseLegacyForumShare(content);
+    }
 
     if (pomodoroMatch) {
         const taskName = pomodoroMatch[1];
@@ -315,30 +322,42 @@ function createMessageBubbleElement(message) {
         descriptionDiv.className = 'gift-card-description';
         descriptionDiv.textContent = description;
         wrapper.appendChild(descriptionDiv);
-    } else if (content.startsWith('[喵坛分享]')) {
-        const forumShareRegex = /\[喵坛分享\]标题：([\s\S]+?)\n内容：([\s\S]+)/;
-        const forumShareMatch = content.match(forumShareRegex);
+    } else if (shareData) {
+        // 万能分享卡片。三个来源（用户手填 / AI 自己发 / 喵坛帖子）共用这一套渲染，
+        // 页头文字就是用户填的「类别」—— 喵坛来的填的是「来自喵坛的分享」，
+        // 所以看起来和旧版一模一样。
+        //
+        // 摘要**只在这里截**，消息里存的是全文：以前 forum_share.js 发送时先截 50 字
+        // 再存，全文就永久丢了，点开详情也拿不回来。截断交给 CSS 的 line-clamp。
+        bubbleElement = document.createElement('div');
+        bubbleElement.className = 'forum-share-card';
 
-        if (forumShareMatch) {
-            const title = forumShareMatch[1].trim();
-            const fullContent = forumShareMatch[2].trim();
-            let displaySummary = fullContent.substring(0, 50);
-            if (fullContent.length > 50) {
-                displaySummary += '...';
-            }
+        const header = document.createElement('div');
+        header.className = 'forum-share-header';
+        header.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V5A2,2 0 0,0 21,3M21,19H3V5H21V19M8,11H16V9H8V11M8,15H13V13H8V15Z" /></svg>`;
+        const headerText = document.createElement('span');
+        // textContent：类别是自由文本，不能当 HTML
+        headerText.textContent = shareData.category || '分享';
+        header.appendChild(headerText);
 
-            bubbleElement = document.createElement('div');
-            bubbleElement.className = 'forum-share-card';
-            bubbleElement.innerHTML = `
-                <div class="forum-share-header">
-                    <svg viewBox="0 0 24 24"><path d="M21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V5A2,2 0 0,0 21,3M21,19H3V5H21V19M8,11H16V9H8V11M8,15H13V13H8V15Z" /></svg>
-                    <span>来自喵坛的分享</span>
-                </div>
-                <div class="forum-share-content">
-                    <div class="forum-share-title">${title}</div>
-                    <div class="forum-share-summary">${displaySummary}</div>
-                </div>`;
-        }
+        const body = document.createElement('div');
+        body.className = 'forum-share-content';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'forum-share-title';
+        titleEl.textContent = shareData.title || '';
+        const summaryEl = document.createElement('div');
+        summaryEl.className = 'forum-share-summary';
+        summaryEl.textContent = shareData.body || '';
+        body.appendChild(titleEl);
+        body.appendChild(summaryEl);
+
+        bubbleElement.appendChild(header);
+        bubbleElement.appendChild(body);
+
+        // 卡片一直有 cursor:pointer 和 hover 抬起，但过去没绑过 click，点了没反应
+        bubbleElement.addEventListener('click', () => {
+            if (typeof openShareDetailModal === 'function') openShareDetailModal(shareData);
+        });
     } else if (voiceMatch) {
         const voiceText = voiceMatch[1].trim();
         bubbleElement = document.createElement('div');

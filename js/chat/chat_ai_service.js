@@ -76,6 +76,24 @@ function getMixedContent(responseData) {
         }
 
         if (responseData[i] === '[') {
+            // 分享卡片要特殊对待：它是多行的，而且「内容」是大段自由文本，
+            // 里面很可能出现 ] （"第[三]章"、"价格[特价]39元"）。下面那条按
+            // **第一个** ] 收尾的通用规则会把卡片截半截，剩下的半张卡还会漏成
+            // 一条 [unknown的消息：附加信息：…] 气泡，附加信息也就丢了。
+            // 定尾必须按行扫，复用 extractShareBlocks（chat_feature_share.js）——
+            // 这里别再自己写正则，非贪婪一样会停在正文的 ] 上。
+            const shareHead = responseData.substring(i).match(/^\[[^\[\]：:\n]+?的分享[:：]/);
+            if (shareHead && typeof extractShareBlocks === 'function') {
+                const rest = responseData.substring(i);
+                const found = extractShareBlocks(rest);
+                // 只认从当前位置就开头的那一块（start === 0）
+                if (found.length && found[0].start === 0) {
+                    results.push({ type: 'text', content: found[0].text });
+                    i += found[0].text.length;
+                    continue;
+                }
+            }
+
             // Potential [...] block
             const endBracket = responseData.indexOf(']', i);
             if (endBracket !== -1) {
@@ -308,9 +326,28 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             }
         } else {
             let processedResponse = cleanResponse;
+
+            // 分享卡片先整块抠出来占位，等下面那三条"见括号就断行"的规则跑完再填回去。
+            // 那三条本来是为单行消息写的：分享的「内容」是大段自由文本，里面出现
+            // [ 或 ] 就会被就地断行，一张卡碎成好几条气泡。
+            // 抠取按**行**扫（maskShareBlocks / restoreShareBlocks，实现在
+            // chat_feature_share.js）—— 用一条正则截不行：非贪婪会停在正文自己的
+            // ]（"第[三]章"）把卡片切一半，贪婪又会吞掉后面别的消息。都试过，都碎。
+            let shareBlocks = [];
+            if (typeof maskShareBlocks === 'function') {
+                const masked = maskShareBlocks(processedResponse);
+                processedResponse = masked.masked;
+                shareBlocks = masked.blocks;
+            }
+
             processedResponse = processedResponse.replace(/\]\s*\[/g, ']\n[');
             processedResponse = processedResponse.replace(/([^\n>])\s*\[(?!system-narration|system-display)/g, '$1\n[');
             processedResponse = processedResponse.replace(/\]\s*([^\n<])/g, ']\n$1');
+
+            // 填回去，并保证每张卡片独占一行（占位符前后可能粘着别的话）
+            if (shareBlocks.length && typeof restoreShareBlocks === 'function') {
+                processedResponse = restoreShareBlocks(processedResponse, shareBlocks);
+            }
 
             const trimmedResponse = processedResponse.trim();
             let messages;
@@ -502,7 +539,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 } 
                 else if (targetChatType === 'group') {
                     const group = chat;
-                    const standardRegex = /\[(.*?)((?:的消息|的语音|的表情包|发送的表情包|发来的照片\/视频|发送了位置))[:：]/;
+                    // 「的分享」也要在列表里：不在这份清单上的格式，群聊分支会整条丢掉
+                    const standardRegex = /\[(.*?)((?:的消息|的语音|的表情包|发送的表情包|发来的照片\/视频|发送了位置|的分享))[:：]/;
                     const quoteRegex = /\[(.*?)引用["“](.*?)["”]并回复[:：]([\s\S]*?)\]/;
 
                     const quoteMatch = item.content.match(quoteRegex);

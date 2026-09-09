@@ -18,9 +18,6 @@
             const receiveTransferActionSheet = document.getElementById('receive-transfer-actionsheet'),
                 acceptTransferBtn = document.getElementById('accept-transfer-btn'),
                 returnTransferBtn = document.getElementById('return-transfer-btn');
-            const sendGiftModal = document.getElementById('send-gift-modal'),
-                sendGiftForm = document.getElementById('send-gift-form'),
-                giftDescriptionInput = document.getElementById('gift-description-input');
             const sendLocationModal = document.getElementById('send-location-modal'),
                 sendLocationForm = document.getElementById('send-location-form'),
                 locationNameInput = document.getElementById('location-name-input'),
@@ -513,51 +510,6 @@
                 renderChatList();
             }
 
-            async function sendMyGift(description) {
-                if (!description) return;
-                sendGiftModal.classList.remove('visible');
-                await new Promise(resolve => setTimeout(resolve, 100));
-                const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-                await processTimePerception(chat, currentChatId, currentChatType);
-
-                if (currentChatType === 'private') {
-                    const content = `[${chat.myName}送来的礼物：${description}]`;
-                    const message = {
-                        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                        role: 'user',
-                        content: content,
-                        parts: [{ type: 'text', text: content }],
-                        timestamp: Date.now(),
-                        giftStatus: 'sent'
-                    };
-                    chat.history.push(message);
-                    addMessageBubble(message, currentChatId, currentChatType);
-                    await saveMessageToDB(message, currentChatId, currentChatType);
-                } else { // Group chat
-                    let msgs =[];
-        currentGroupAction.recipients.forEach(recipientId => {
-                        const recipient = chat.members.find(m => m.id === recipientId);
-                        if (recipient) {
-                            const content = `[${chat.me.realName} 向 ${recipient.realName} 送来了礼物：${description}]`;
-                            const message = {
-                                id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                                role: 'user',
-                                content: content,
-                                parts: [{ type: 'text', text: content }],
-                                timestamp: Date.now(),
-                                senderId: 'user_me'
-                            };
-                            chat.history.push(message);
-                            addMessageBubble(message, currentChatId, currentChatType);
-                            msgs.push(message); 
-                        }
-                    });
-                    await saveMessagesToDB(msgs, currentChatId, currentChatType);
-                }
-                await saveSingleChat(currentChatId, currentChatType);
-                renderChatList();
-            }
-
             // --- NEW: Send Location System ---
             async function sendMyLocation(name, address) {
                 if (!name) return;
@@ -741,15 +693,7 @@
                 currentTransferMessageId = null;
             }
 
-            function setupGiftSystem() {
-
-                sendGiftForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    sendMyGift(giftDescriptionInput.value.trim());
-                });
-            }
-            
-             // --- Other Sub-systems Setup (Stickers, Voice, etc.) ---
+            // --- Other Sub-systems Setup (Stickers, Voice, etc.) ---
             function setupImageRecognition() {
                 imageRecognitionBtn.addEventListener('click', () => {
                     imageUploadInput.click();

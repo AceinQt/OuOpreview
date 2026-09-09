@@ -602,66 +602,30 @@ async function saveSettingsFromSidebar() {
     }
 }
             
-// --- 在 chat_settings.js 中寻找并替换 ---
+// 把某个聊天的自定义 CSS 挂成一个 <style>，作用域限制在该聊天室内。
+//
+// 改写逻辑在 js/chat/bubble_css_scope.js（scopeBubbleCss），预览那边跑的是同一个函数 ——
+// 这是硬要求，不是巧合。这里以前是一套手写正则，预览是原样注入，
+// 两条通道语义不同，于是「预览生效、保存后不生效」（尤其是底栏）成了常态反馈。
+// 想改注入方式的话去改 bubble_css_scope.js，别在这里单独加逻辑。
 function updateCustomBubbleStyle(chatId, css, enabled) {
     const styleId = `custom-bubble-style-for-${chatId}`;
     let styleElement = document.getElementById(styleId);
 
-    if (enabled && css) {
-        if (!styleElement) {
-            styleElement = document.createElement('style');
-            styleElement.id = styleId;
-            document.head.appendChild(styleElement);
-        }
+    const finalCss = (enabled && css && typeof scopeBubbleCss === 'function')
+        ? scopeBubbleCss(css, chatId)
+        : '';
 
-        const scope = `#chat-room-screen.chat-active-${chatId}`;
-        let finalCss = '';
-
-        const rootRegex = /:root\s*\{([\s\S]*?)\}/;
-        const rootMatch = css.match(rootRegex);
-        if (rootMatch && rootMatch[1]) {
-            const rootVars = rootMatch[1].trim();
-            if (rootVars) {
-                finalCss += `${scope} { ${rootVars} }\n`;
-            }
-        }
-
-        // 👇【核心修复】：增加 .replace(/\/\*[\s\S]*?\*\//g, '') 彻底剔除带有 {} 的 META 注释！
-        let remainingCss = css
-            .replace(/\/\*[\s\S]*?\*\//g, '') 
-            .replace(rootRegex, '')
-            .replace(/@keyframes[\s\S]*?(\}\s*\}|\})/g, '')
-            .replace(/@font-face[\s\S]*?\}/g, '');
-
-        const ruleRegex = /([^{}]+?)\s*\{([^{}]+?)\}/g;
-        let match;
-        while ((match = ruleRegex.exec(remainingCss)) !== null) {
-            const selectors = match[1].trim();
-            const properties = match[2].trim();
-
-            if (selectors && properties) {
-                const scopedSelectors = selectors
-                    .split(',')
-                    .map(s => s.trim())
-                    .filter(s => s && !s.startsWith('@'))
-                    .map(s => {
-                        if (s.includes('#chat-room-screen')) {
-                            return s.replace('#chat-room-screen', scope);
-                        } else {
-                            return `${scope} ${s}`;
-                        }
-                    })
-                    .join(', ');
-
-                if (scopedSelectors) {
-                    finalCss += `${scopedSelectors} { ${properties} }\n`;
-                }
-            }
-        }
-        styleElement.innerHTML = finalCss;
-    } else {
-        if (styleElement) {
-            styleElement.remove();
-        }
+    if (!finalCss) {
+        if (styleElement) styleElement.remove();
+        return;
     }
+
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+    }
+    // textContent 而不是 innerHTML：CSS 里的 > 和 & 不该被当成 HTML 解析
+    styleElement.textContent = finalCss;
 }

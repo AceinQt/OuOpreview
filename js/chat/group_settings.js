@@ -415,11 +415,6 @@ function setupGroupChatSystem() {
             if (form) form.reset();
             const modal = document.getElementById('send-transfer-modal');
             if (modal) modal.classList.add('visible');
-        } else if (currentGroupAction.type === 'gift') {
-            const form = document.getElementById('send-gift-form');
-            if (form) form.reset();
-            const modal = document.getElementById('send-gift-modal');
-            if (modal) modal.classList.add('visible');
         }
     });
 
