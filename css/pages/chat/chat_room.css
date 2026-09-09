@@ -1813,3 +1813,71 @@
     background-color: transparent;
     color: #7A869A;
 }
+
+/* --- 分享卡片（万能：喵坛帖子 / 文件 / 链接 / 商品……）---
+   class 名带 forum- 是历史包袱：这套样式最早只给喵坛分享用，现在 + 号面板手动
+   发的、AI 自己发的都走同一套。改名要连着 chat_bubble_factory.js 和用户可能
+   写过的自定义 CSS 一起动，不值当，先留着。
+   ★ 标题/正文的省略号靠下面的 -webkit-line-clamp —— JS 侧不要再截字符串，
+     消息里存的是全文，截了就点不开完整详情了。 */
+.forum-share-card {
+    width: 250px;
+    /* 卡片宽度 */
+    background-color: #ffffff;
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    padding: 12px 15px;
+    cursor: pointer;
+    border: 1px solid #f0f0f0;
+    margin: 0 8px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.forum-share-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+}
+
+.forum-share-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.forum-share-header svg {
+    width: 18px;
+    height: 18px;
+    fill: #aaa;
+    flex-shrink: 0;
+}
+
+.forum-share-content .forum-share-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 5px 0;
+    line-height: 1.4;
+    /* 最多显示两行，超出部分显示省略号 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.forum-share-content .forum-share-summary {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    /* 最多显示三行 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
