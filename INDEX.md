@@ -26,6 +26,7 @@
 | `js/rpg_game.js` | 像素风 JRPG 游戏（6842 行） | [system_other.md](docs/system_other.md) |
 | `js/settings/` | 设置页（API/备份/存储/定制等） | [system_other.md](docs/system_other.md) |
 | `js/home.js` `js/world_book.js` `js/main.js` | 主屏桌面 / 世界书管理 / 应用入口 | — |
+| `js/lib/` | 第三方库本地副本（dexie / dompurify / marked），**不是本项目代码，不要改里面的文件**。文件名带版本号，由 `sw.js` 的 `js/lib/` 例外走缓存优先，保证离线可用；升级＝下新文件 + 改 `index.html` 的文件名。echarts 已移除（此前只为存储备份页一个环形饼图撑场，现该页用 `data_storage.js` 里手写的 SVG 环形图） | — |
 
 CSS 对应：`css/pages/chat/`、`css/pages/study/`、`css/pages/forum.css`、`css/pages/rpg_game.css`、`css/pages/peek.css`、`css/pages/summary.css`、`css/pages/settings/`、`css/pages/home.css` 等。
 
@@ -72,7 +73,8 @@ CSS 对应：`css/pages/chat/`、`css/pages/study/`、`css/pages/forum.css`、`c
 | **语音设置侧栏（音色 + 语气）** | `js/chat/chat_voice_settings.js` + `index.html` 的 `#voice-setting-modal`。侧栏「语音」**一行**点开折叠弹窗（同图像生成那套），下面挂两个性质不同的旋钮：**音色** `voicePresetId`（TTS 层，花钱）+ **语气要求** `voiceTonePrompt`（注入语言模型，一个字都不进 TTS 请求；空=不注入）。群聊传 `includePreset:false`——群里音色按成员选（`group_settings.js` 成员编辑弹窗），群级只有语气。提示词句子只在这个文件里定义一次，`private_prompt.js` / `group_prompt.js` 都调 `buildVoiceTonePromptLine` |
 | **表情包/贴纸** | `js/chat/chat_feature_sticker.js` |
 | **通话（语音/视频）** | `js/chat/chat_feature_call.js` |
-| **转账/礼物/位置/时间跳过/图片识别** | `js/chat/chat_feature_basic.js` |
+| **转账/位置/时间跳过/图片识别** | `js/chat/chat_feature_basic.js`。⚠️「赠送礼物」发送入口已删（被分享卡片顶替），但**历史礼物消息的渲染/解析全套保留**（气泡 `chat_bubble_factory.js` 的 gift-card、`chat_room.js` 的已接收礼物回执、AI 主动送礼的提示词还在 `proactive_prompt.js`/`peek_core.js`），别当死代码清掉 |
+| **分享卡片（万能：喵坛帖/文件/链接/商品）** | 格式与解析 `js/chat/chat_feature_share.js`（**唯一一份**，构建/解析/多行抠取都在这）+ 气泡 `chat_bubble_factory.js` + 样式 `css/pages/forum.css`（class 名带 `forum-` 是历史包袱）+ 喵坛入口 `js/forum/forum_share.js`。三个来源共用一套格式：+ 号面板手动发、AI 自己发（提示词里教了）、喵坛帖子分享。消息里**存全文**，卡片上的省略靠 CSS `line-clamp`；`js/chat/chat_ai_service.js` 里 AI 回复的抠取必须调 `maskShareBlocks`/`extractShareBlocks`，别自己写正则（正文含 `]` 会截半截） |
 | **主动/定时消息、后台保活、离线模式** | `js/chat/chat_feature_proactive.js`、`chat_feature_offline.js`、`notification_center.js`、`push_node.js` |
 | **Web Push 推送节点** | `js/chat/push_node.js` + `push-worker/` + `sw.js` |
 | **聊天搜索（关键词/日期）** | `js/chat/chat_search.js` + `js/chat/chat_room.js` |

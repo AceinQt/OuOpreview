@@ -3,7 +3,7 @@
 //       从而能控制根页面（否则 navigator.serviceWorker.ready 会永久挂起），
 //       并让通知点击、图标等相对路径都从根目录解析。
 
-const CACHE_NAME = 'ouo-cache-Q2.0.10';
+const CACHE_NAME = 'ouo-cache-Q2.0.14';
 // 每次部署新版本时，把上面的版本号往上加
 // SW 会自动清理旧缓存，确保用户拿到最新文件
 
@@ -58,12 +58,21 @@ self.addEventListener('fetch', (event) => {
     //   这样改 CSS 不需要在文件名后面挂 ?v=123 之类的版本号，刷新一次就是最新的。
     //   （代价：冷启动时 CSS 也要走网络。CSS 总共 500 多 KB，而 JS 已经有 3 MB 在走
     //     同一条规则了，多出来的这点可以忽略。）
+    //
+    // ★ 例外 js/lib/：第三方库虽然也是 .js，但它不是"我们的代码"——文件名里带版本号，
+    //   同一路径的内容永不改变，网络优先对它只有坏处：echarts 一个就 1 MB，而 Dexie
+    //   是"拉不到就整个 App 起不来"的东西，不该每次冷启动都押在网络上。放它掉到下面
+    //   那条「缓存优先」规则里。升级库＝换文件名，旧文件随 CACHE_NAME 一起清掉。
+    //   用 includes 而非 startsWith，是为了兼容部署在子路径下的情况。
     if (
-        url.pathname.endsWith('.js') ||
-        url.pathname.endsWith('.css') ||
-        url.pathname.endsWith('.html') ||
-        url.pathname.endsWith('.json') ||
-        url.pathname === '/'
+        !url.pathname.includes('/js/lib/') &&
+        (
+            url.pathname.endsWith('.js') ||
+            url.pathname.endsWith('.css') ||
+            url.pathname.endsWith('.html') ||
+            url.pathname.endsWith('.json') ||
+            url.pathname === '/'
+        )
     ) {
         event.respondWith(
             fetch(event.request)
@@ -81,7 +90,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 图片 / 字体 / 音频等静态资源：缓存优先，有缓存直接用，没有才去网络拿
+    // 图片 / 字体 / 音频等静态资源，以及 js/lib/ 下的第三方库：缓存优先，
+    // 有缓存直接用，没有才去网络拿
     // （这些是"内容"不是"代码"，换的时候一般是换文件名，不需要每次回源问）
     event.respondWith(
         caches.match(event.request).then(cached => {

@@ -18,11 +18,20 @@
     <!-- 新增：破解图床防盗链（极其重要！因为你的代码里用了 postimg.cc） -->
     <meta name="referrer" content="no-referrer" />
 
-    <!-- 你的外部脚本和样式（保持不变） -->
-    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
-    <script src="https://unpkg.com/dompurify@2.3.8/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 第三方库：一律本地引用，不要改回 CDN 外链。
+         原因一：sw.js 的 fetch 拦截对非同源请求直接放行（见那里的注释），外链完全不进
+                 缓存。弱网或离线时 Dexie 拉不到 → dexieDB 未就绪 → 整个 App 起不来，
+                 这是离线可用性上最大的单点。
+         原因二：原先 dexie 和 marked 的 URL 没写版本号，吃的是上游 latest；marked 那条
+                 更危险——jsDelivr 把 marked 解析到 18.x，但 18.x 里已经没有 marked.min.js
+                 这个文件，200 是边缘节点拿 v15.0.12 的旧副本在兜，上游一清就 404。
+         文件名带版本号 ⇒ 内容永不变 ⇒ 由 sw.js 的 js/lib/ 例外走缓存优先，首次加载后
+         永久零网络。升级库＝下载新文件 + 改这里的文件名，别原地覆盖同名文件。
+         注：echarts 已移除——它此前只为存储备份页的一个环形饼图撑场（1.03 MB），
+             现由 js/settings/data_storage.js 里手写的 SVG 环形图替代。 -->
+    <script src="js/lib/dexie-4.4.5.min.js"></script>
+    <script src="js/lib/purify-2.5.9.min.js"></script>
+    <script src="js/lib/marked-15.0.12.min.js"></script>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/main.css">
 </head>
@@ -6407,19 +6416,6 @@
                 </form>
             </div>
         </div>
-        <div id="send-gift-modal" class="modal-overlay">
-            <div class="modal-window">
-                <h3>送出礼物</h3>
-                <form id="send-gift-form">
-                    <div class="form-group">
-                        <label for="gift-description-input">礼物描述</label>
-                        <textarea id="gift-description-input" placeholder="告诉Ta你送了什么特别的东西..." required
-                            rows="4"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary">发送</button>
-                </form>
-            </div>
-        </div>
         <!-- NEW: Send Location Modal -->
         <div id="send-location-modal" class="modal-overlay">
             <div class="modal-window">
@@ -6435,6 +6431,59 @@
                     </div>
                     <button type="submit" class="btn btn-primary">发送</button>
                 </form>
+            </div>
+        </div>
+        <!-- 万能分享卡片：发送弹窗 -->
+        <div id="send-share-modal" class="modal-overlay">
+            <div class="modal-window">
+                <h3>分享</h3>
+                <form id="send-share-form">
+                    <!-- 手机高度不一：四个输入项放滚动区，按钮钉在外面 -->
+                    <div class="share-form-scroll">
+                        <div class="form-group">
+                            <label for="share-title-input">标题</label>
+                            <input type="text" id="share-title-input" placeholder="例如：煲仔饭" required>
+                        </div>
+                        <div class="form-group">
+                            <div class="share-category-label-row">
+                                <label for="share-category-input">类别</label>
+                                <div id="share-category-presets" class="share-category-presets"></div>
+                            </div>
+                            <input type="text" id="share-category-input" placeholder="例如：美团外卖链接" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="share-body-input">内容</label>
+                            <textarea id="share-body-input" placeholder="例如：腊味双拼煲仔饭 ¥38，30分钟送达" required
+                                rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="share-extra-input">附加信息</label>
+                            <textarea id="share-extra-input" placeholder="（选填）例如：文件大小 2.4MB"
+                                rows="1"></textarea>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">发送</button>
+                </form>
+            </div>
+        </div>
+        <!-- 万能分享卡片：点卡片看完整内容 -->
+        <div id="share-detail-modal" class="modal-overlay">
+            <div class="modal-window">
+                <!-- 页眉钉在顶上不滚：左类别、右 X -->
+                <div class="share-detail-header">
+                    <div class="share-detail-category" id="share-detail-category"></div>
+                    <button type="button" class="share-detail-close" id="share-detail-close-btn"
+                        aria-label="关闭">×</button>
+                </div>
+                <!-- 标题/内容/附注顺序排，整个区一起滚（不再每节各滚各的） -->
+                <div class="share-detail-scroll">
+                    <h3 class="share-detail-title" id="share-detail-title"></h3>
+                    <div class="share-detail-text" id="share-detail-body"></div>
+                    <div id="share-detail-extra-block">
+                        <div class="share-detail-divider"></div>
+                        <div class="share-detail-text" id="share-detail-extra"></div>
+                    </div>
+                </div>
             </div>
         </div>
         <!-- NEW: Time Skip Modal -->
@@ -7545,12 +7594,16 @@
     <script src="js/chat/proactive_prompt.js"></script>
     <script src="js/chat/group_prompt.js"></script>
     <script src="js/chat/char_import.js"></script>
+    <!-- scope 改写器要排在 bubble_css_preset / chat_settings 前面：两边都调它 -->
+    <script src="js/chat/bubble_css_scope.js"></script>
     <script src="js/chat/bubble_css_preset.js"></script>
     <script src="js/chat/chat_list.js"></script>
     <script src="js/chat/chat_settings.js"></script>
     <script src="js/chat/chat_search.js"></script>
     <script src="js/chat/chat_feature_sticker.js"></script>
     <script src="js/chat/chat_feature_basic.js"></script>
+    <!-- 分享格式解析要排在 chat_bubble_factory / forum_share 前面：两边都调它 -->
+    <script src="js/chat/chat_feature_share.js"></script>
     <script src="js/chat/chat_feature_offline.js"></script>
     <script src="js/chat/chat_feature_proactive.js"></script>
     <script src="js/chat/notification_center.js"></script>
