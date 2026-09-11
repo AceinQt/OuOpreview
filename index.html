@@ -849,8 +849,10 @@
             </div>
 
             <div id="multi-select-bar"><span id="select-count">已选择 0 项</span>
-                <button class="btn btn-danger" id="delete-selected-btn">删除已选
-                </button>
+                <div class="multi-select-actions">
+                    <button class="btn btn-danger" id="delete-selected-btn">删除已选</button>
+                    <button class="btn btn-primary" id="forward-selected-btn">转发</button>
+                </div>
             </div>
 <!-- 表情包主面板 -->
             <div id="sticker-modal">
@@ -6445,14 +6447,20 @@
                             <input type="text" id="share-title-input" placeholder="例如：煲仔饭" required>
                         </div>
                         <div class="form-group">
-                            <div class="share-category-label-row">
+                            <div class="share-label-row">
                                 <label for="share-category-input">类别</label>
                                 <div id="share-category-presets" class="share-category-presets"></div>
                             </div>
                             <input type="text" id="share-category-input" placeholder="例如：美团外卖链接" required>
                         </div>
                         <div class="form-group">
-                            <label for="share-body-input">内容</label>
+                            <div class="share-label-row">
+                                <label for="share-body-input">内容</label>
+                                <!-- type="button" 不能省：在 form 里默认就是 submit，点一下直接把卡片发出去了。
+                                     文案由 chat_feature_share.js 填（补全时要改成"补全中…"，只留一处来源）。 -->
+                                <button type="button" id="share-ai-complete-btn" class="share-ai-btn"
+                                    title="按标题和类别，让 AI 补出内容"></button>
+                            </div>
                             <textarea id="share-body-input" placeholder="例如：腊味双拼煲仔饭 ¥38，30分钟送达" required
                                 rows="3"></textarea>
                         </div>
@@ -6484,6 +6492,35 @@
                         <div class="share-detail-text" id="share-detail-extra"></div>
                     </div>
                 </div>
+            </div>
+        </div>
+        <!-- 转发聊天记录：多选几条消息 → 转发 → 在目标聊天生成一张「聊天记录」分享卡片。
+             布局照 #share-post-modal（喵坛分享帖）那一套，只是顶上那栏从「评论条数」
+             换成了「转发备注」。checkbox 的 id 前缀必须和那个弹窗错开（forward-to- /
+             share-to-），撞了 <label for> 会点到另一个弹窗的框上去。 -->
+        <div id="forward-messages-modal" class="modal-overlay">
+            <div class="modal-window">
+                <h3>转发聊天记录</h3>
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label for="forward-note-input" style="font-size:13px; color:#666;">转发备注</label>
+                    <input type="text" id="forward-note-input" placeholder="（选填）想跟对方说的一句话"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+                </div>
+
+                <div class="char-info-tab-bar" id="forward-target-tab-bar" style="padding: 0; margin-bottom: 10px;">
+                    <button type="button" class="char-info-tab-btn active" data-forward-tab="private">私聊</button>
+                    <button type="button" class="char-info-tab-btn" data-forward-tab="group">群聊</button>
+                </div>
+
+                <div class="forward-target-box">
+                    <ul id="forward-char-list" class="binding-list">
+                        <!-- JS 填充 -->
+                    </ul>
+                    <ul id="forward-group-list" class="binding-list" style="display: none;">
+                        <!-- JS 填充 -->
+                    </ul>
+                </div>
+                <button id="confirm-forward-btn" class="btn btn-primary" style="width:100%">转发</button>
             </div>
         </div>
         <!-- NEW: Time Skip Modal -->

@@ -64,7 +64,7 @@ CSS 对应：`css/pages/chat/`、`css/pages/study/`、`css/pages/forum.css`、`c
 |---|---|
 | **聊天气泡渲染/样式** | `js/chat/chat_bubble_factory.js` + `js/chat/bubble_css_preset.js` + `js/chat/chat_room.js` + `css/pages/chat/chat_room.css` |
 | **聊天主页面 / 消息列表 / 分页** | `js/chat/chat_room.js`（渲染游标 `_renderTopCeil/_renderBottomFloor`）、`js/chat/chat_list.js` |
-| **消息长按菜单 / 编辑 / 撤回 / 多选** | `js/chat/chat_actions.js` |
+| **消息长按菜单 / 编辑 / 撤回 / 多选** | `js/chat/chat_actions.js`。长按菜单最后一项是**「多选」**（不叫「删除」了 —— 进去以后底部既能删也能转发）。删除**必须**留着 `AppUI.confirm`：它和转发键在多选栏里紧挨着，误触一次就是不可恢复的删除。**转发**本身不在这个文件，见下面「分享卡片」那行（它产出的是一张分享卡片） |
 | **AI 回复生成 / 发送流程** | `js/chat/chat_ai_service.js`（`getAiReply`）+ 提示词 `js/chat/private_prompt.js`（私聊）/`group_prompt.js`（群聊）/`proactive_prompt.js` |
 | **AI 服务商/模型/key 设置** | `js/settings/api_settings.js`（chat/embedding tab）。**加新服务商**只需改 `js/api/llm_client.js` 的 `buildLLMRequestTarget`/`llmIsGeminiShape` + `CHAT_PROVIDER_URLS` 一条 + `index.html` 一个 `<option>`。**模型下拉的候选清单随预设走**（`modelList` 字段），拉不动接口时点 select 右边方块按钮手改，不用改代码 |
 | **角色/群/人设编辑页** | `js/chat/char_info.js`、`group_info.js`、`user_info.js`、`group_settings.js`、`char_import.js`（角色卡导入） |
@@ -74,7 +74,7 @@ CSS 对应：`css/pages/chat/`、`css/pages/study/`、`css/pages/forum.css`、`c
 | **表情包/贴纸** | `js/chat/chat_feature_sticker.js` |
 | **通话（语音/视频）** | `js/chat/chat_feature_call.js` |
 | **转账/位置/时间跳过/图片识别** | `js/chat/chat_feature_basic.js`。⚠️「赠送礼物」发送入口已删（被分享卡片顶替），但**历史礼物消息的渲染/解析全套保留**（气泡 `chat_bubble_factory.js` 的 gift-card、`chat_room.js` 的已接收礼物回执、AI 主动送礼的提示词还在 `proactive_prompt.js`/`peek_core.js`），别当死代码清掉 |
-| **分享卡片（万能：喵坛帖/文件/链接/商品）** | 格式与解析 `js/chat/chat_feature_share.js`（**唯一一份**，构建/解析/多行抠取都在这）+ 气泡 `chat_bubble_factory.js` + 样式 `css/pages/forum.css`（class 名带 `forum-` 是历史包袱）+ 喵坛入口 `js/forum/forum_share.js`。三个来源共用一套格式：+ 号面板手动发、AI 自己发（提示词里教了）、喵坛帖子分享。消息里**存全文**，卡片上的省略靠 CSS `line-clamp`；`js/chat/chat_ai_service.js` 里 AI 回复的抠取必须调 `maskShareBlocks`/`extractShareBlocks`，别自己写正则（正文含 `]` 会截半截） |
+| **分享卡片（万能：喵坛帖/文件/链接/商品）** | 格式与解析 `js/chat/chat_feature_share.js`（**唯一一份**，构建/解析/多行抠取/AI 补全都在这）+ 气泡 `chat_bubble_factory.js` + 样式 `css/pages/chat/chat_room.css`（卡片本体，class 名带 `forum-` 是历史包袱）和 `css/pages/chat/chat_modal.css`（两个弹窗）+ 喵坛入口 `js/forum/forum_share.js`。四个来源共用一套格式：+ 号面板手动发、AI 自己发（提示词里教了）、喵坛帖子分享、**转发聊天记录**。投递到别的聊天只有一份循环 `deliverShareToChats`（喵坛分享和转发都走它，正文按**每个目标聊天自己的** `myName` 署名）。消息里**存全文**，卡片上的省略靠 CSS `line-clamp`；`js/chat/chat_ai_service.js` 里 AI 回复的抠取必须调 `maskShareBlocks`/`extractShareBlocks`，别自己写正则（正文含 `]` 会截半截）。**「AI 补全」**（填了标题+类别让模型补内容）走 `#CONTENT#`/`#EXTRA#` 标签而非卡片自己的「内容：」行首关键字，且回填前**必须**过 `sanitizeShareFieldText` —— 正文里顶格的「附加信息：」会被 `parseShareFields` 当字段头切走，症状是**静默少一行**，不报错不变形。补全的参考资料**顺序照搬 peek** 的 `getPeekBasePromptContext`（世界书before→角色档案/人设→我是谁→世界书after→记忆→向量→上文，`position:'writing'` 的世界书不注）；上文按 `sliceShareContextHistory` **算轮次**取（至少 10 轮、最多 100 条 —— AI 一次回复会被断行拆成好几条气泡，固定条数量不准）；温度和流式**不写死**，跟着 API 预设走。**「转发聊天记录」**（长按→多选→勾几条→转发）把选中消息压成「昵称：内容」逐行的纯文本当卡片正文，类别固定 `聊天记录`：**绝不能把原始方括号消息搬过去** —— `[小猫的语音：喂]` 搬到目标聊天会被气泡工厂认成一条真语音、被模型当成自己刚收到的东西；嵌套的分享卡片更会用顶格的「类别：」切坏**外层**卡片的字段边界。正文同样**必须**过 `sanitizeShareFieldText`（每行都以昵称开头，用户把备注名改成「标题」就正好踩上）。图片识别消息的 `content` 本身就是 base64，必须按 `parts` 判掉只留 `[图片]`。回归测试 `tests/forward_chatlog.test.cjs`（主力断言是**往返**：拼出的卡片再 `parseShareMessage` 回来，body 要一字不差） |
 | **主动/定时消息、后台保活、离线模式** | `js/chat/chat_feature_proactive.js`、`chat_feature_offline.js`、`notification_center.js`、`push_node.js` |
 | **Web Push 推送节点** | `js/chat/push_node.js` + `push-worker/` + `sw.js` |
 | **聊天搜索（关键词/日期）** | `js/chat/chat_search.js` + `js/chat/chat_room.js` |
