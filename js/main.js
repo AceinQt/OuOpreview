@@ -423,6 +423,7 @@ window.init = async () => {
         if (typeof setupWalletSystem === 'function') setupWalletSystem();
         if (typeof setupLocationSystem === 'function') setupLocationSystem();
         if (typeof setupShareFeature === 'function') setupShareFeature();
+        if (typeof setupForwardMessagesModal === 'function') setupForwardMessagesModal();
         if (typeof setupTimeSkipSystem === 'function') setupTimeSkipSystem();
         if (typeof setupWorldBookApp === 'function') setupWorldBookApp();
         if (typeof setupFontSettingsApp === 'function') setupFontSettingsApp();
