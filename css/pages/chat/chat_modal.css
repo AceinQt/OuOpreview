@@ -754,8 +754,9 @@
     flex: 0 0 auto;
 }
 
-/* 类别快捷标签和「类别」标签同一行、靠右对齐 —— 省掉独立一行的行高 */
-.share-category-label-row {
+/* 字段名和它右边的小控件同一行、靠右对齐 —— 省掉独立一行的行高。
+   两处在用：「类别」配快捷标签、「内容」配 AI 补全按钮。 */
+.share-label-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -763,7 +764,7 @@
     margin-bottom: 8px;
 }
 
-#send-share-modal .share-category-label-row label {
+#send-share-modal .share-label-row label {
     margin-bottom: 0;
 }
 
@@ -791,12 +792,39 @@
     color: #fff;
 }
 
+/* 「AI 补全」：尺寸和类别快捷标签一致，但配色反过来（强调色虚线描边 + 透明底）。
+   故意不长成一个样 —— 类别标签只是往输入框填个词，这个会掏钱调接口。 */
+.share-ai-btn {
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--accent-color);
+    background: transparent;
+    border: 1px dashed var(--accent-color);
+    border-radius: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.share-ai-btn:hover:not(:disabled),
+.share-ai-btn:active:not(:disabled) {
+    background: var(--accent-color);
+    color: #fff;
+}
+
+/* 补全中：置灰 + 不可点。文案由 JS 换成「补全中…」 */
+.share-ai-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 /* --- 分享：详情弹窗（点卡片弹出，四项看全） --- */
 #share-detail-modal .modal-window {
     display: flex;
     flex-direction: column;
     /* 正文可能很长（帖子全文、文件内容），弹窗自身不许超出屏幕 */
-    max-height: calc(100% - var(--safe-top) - var(--safe-bottom) - 60px);
+    max-height: 80%;
     box-sizing: border-box;
     padding: 15px 20px 20px;
 }
@@ -860,8 +888,10 @@
     text-justify: inter-ideograph;
 }
 
+/* 12px 跟着喵坛正文（forum.css 的 .post-detail-content-body p）走：两边都是
+   AI 写的大段散文，段距不一致很显眼。样式从 forum.css 搬过来那次曾误改成 8px。 */
 .share-detail-text p {
-    margin: 0 0 8px;
+    margin: 0 0 12px;
 }
 
 .share-detail-text>*:last-child {
@@ -872,4 +902,41 @@
 .share-detail-divider {
     margin: 10px 0;
     border-top: 1px dashed var(--dgray-color);
+}
+
+/* --- 转发聊天记录弹窗 --- */
+/* 转发对象列表的滚动框。喵坛那个分享弹窗把这几条写成了内联 style，
+   这边不照抄内联 —— 聊天下的弹窗样式统一收在这个文件里（见 8cb7e45）。
+   列表项本身复用全局的 .binding-list / .binding-list-item（在 forum.css，
+   是通用清单样式，不是论坛专用）。 */
+.forward-target-box {
+    max-height: 250px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 5px;
+    margin-bottom: 15px;
+}
+
+/* 头像 + 昵称一行。喵坛那边靠内联 style 撑，这里给个类名 */
+.forward-target-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.forward-target-label img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.forward-target-empty {
+    color: #888;
+    padding: 12px 5px;
+    font-size: 14px;
 }

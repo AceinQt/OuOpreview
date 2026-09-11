@@ -1538,6 +1538,21 @@
     display: flex;
 }
 
+/* 删除 / 转发挤在栏子右端。多选栏本身是 space-between（左边"已选择 N 项"、
+   右边操作区），所以两个按钮必须包在一层里，否则会被拉到两端去。 */
+.multi-select-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.multi-select-actions .btn {
+    padding: 8px 14px;
+    margin: 0;
+    white-space: nowrap;
+}
+
 #chat-room-header-select,
 #chat-room-header-default {
     /* 保持原有的左右和底部内边距 */
@@ -1819,40 +1834,47 @@
    发的、AI 自己发的都走同一套。改名要连着 chat_bubble_factory.js 和用户可能
    写过的自定义 CSS 一起动，不值当，先留着。
    ★ 标题/正文的省略号靠下面的 -webkit-line-clamp —— JS 侧不要再截字符串，
-     消息里存的是全文，截了就点不开完整详情了。 */
+     消息里存的是全文，截了就点不开完整详情了。
+   ★ 外观刻意跟普通气泡（.message-bubble）看齐：不描边、不投影。原先有
+     1px 描边 + 投影，夹在一串没描边的气泡里像贴了张便利贴。
+   ★ margin 必须是 0：头像和气泡的间距由 .message-bubble-row 的 gap:8px 统一发，
+     这里以前写 margin:0 8px，叠上去变成 16px，比左右的普通气泡多一截，
+     左边缘也对不齐。别加回来。 */
 .forum-share-card {
     width: 250px;
     /* 卡片宽度 */
     background-color: #ffffff;
     border-radius: var(--border-radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     padding: 12px 15px;
     cursor: pointer;
-    border: 1px solid #f0f0f0;
-    margin: 0 8px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    margin: 0;
+    transition: transform 0.2s ease;
 }
 
+/* 只留一点抬起当"可点"的暗示（卡片是能点开详情弹窗的），投影不要 */
 .forum-share-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
 
+/* 页头（图标 + 类别）连同底下那道横线一起走主题色，跟点开后的详情弹窗对齐
+   —— chat_modal.css 里 .share-detail-header 的 border-bottom 和
+   .share-detail-category 的文字色都是 var(--accent-color)，两处要一起改。 */
 .forum-share-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
-    color: #888;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #f5f5f5;
+    font-size: 12px;
+    color: var(--accent-color);
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--accent-color);
 }
 
 .forum-share-header svg {
     width: 18px;
     height: 18px;
-    fill: #aaa;
+    /* 跟着上面的 color 走，别再写死颜色 */
+    fill: currentColor;
     flex-shrink: 0;
 }
 
