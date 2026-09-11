@@ -350,12 +350,18 @@ function formatBytes(bytes, decimals = 2) {
 
 // 存储分布环形图：手写 SVG，不依赖 echarts。
 // 背景：之前为这个单一饼图常驻引入 echarts 全量包（1.03 MB），代价太大。
-// 它只用了「环形 + 分段配色 + 悬浮 tooltip」这一档，用 <circle> 的
-// stroke-dasharray/dashoffset 拼环即可，逻辑量不到 60 行。
+// 它只用了「环形 + 分段配色 + 悬浮 tooltip」这一档，手写完全够用。
+// 目标是换实现但用户看不出区别，所以尺寸和角度都照着被替掉的那份 echarts
+// 配置调：radius:['60%','85%'] → 内径 48 / 外径 68，startAngle 90° → 从 12 点
+// 顺时针起，borderWidth:0 → 分段之间不留缝，emphasis → hover 外扩 5px。
+//
+// ★ 用 <path> 算几何扇区（describeArc），不是 <circle> + stroke-dasharray。
+//   dasharray 那版写过又废了，别看它短就改回去：环厚度只能靠 stroke-width，
+//   内外径没法各自控制，hover 放大时内边缘跟着往外退、把中间的圆孔啃掉一圈，
+//   看着像"从中心放大"而不是向外鼓。现在内径焊死、hover 只推外径，圆孔不动。
+//
 // 替换约定：外部调用方仍走 renderStorageChart(container, info)，signature 不变。
 // ★ 顺序/配色仍统一走 dataStorage.orderedEntries()，与右侧详情列表共用一份。
-// 存储分布环形图：手写 SVG，不依赖 echarts。
-// 存储分布环形图：SVG 几何扇形，完美还原 ECharts。
 let myStorageChart = null;
 function renderStorageChart(container, info) {
     if (!container) return;
@@ -367,14 +373,14 @@ function renderStorageChart(container, info) {
         return;
     }
 
-    container.innerHTML = ''; 
+    container.innerHTML = '';
 
-    // --- 几何常量设置 ---
-    const W = 160, H = 160;          
-    const cx = 80, cy = 80;          
-    const INNER_R = 48;       // 固定的内圈半径 (和 echarts 一样完美对齐)
-    const OUTER_R = 68;       // 正常的外圈半径
-    const HOVER_OUTER_R = 73; // 选中时外圈扩张 5px，内圈不动！
+    // --- 几何常量：动之前先看上面「照着 echarts 配置调」那段 ---
+    const W = 160, H = 160;   // viewBox 尺寸，用正方形（宽向不被 letterbox 压扁）
+    const cx = 80, cy = 80;   // 圆心
+    const INNER_R = 48;       // 内径焊死：hover 时只动外径，中间圆孔不许跟着变
+    const OUTER_R = 68;       // 外径（48/68 对应旧 echarts 的 radius:['60%','85%']）
+    const HOVER_OUTER_R = 73; // hover 外扩 5px，对齐 echarts emphasis 默认幅度
 
     const svgNS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(svgNS, 'svg');
