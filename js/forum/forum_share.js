@@ -73,49 +73,20 @@
                         shareExtra = modal.dataset.postRichContext || "";
                     }
 
-                    // 和 + 号面板手动分享、AI 自己发的分享共用一套格式，
-                    // 构建函数在 js/chat/chat_feature_share.js
-                    const buildShareMessage = (senderName) => {
-                        const messageContent = (typeof buildShareMessageContent === 'function')
-                            ? buildShareMessageContent(senderName, {
-                                title: postTitle,
-                                category: (typeof SHARE_FORUM_CATEGORY !== 'undefined')
-                                    ? SHARE_FORUM_CATEGORY : '来自喵坛的分享',
-                                body: shareBody,
-                                extra: shareExtra,
-                            })
-                            : `[${senderName}的分享：\n标题：${postTitle}\n类别：来自喵坛的分享\n内容：${shareBody}\n附加信息：${shareExtra}]`;
-                        return {
-                            id: `msg_${Date.now()}_${Math.random()}`,
-                            role: 'user',
-                            content: messageContent,
-                            parts: [{ type: 'text', text: messageContent }],
-                            timestamp: Date.now()
-                        };
-                    };
-
-                    selectedCharIds.forEach(charId => {
-                        const character = db.characters.find(c => c.id === charId);
-                        if (character) {
-                            const message = buildShareMessage(character.myName);
-                            character.history.push(message);
-                            saveSingleChat(charId, 'private');
-                            saveMessageToDB(message, charId, 'private');
-                        }
+                    // 和 + 号面板手动分享、AI 自己发、转发聊天记录共用一套格式和
+                    // 投递口径。构建/投递都在 js/chat/chat_feature_share.js ——
+                    // 这里别再写一遍循环，两份迟早分叉（发送者昵称取哪个字段、
+                    // 群聊要不要补 senderId 这类事）。
+                    await deliverShareToChats({
+                        charIds: selectedCharIds,
+                        groupIds: selectedGroupIds,
+                    }, {
+                        title: postTitle,
+                        category: (typeof SHARE_FORUM_CATEGORY !== 'undefined')
+                            ? SHARE_FORUM_CATEGORY : '来自喵坛的分享',
+                        body: shareBody,
+                        extra: shareExtra,
                     });
-
-                    selectedGroupIds.forEach(groupId => {
-                        const group = db.groups.find(g => g.id === groupId);
-                        if (group) {
-                            const message = buildShareMessage(group.me ? group.me.realName : '我');
-                            message.senderId = 'user_me'; // 群聊消息需要标记发送者
-                            if (!group.history) group.history = [];
-                            group.history.push(message);
-                            saveSingleChat(groupId, 'group');
-                            saveMessageToDB(message, groupId, 'group');
-                        }
-                    });
-
 
                     try { if (typeof renderChatList === 'function') renderChatList(); } catch (e) { }
 
