@@ -939,6 +939,12 @@
 /* 调整搜索框样式 */
 .forum-top-search-bar input {
     flex: 1;
+    /* ★ min-width:0 不能删。flex 子项的 min-width 默认是 auto，对 <input> 会解析成
+       它自己的固有最小宽度（由 size 属性算，默认 20 个字符，实测 ~224px）。
+       窄屏（320px 一类）上可用空间只有 ~200px，输入框拒绝再缩 → 整行撑出容器，
+       把搜索键和发帖键顶到屏幕外。这是「我这儿正常、别人那儿按钮不见了」的原因：
+       屏幕更窄或系统字号更大就会触发。改宽度/字号时别把这行带走。 */
+    min-width: 0;
     height: 36px;
     border: 1px solid rgba(168, 212, 255, 0.6);
     background-color: #ffffff;
