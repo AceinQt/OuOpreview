@@ -118,7 +118,8 @@ const chatRoomScreen = document.getElementById('chat-room-screen'),
                 settingsForm = document.getElementById('chat-settings-form'),
                 multiSelectBar = document.getElementById('multi-select-bar'),
                 selectCount = document.getElementById('select-count'),
-                deleteSelectedBtn = document.getElementById('delete-selected-btn');
+                deleteSelectedBtn = document.getElementById('delete-selected-btn'),
+                forwardSelectedBtn = document.getElementById('forward-selected-btn');
 
 const regenerateBtn = document.getElementById('regenerate-btn');
 
@@ -441,6 +442,10 @@ let isTouchLongPress = false; // 用于标记是否是由触摸触发的长按
 
     cancelMultiSelectBtn.addEventListener('click', exitMultiSelectMode);
     deleteSelectedBtn.addEventListener('click', deleteSelectedMessages);
+    // 转发的实现在 js/chat/chat_feature_share.js（它产出的是一张分享卡片）
+    if (forwardSelectedBtn && typeof openForwardMessagesModal === 'function') {
+        forwardSelectedBtn.addEventListener('click', openForwardMessagesModal);
+    }
 
     document.getElementById('cancel-reply-btn').addEventListener('click', cancelQuoteReply);
     initCallFeature();
