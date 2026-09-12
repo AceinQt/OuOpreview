@@ -771,7 +771,7 @@ async function importJsonlStream(byteStream, onProgress) {
 
     // 兜底补全（与 lazyImportBackupData 一致）
     if (!db.pomodoroTasks) db.pomodoroTasks = [];
-    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: './png/avatar_default.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
     if (typeof defaultWidgetSettings !== 'undefined') {
         if (!db.homeWidgetSettings) {
             db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
@@ -1258,7 +1258,7 @@ async function lazyImportBackupData(jsonString) {
 
     // 12) 兜底补全（与原逻辑一致）
     if (!db.pomodoroTasks) db.pomodoroTasks = [];
-    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+    if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: './png/avatar_default.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
     if (typeof defaultWidgetSettings !== 'undefined') {
         if (!db.homeWidgetSettings) {
             db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
@@ -1475,7 +1475,7 @@ if (typeof dexieDB !== 'undefined') {
 
         // 兜底补全
         if (!db.pomodoroTasks) db.pomodoroTasks =[];
-        if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
+        if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: './png/avatar_default.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
         if (typeof defaultWidgetSettings !== 'undefined') {
     if (!db.homeWidgetSettings) {
         db.homeWidgetSettings = JSON.parse(JSON.stringify(defaultWidgetSettings));
