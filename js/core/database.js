@@ -50,7 +50,7 @@ window.db = {
     peekData: {}, 
 
     // --- 论坛元数据 ---
-    forumUserIdentity: { nickname: '新用户', avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '', boundPersonaId: null },
+    forumUserIdentity: { nickname: '新用户', avatar: './png/avatar_default.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '', boundPersonaId: null },
     forumBindings: { worldBookIds:[], charIds: [], groupIds: [], userPersonaIds:[], useChatHistory: false, historyLimit: 50 },
     watchingPostIds: [],
     favoritePostIds:[],
@@ -114,7 +114,7 @@ window.db = {
 
     // --- 基础设置 ---
     apiSettings: {},
-    wallpaper: 'https://i.postimg.cc/W4Z9R9x4/ins-1.jpg',
+    wallpaper: './png/wallpaper_default.jpg',
     homeScreenMode: 'day',
     fontUrl: '',
     customIcons: {},
@@ -125,7 +125,7 @@ window.db = {
     homeSignature: '编辑个性签名...',
     pomodoroTasks:[],
     pomodoroSettings: { boundCharId: null, userPersona: '', focusBackground: '', taskCardBackground: '', encouragementMinutes: 25, pokeLimit: 5, globalWorldBookIds:[] },
-    insWidgetSettings: { avatar1: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg', bubble1: 'love u.', avatar2: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg', bubble2: 'miss u.' },
+    insWidgetSettings: { avatar1: './png/avatar_default.jpg', bubble1: 'love u.', avatar2: './png/avatar_default_me.jpg', bubble2: 'miss u.' },
     homeWidgetSettings: typeof defaultWidgetSettings !== 'undefined' ? defaultWidgetSettings : {},
 
     // ★ 学习模块独立数组（存大量数据，放独立 Dexie 表）

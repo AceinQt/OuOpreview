@@ -100,7 +100,7 @@ function switchScreen(targetId) {
                     avatarEl.style.display = 'block';
                     nameEl.style.display = 'block';
                     messageEl.style.textAlign = 'left';
-                    const avatarUrl = notification.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                    const avatarUrl = notification.avatar || './png/avatar_default.jpg';
                     // 就地替换时头像多半没变，同一个 URL 别重新赋值，免得闪一下
                     if (avatarEl.getAttribute('src') !== avatarUrl) avatarEl.src = avatarUrl;
                     nameEl.textContent = notification.name;
