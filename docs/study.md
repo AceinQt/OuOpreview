@@ -29,7 +29,7 @@ pomodoro.js（独立，main.js 直接 setupPomodoroApp()，与 StudyModule 无�
 | **study_db.js** (284) | 数据层：`saveStudyBook`/`updateStudyBook`/`bulkSaveBankQuestions`/`saveStudyExam`/`saveExamRecord` 等 CRUD，全部 async；删书级联清理 |
 | **study_home.js** (166) | 首页：昵称/问候语 + 任务 tab（全部/专注/测试）+ 卡片 `_renderFocusCard`/`_renderTestCard`；`studyRenderHome()` |
 | **study_sidebar.js** (106) | 设置侧栏：填值+绑定（昵称/文字 API/向量 API 预设 select）；`studyInitSidebar()`；写 `studySettings` |
-| **study_bookshelf.js** (1447) | 书架+阅读器+书籍信息：封面压缩、章节正则、`_splitPages`/`_domSplitPages` 分页、目录 `_buildToc`、书签、续读卡、导入弹窗；入口 `studyRenderBookshelf`/`studyOpenReader`/`studyOpenBookInfo` |
+| **study_bookshelf.js** (1447) | 书架+阅读器+书籍信息：封面压缩、章节正则、`_splitPages`/`_domSplitPages` 分页、目录 `_buildToc`、书签、续读卡、导入弹窗；入口 `studyRenderBookshelf`/`studyOpenReader`/`studyOpenBookInfo`。**导入支持 `.txt` / `.docx`（docx 走 mammoth），编码可选 UTF-8 / GBK / Big5（TextDecoder），`#imp-file` accept=".txt,.docx"、`#imp-encoding`** |
 | **study_summary.js** (661) | 章节总结（笔记）：`studyOpenBookSummary`/`studyRenderBookSummaryScreen`，按章节调 AI 生成 `memorySummaries` |
 | **study_coread.js** (905) | 共读悬浮球：`studyEnterCoread`/`studyExitCoread`/`_coreadCharReply`；按书存于 `studySettings.coread[bookId]` |
 | **study_test.js** (1669) | 考卷 CRUD/答题/交卷/结果/AI 批改：`studyRenderTest`/`_openExam`/`_submitCurrentQuestion`/`_handInExam`/`_runAnalysis`；入口 `studyInitTest` |

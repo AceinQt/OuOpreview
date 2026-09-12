@@ -27,7 +27,7 @@ chat_room.js(聊天室主控)────────┤ ← 渲染游标 _rende
 
 | 文件 | 职责 / 关键函数 |
 |---|---|
-| **chat_room.js** (1879) | 聊天室主控。`setupChatRoom()` / `openChatRoom(chatId,type)` / `renderMessages()` / `loadOlderFromDB`/`loadNewerMessages` / `formatSmartTime` / `processTimePerception`。维护渲染游标。**改聊天 UI/分页/时序逻辑主要在此** |
+| **chat_room.js** (1922) | 聊天室主控。`setupChatRoom()` / `openChatRoom(chatId,type)` / `renderMessages()` / `loadOlderFromDB`/`loadNewerMessages` / `formatSmartTime` / `processTimePerception`。维护渲染游标。另含 **"+"扩展面板** `setupChatExpansionPanel()`（`#chat-expansion-grid`，8 项：记忆档案 / 转发分享 / 剧情旁白 / 线下模式 / 后台消息 / 发送位置 / 聊天搜索 / 批量删除）与 `syncChatExpansionActiveState()`（每次开面板/进聊天室对齐"线下模式/后台消息"高亮态）。**改聊天 UI/分页/时序逻辑主要在此** |
 | **chat_list.js** (876) | 会话列表 + 联系人。`setupChatListScreen()` / `setupAddCharModal()` / `renderContacts`/`renderCharacters`。写 `characters/groups/userPersonas` |
 | **chat_bubble_factory.js** (787) | 气泡 DOM 工厂。`createMessageBubbleElement(message)`（时间分割/撤回/引用/贴纸/语音/图片卡） |
 | **bubble_css_preset.js** (1210) | 气泡主题/CSS 预设与沙盒预览。`setupBubblePresets()` 等；被 chat_settings 调用 |
@@ -46,9 +46,9 @@ chat_room.js(聊天室主控)────────┤ ← 渲染游标 _rende
 | **proactive_prompt.js** (146) | 主动消息专用 prompt：`generateProactivePrivatePrompt`/`generateProactiveGroupPrompt` |
 | **chat_weather_context.js** (335) | 天气注入 + 设置对话框。`getWeatherPromptContext(chat)` / `openWeatherSettingDialog` |
 | **chat_feature_sticker.js** (673) | 表情包面板/分类/管理。`setupStickerSystem()`。写 `myStickers` |
-| **chat_feature_basic.js** (948) | "+"面板杂项：语音文字消息、照片/视频描述、转账、礼物、位置、时间跳过、图片识别(vision)、图片转文字。多个 `setupXxxSystem` + `window.convertImageMessageToText` |
+| **chat_feature_basic.js** (894) | 富媒体杂项：语音文字消息、照片/视频描述、转账、位置、剧情旁白（原"时间跳过"）、图片识别(vision)、图片转文字。`多个 setupXxxSystem` + `window.convertImageMessageToText`。**入口分散在底部 sticker bar（`#voice-message-btn`/`#photo-video-btn`/`#wallet-btn`/`#image-recognition-btn`）与 "+"面板（"发送位置"）；原「赠送礼物」已被 "+"面板的「转发分享」取代** |
 | **chat_feature_offline.js** (161) | 线下模式（仅私聊）。`applyOfflineNarrationCss` / `updateOfflineModeUI`（禁 sticker bar 按钮）/ `isOfflineModeActive`（数据层判断，"+"面板置灰与点击拦截用） |
-| **chat_feature_proactive.js** (1463) | 主动/定时消息引擎 + 后台保活音频。`openProactiveMessagingSettings` / `pushProactiveMessage` / `checkAndDeliverProactiveMessages` / `triggerIdleProactiveGeneration` / `window.ensureBgAudioUnlocked` |
+| **chat_feature_proactive.js** (1437) | 主动/定时消息引擎（**UI 里叫「后台消息」，入口在 "+"面板**）+ 后台保活音频。`openProactiveMessagingSettings` / `pushProactiveMessage` / `checkAndDeliverProactiveMessages` / `triggerIdleProactiveGeneration` / `window.ensureBgAudioUnlocked`。模式：随机 / 固定(timer) / 主动(fixed) / 免打扰 |
 | **chat_feature_call.js** (1081) | 语音/视频通话。`startCall` / `endCall` / `showIncomingCall` / `recoverInterruptedCall` / `openCallHistory` |
 | **notification_center.js** | IIFE：`window.NotifyCenter`（`openChatFromNotification`/`buildPushPayload`） |
 | **push_node.js** (895) | IIFE：`window.PushNode`（CF Worker Web Push，`addTask`/`cancelChat`/`subscribe`） |
@@ -72,7 +72,7 @@ chat_room.js(聊天室主控)────────┤ ← 渲染游标 _rende
 ### 富媒体归属
 - **图片**：image_store(字节缓存) → image_service(生成/归档) → image_settings(绑定UI)；气泡渲染在 bubble_factory；vision 识图/图片转文字在 feature_basic；API 在 `api/image_generation_api.js` + `github_repo_api.js`。聊天设了**参考图**（`chat.imageReference`）时 API 层自动改走对话式生图：`/images/generations` 请求体里没有放图片的位置，参考图只能走 `/chat/completions`，且仅对多模态模型（Nano Banana / Gemini 系）有效。两种图片气泡的**右下角动作键统一**：`.pv-card` 放生图键 `.pv-card-generate`，真实图片 `.image-bubble` 放转文字键 `.image-ocr-btn`（都在 bubble_factory 里建；长按菜单里已经没有「转文字」了）。
 - **语音**：voice_store → voice_service(合成调度/TTS/云端归档) → voice_player(DOM)；凭据和服务商差异在 `api/tts_api.js`（豆包 / MiniMax，**Key 随音色预设走**，一条预设一把）。
-- **贴纸**：feature_sticker（`myStickers` 表）。**通话**：feature_call。**转账/礼物/位置/时间跳过**：feature_basic。
+- **贴纸**：feature_sticker（`myStickers` 表，UI 名"我的表情"，可添加/管理/批量导入/分类/关联）。**通话**：feature_call。**转账/位置/剧情旁白(原时间跳过)/语音文字/照片视频/识图**：feature_basic（入口在底部 sticker bar 与 "+"面板；原「赠送礼物」已并入 "+"面板的「转发分享」）。
 
 ## 持久化
 Dexie `QChatDB_ee` v16。热数据 `loadData()` 读进 `window.db`；messages 大表走 `core/lazy_load.js`（每会话最近 1500 条）。localStorage 仅少量开关（`last_proactive_run` 等）。

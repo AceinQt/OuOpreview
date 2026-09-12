@@ -3,7 +3,7 @@
 //       从而能控制根页面（否则 navigator.serviceWorker.ready 会永久挂起），
 //       并让通知点击、图标等相对路径都从根目录解析。
 
-const CACHE_NAME = 'ouo-cache-Q2.0.16';
+const CACHE_NAME = 'ouo-cache-Q2.0.20';
 // 三段式：前两位是大版本，第三位是测试次数。
 // 【每次改代码都要把第三位 +1】，不是攒到部署时才动 —— 不升的话 SW 会端出旧缓存，
 // 改动到不了手机上，看到的还是旧代码。
@@ -47,7 +47,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // 非同源请求（postimg、外部字体等）直接放行，不走缓存
+    // 非同源请求（用户数据里手填的外链图、外部字体等）直接放行，不走缓存。
+    // ★ 内置图片曾经全放在 postimg 图床上，正是走到这里被放行、一张都不进缓存，
+    //   网络一抖就整片裂图 —— 现已全部落到 png/ 下，改走下面的「图片缓存优先」。
     if (url.origin !== location.origin) {
         return;
     }

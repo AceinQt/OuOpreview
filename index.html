@@ -15,7 +15,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="./icon/icon_cat_apple.jpeg">
 
-    <!-- 新增：破解图床防盗链（极其重要！因为你的代码里用了 postimg.cc） -->
+    <!-- 不发 Referer：内置图片已全部本地化到 png/，这条不再是为它们准备的，
+         但用户数据里仍可能有手填的外链（角色头像、表情包、壁纸），部分图床会按
+         Referer 做防盗链。留着，删掉会让那些外链变成裂图。 -->
     <meta name="referrer" content="no-referrer" />
 
     <!-- 第三方库：一律本地引用，不要改回 CDN 外链。
@@ -3520,7 +3522,7 @@
             </header>
             <main class="content">
                 <div class="steps-header">
-                    <img src="https://i.postimg.cc/Y96LPskq/o-o-2.jpg" alt="Char Avatar" class="steps-header-avatar"
+                    <img src="./png/avatar_default.jpg" alt="Char Avatar" class="steps-header-avatar"
                         id="steps-char-avatar">
                     <span class="steps-header-name" id="steps-char-name">Char</span>
                 </div>
@@ -3798,7 +3800,7 @@
             <div class="me-avatar-wrapper-left">
                 <div class="me-avatar-container" id="me-avatar-trigger">
                     <div class="me-avatar-preview">
-                        <img id="me-avatar-img" src="https://i.postimg.cc/Y96LPskq/o-o-2.jpg">
+                        <img id="me-avatar-img" src="./png/avatar_default.jpg">
                     </div>
                     <div class="me-avatar-overlay">
                         <svg viewBox="0 0 24 24"><path fill="#fff" d="M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z" /></svg>
@@ -5928,7 +5930,7 @@
                                 </svg>
                             </button>
                         </div>
-                        <img src="https://i.postimg.cc/Y96LPskq/o-o-2.jpg" class="focus-avatar" alt="avatar">
+                        <img src="./png/avatar_default.jpg" class="focus-avatar" alt="avatar">
                         <button class="control-btn" id="pomodoro-giveup-btn" title="放弃">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -7083,7 +7085,7 @@
                 
                 <!-- 新增：头像预览区域 -->
                 <div style="text-align: center; margin-bottom: 15px;">
-                    <img id="peek-unlock-avatar-preview" src="https://i.postimg.cc/SNwL1XwR/chan-11.png" alt="预览">
+                    <img id="peek-unlock-avatar-preview" src="./png/peek_unlock_avatar.png" alt="预览">
                 </div>
 
                 <div class="form-group">

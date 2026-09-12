@@ -46,4 +46,6 @@
 - 入口：聊天侧边栏 `#sidebar-peek-btn` 或角色页 `#peek-btn` → `window.openPeekScreen(charId)` → 确认弹窗 → `setupPeekFeature()` 确认回调：设 `activePeekCharId`、初始化 `db.peekData[charId]`、指向 `window.peekContentCache` → `renderPeekScreen()` + `switchScreen('peek-screen')`。
 - 初始化：`main.js:401` `setupPeekFeature()`。设置存 `character.peekScreenSettings`。
 - 数据：`peekData`（`&charId`）。
+- **★ 持久化（重要，勿再写成"临时数据"）**：所有 App 内容经 `savePeekData(charId)` 写入 Dexie 表 **`peekData`**（主键 `&charId`，值 `{charId, data}`，`js/core/database.js:859-863`）；生成、删除、推演后都会落库。**离开/重进偷看页不会清空**。全量备份（JSONL `_type:'peek'`，`js/settings/backup_data.js:516`）、单项导出（`partialData.peekData`，同文件 `:215`）与导入（`case 'peek'`，`:713`）都包含它。
+- **偷看页自定义**：`#peek-wallpaper-modal`（"偷看"页面自定义）= API 预设 / 关联聊天记录条数(1-500) / 页面壁纸 / 9 个 App 图标；`#peek-unlock-settings-modal` = Unlock 小号头像、昵称、ID。渲染见 `peek_core.js` 的 `renderPeekSettings()` 一带。
 - 命名空间：`window.PeekPager`/`PeekDeleteManager`/`peekContentCache`/`activePeekCharId`/`openPeekScreen`/`savePeekData`；`generatingPeekApps` Set 防重复生成。

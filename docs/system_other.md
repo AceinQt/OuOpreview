@@ -31,8 +31,8 @@
 | **data_storage.js** (603) | 存储分析页：按 10 类统计 Dexie 占用并渲染图表。顺序/配色/名称三张表由 `dataStorage.categoryOrder` 统一，饼图与详情列表共用 `orderedEntries()` —— **新增分类必须登记进 `categoryOrder`**。顺序按导出关系排（系统设置在首；角色/记忆/角色手机三项一起导出故相邻；本地媒体不导出排末）；配色沿这个顺序做深→浅单色蓝渐变，几个大项在顺序上已被拉开、自然落在渐变的不同段位。系统设置直接遍历 `globalSettingKeys` 白名单统计，加新设置项自动计入 |
 | **customize.js** (518) | 自定义页：应用图标替换、首页小组件编辑、全局 CSS 及预设管理(`applyGlobalCss`) |
 | **wallpaper.js** (85) | 壁纸上传（压缩存 `db.wallpaper`）+ 首页状态栏/导航栏取色 |
-| **update_log.js** (285) | 硬编码版本号(Q.1.8)与更新日志、`checkForUpdates` |
-| **tutorial.js** (38) | 教程页：手风琴 + 教程图片列表 |
+| **update_log.js** (120) | 硬编码 `appVersion = "Q.2.0"` + `updateLog` 数组。**只保留最新一版**，发正式版时替换那一条、不往下堆历史（旧条目描述的操作方式会随改版失效，留着误导人）。`renderUpdateLog()` 渲染成教程页的「**版本更新内容**」折叠条、`showUpdateModal()`、`checkForUpdates()`（比对 localStorage `lastSeenVersion`）。**只在发正式版时改**，开发途中动它会给用户弹更新日志弹窗 |
+| **tutorial.js** (202) | 教程页：手风琴（点 `.tutorial-header` 展开）。`usageModules` = 面向用户的**纯文字**使用说明（`写在最前` + 8 个模块：主页与基本操作 / 聊天 / 角色与记忆 / 偷看手机 / ToDouo 学习 / 喵坛论坛 / 传说之旅 / 世界书与设置），block 形如 `{h}/{p}/{ul}/{tip}`。`renderTutorialContent()` 渲染顺序 = 写在最前 → `renderUpdateLog()` → 其余模块。**已无图片教程**（原 `png/tutorial_*.jpg` 已删）。★ **更新日志只留最新一版后，这里是「功能怎么用」的唯一出处 —— 改功能就同步改对应模块，不用等发版** |
 | **font_settings.js** (41) | 全局字体 URL 设置/恢复默认(`db.fontUrl`) |
 | **safe_toggle.js** (50) | 顶部/底部安全区开关（写 CSS 变量 `--safe-top/--safe-bottom`） |
 | **screen_adapt.js** (40) | 屏幕自适应：按 360 基准改写 viewport meta 缩放 |
