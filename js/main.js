@@ -223,12 +223,10 @@ const pageActions = {
 function navigateTo(targetId) {
     if (!targetId) return;
 
-    // 开发中的页面提示
-    if (['screen', 'diary-screen', 'piggy-bank-screen'].includes(targetId)) {
-        showToast('该应用正在开发中，敬请期待！');
-        return;
-    }
-    
+    // 这里原先有个「该应用正在开发中」的拦截，挡的是 diary-screen / piggy-bank-screen
+    // （日记本 / 存钱罐）和一个空占位 'screen'。这三个目标在 index.html 里都没有对应的
+    // screen 元素，桌面上也没有能点出它们的入口，属于永远走不到的分支，已随图标一起删掉。
+
 if (targetId === 'chat-list-screen') {
     try {
         currentChatId = null;
