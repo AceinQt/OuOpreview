@@ -164,6 +164,13 @@ async function applyAwaySettings(chat, mode, dailyLimit, frequency, timerInterva
 // 迟到多久以内仍算“到点送达”(据此决定是否弹系统通知):10 分钟
 const ON_TIME_NOTIFY_WINDOW_MS = 10 * 60 * 1000;
 
+// 槽位 ID(noon_0 / noon_1 / afternoon_0)里 '_' 之前那截就是它属于哪个时段。
+// 生成端一次产出两个时段、每个时段可能有多组，所以「同一时段」必须按这个前缀判定，
+// 不能拿整个 slotId 当时段用 —— 那会把"只发一组"误伤成"整轮只发一组"。
+function paWindowOfSlot(slotId) {
+    return String(slotId).toLowerCase().split('_')[0];
+}
+
 // 由时段 ID(如 noon / noon_0)与锚点时间,推出该时段最近一次的 [start, end) 绝对区间。
 // 生成端(paFreezeScheduledAt)与配信端共用同一套换算,保证冻结值与回退值一致。
 function getRecentSlotInterval(slotId, anchorTime) {
@@ -683,9 +690,14 @@ async function checkAndDeliverProactiveMessages() {
                     console.log(`[顺风车] ${chat.realName || chat.name} 迟到补投约 ${Math.round(_lateMs / 60000)} 分钟,按“过去已发送”处理,不弹通知。`);
                 }
 
-                // 【修复 2 续】发成功后销毁其余所有候选，只发一组
+                // 【修复 2 续】发成功后销毁**同一时段**其余候选，同时段只发一组。
+                //   曾经这里是「销毁本轮全部候选」，跨时段一起误伤：App 睡着错过第一个时段，
+                //   用户几小时后打开时两个时段都已过点、双双进了 candidates，
+                //   发掉一组、另一组当场陪葬 → 池子空了 → 5 分钟后又付费生成一轮。
+                //   跨时段的候选留在池里，下一轮轮询(60s)按「过去已发送」静默补投，不弹通知。
+                const winWindow = paWindowOfSlot(candidate.slotId);
                 for (const rest of candidates) {
-                    delete draft.content[rest.slotId];
+                    if (paWindowOfSlot(rest.slotId) === winWindow) delete draft.content[rest.slotId];
                 }
                 break;
 
