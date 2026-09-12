@@ -360,7 +360,7 @@ function setupAddCharModal() {
                 nickname: myNickname,
                 persona: myPersonaVal,
                 status: '在线',
-                avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'
+                avatar: './png/avatar_default.jpg'
             };
             
             if(!db.userPersonas) db.userPersonas = [];
@@ -377,14 +377,14 @@ function setupAddCharModal() {
             realName: realName,
             remarkName: remarkName,
             persona: '',
-            avatar: 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg',
+            avatar: './png/avatar_default.jpg',
             
             myName: myRealName,
             myNickname: myNickname,
             myPersona: myPersonaVal,
             boundPersonaId: finalBoundId,
             
-            myAvatar: 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg',
+            myAvatar: './png/avatar_default_me.jpg',
             theme: 'white_blue',
             maxMemory: 10,
             chatBg: '',
@@ -509,7 +509,7 @@ function renderUserPersonas() {
         if (modal) {
             document.getElementById('user-persona-modal-title').textContent = '新建档案';
             document.getElementById('user-persona-form').reset();
-            document.getElementById('user-persona-avatar-preview').src = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+            document.getElementById('user-persona-avatar-preview').src = './png/avatar_default.jpg';
             currentPersonaIdToEdit = null;
             modal.classList.add('visible');
         }

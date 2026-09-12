@@ -877,6 +877,15 @@ const FORWARD_URLISH_REGEX = /^(?:https?:\/\/|data:)/i;
  * 口径贴 chat_search.js 那套（搜索结果也是"引述别处的消息"，同一类场景），
  * 但用户这边用真昵称而不是「我」—— 卡片是给第三个聊天看的，那边的角色
  * 不知道「我」是谁。
+ *
+ * ★ 两边一律取**真名**，不取昵称。转发出去是给第三个聊天（多半是群）看的，
+ *   昵称是"在某个具体聊天里才成立"的称呼：角色的 remarkName 是用户给他起的
+ *   备注，群成员的 groupNickname 是那个群内部的叫法，搬到别处就对不上号了
+ *   （群里叫「阿花」的人，转发到另一个群里没人知道是谁）。真名的对应关系是：
+ *     用户  私聊 chat.myName          群聊 chat.me.realName
+ *     对方  私聊 char.realName        群聊 member.realName
+ *   兜底顺序里 `remarkName` / `chat.name` / `groupNickname` 只是老数据的退路
+ *   （characters 表历史上只存过 remarkName），不是首选。
  */
 function _forwardSenderName(message, chat, chatType) {
     if (message.role === 'user') {
@@ -884,10 +893,10 @@ function _forwardSenderName(message, chat, chatType) {
             ? (chat.myName || '我')
             : ((chat.me && chat.me.realName) || '我');
     }
-    if (chatType === 'private') return chat.remarkName || chat.name || '对方';
+    if (chatType === 'private') return chat.realName || chat.remarkName || chat.name || '对方';
     const member = (typeof findGroupMemberById === 'function')
         ? findGroupMemberById(chat, message.senderId) : null;
-    return (member && member.groupNickname) || '群成员';
+    return (member && (member.realName || member.groupNickname)) || '群成员';
 }
 
 /**
@@ -984,13 +993,17 @@ function buildForwardTranscript(messages, chat, chatType) {
  * 卡片标题：「我和小猫的聊天记录」。
  * 群聊没有"角色昵称"，用群名顶上（「我和摸鱼小队的聊天记录」）。
  * 昵称里的换行要抹掉 —— 标题在消息里只占一行，带换行会把「类别：」挤下去。
+ *
+ * ★ 对方的名字取真名，跟正文里的署名（_forwardSenderName）保持一致 ——
+ *   不然标题写「小明和猫猫的聊天记录」、底下每行却署「小猫」，自相矛盾。
+ *   群名不是昵称（它是那个群自己的名字），照旧。
  */
 function buildForwardTitle(chat, chatType) {
     const me = (chatType === 'private')
         ? (chat.myName || '我')
         : ((chat.me && chat.me.realName) || '我');
     const other = (chatType === 'private')
-        ? (chat.remarkName || chat.name || '对方')
+        ? (chat.realName || chat.remarkName || chat.name || '对方')
         : (chat.name || '群聊');
     return `${me}和${other}的聊天记录`.replace(/\s*[\r\n]+\s*/g, ' ');
 }

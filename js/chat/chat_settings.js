@@ -120,7 +120,7 @@ function setupChatSettings() {
                     nickname: oldNick,
                     persona: char.myPersona || '',
                     status: '在线',
-                    avatar: char.myAvatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg'
+                    avatar: char.myAvatar || './png/avatar_default.jpg'
                 };
                 if (!db.userPersonas) db.userPersonas = [];
                 db.userPersonas.push(persona);

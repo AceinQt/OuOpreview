@@ -100,7 +100,7 @@ function getDynamicBubblePreview() {
     const getRow = (isSent, innerHtml) => `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
             <div class="message-bubble-row" ${isSent ? 'style="flex-direction: row-reverse;"' : ''}>
-                <img src="https://i.postimg.cc/${isSent ? 'GtbTnxhP/o-o-1.jpg' : 'Y96LPskq/o-o-2.jpg'}" class="message-avatar avatar">
+                <img src="${isSent ? './png/avatar_default_me.jpg' : './png/avatar_default.jpg'}" class="message-avatar avatar">
                 <div class="message-content-col" ${isSent ? 'style="align-items: flex-end;"' : ''}>
                     ${innerHtml}
                 </div>

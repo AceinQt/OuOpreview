@@ -93,7 +93,7 @@ function setupGroupChatSystem() {
         if (!myRealName) return showToast('请选择群主。');
 
         // 尝试获取绑定的头像，如果没有则用默认图
-        let myAvatar = 'https://i.postimg.cc/GtbTnxhP/o-o-1.jpg';
+        let myAvatar = './png/avatar_default_me.jpg';
         if (boundPersonaId) {
             const p = db.userPersonas.find(up => up.id === boundPersonaId);
             if (p) myAvatar = p.avatar;
@@ -102,7 +102,7 @@ function setupGroupChatSystem() {
         const newGroup = {
             id: `group_${Date.now()}`,
             name: groupName,
-            avatar: 'https://i.postimg.cc/fTLCngk1/image.jpg',
+            avatar: './png/avatar_group_default.jpg',
             me: {
                 realName: myRealName,
                 nickname: myNickname,

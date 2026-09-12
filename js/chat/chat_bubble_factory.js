@@ -2,6 +2,26 @@
 // chat_bubble_factory.js - 专门负责生成聊天气泡的 DOM 元素
 // ==========================================
 
+// ================================================================
+// === isMultiSelectBlockingDetail: 多选模式下拦掉"看详情"的动作 ===
+// ================================================================
+// 多选模式下点气泡只该做一件事：勾选/取消勾选这条消息。但气泡内部有一堆
+// 在**创建时**就绑在元素自己身上的 click（看大图、生图、展开通话记录、
+// 展开撤回原文、分享卡片弹详情……），它们在 target 阶段就跑了，早于
+// chat_room.js 挂在 #message-area 上的委托，所以点一下会"又看详情又勾选"，
+// 或者被 stopPropagation 吞掉、连勾都勾不上。
+//
+// ★ 这里只 return true 表示"别做详情动作"，**不要在这里 stopPropagation**：
+//   要让事件继续冒泡到 #message-area，那边的委托才会把它翻成一次勾选。
+//   带了 stopPropagation 的调用方，必须把这个判断放在 stopPropagation 之前。
+//
+// 判断用 typeof：chat_bubble_factory.js 在 globals.js 之后加载，正常情况
+// 一定拿得到；但它是被人用 typeof 防御式调用的公共函数，别让一个未定义
+// 的全局把整条渲染链路炸掉。
+function isMultiSelectBlockingDetail() {
+    return typeof isInMultiSelectMode !== 'undefined' && isInMultiSelectMode;
+}
+
 function createMessageBubbleElement(message) {
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
     const { role, content, timestamp, id, transferStatus, giftStatus, stickerData, senderId, quote, isWithdrawn, originalContent } = message;
@@ -134,6 +154,8 @@ function createMessageBubbleElement(message) {
         const withdrawnMessageSpan = wrapper.querySelector('.withdrawn-message');
         if (withdrawnMessageSpan) {
             withdrawnMessageSpan.addEventListener('click', () => {
+                // 多选模式下不展开原文，交给 #message-area 的委托去勾选。
+                if (isMultiSelectBlockingDetail()) return;
                 const withdrawnContent = wrapper.querySelector('.withdrawn-content');
                 if (withdrawnContent && withdrawnContent.textContent.trim()) {
                     withdrawnContent.classList.toggle('active');
@@ -194,7 +216,7 @@ function createMessageBubbleElement(message) {
                 avatarUrl = sender.avatar;
                 senderNickname = sender.groupNickname;
             } else {
-                avatarUrl = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                avatarUrl = './png/avatar_default.jpg';
             }
         }
         bubbleTheme = theme.received;
@@ -266,12 +288,14 @@ function createMessageBubbleElement(message) {
         const pokeCount = pomodoroMatch[3];
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'pomodoro-record-card';
-        bubbleElement.innerHTML = `<img src="https://i.postimg.cc/sgdS9khZ/chan-122.png" class="pomodoro-record-icon" alt="pomodoro complete"><div class="pomodoro-record-body"><p class="task-name">${taskName}</p></div>`;
+        bubbleElement.innerHTML = `<img src="./png/card_pomodoro.png" class="pomodoro-record-icon" alt="pomodoro complete"><div class="pomodoro-record-body"><p class="task-name">${taskName}</p></div>`;
         const detailsDiv = document.createElement('div');
         detailsDiv.className = 'pomodoro-record-details';
         detailsDiv.innerHTML = `<p><strong>任务名称:</strong> ${taskName}</p><p><strong>专注时长:</strong> ${duration}</p><p><strong>"戳一戳"次数:</strong> ${pokeCount}</p>`;
         wrapper.appendChild(detailsDiv);
         bubbleElement.addEventListener('click', () => {
+            // 多选模式下不展开专注详情，交给委托去勾选
+            if (isMultiSelectBlockingDetail()) return;
             detailsDiv.classList.toggle('active');
         });
     } else if (unifiedStickerMatch || legacyReceivedStickerMatch) {
@@ -316,7 +340,7 @@ function createMessageBubbleElement(message) {
         } else {
             giftText = isSent ? '您有一份礼物～' : '您有一份礼物～';
         }
-        bubbleElement.innerHTML = `<img src="https://i.postimg.cc/rp0Yg31K/chan-75.png" alt="gift" class="gift-card-icon"><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div>`;
+        bubbleElement.innerHTML = `<img src="./png/card_gift.png" alt="gift" class="gift-card-icon"><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div>`;
         const description = groupGiftMatch ? groupGiftMatch[3].trim() : match[1].trim();
         const descriptionDiv = document.createElement('div');
         descriptionDiv.className = 'gift-card-description';
@@ -356,6 +380,8 @@ function createMessageBubbleElement(message) {
 
         // 卡片一直有 cursor:pointer 和 hover 抬起，但过去没绑过 click，点了没反应
         bubbleElement.addEventListener('click', () => {
+            // 多选模式下不弹详情，交给 #message-area 的委托去勾选这张卡片
+            if (isMultiSelectBlockingDetail()) return;
             if (typeof openShareDetailModal === 'function') openShareDetailModal(shareData);
         });
     } else if (voiceMatch) {
@@ -420,7 +446,7 @@ function createMessageBubbleElement(message) {
 
         const overlay = document.createElement('div');
         overlay.className = 'pv-card-image-overlay';
-        overlay.style.backgroundImage = `url("${isSent ? 'https://i.postimg.cc/L8NFrBrW/1752307494497.jpg' : 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg'}")`;
+        overlay.style.backgroundImage = `url("${isSent ? './png/card_photo_sent.jpg' : './png/card_photo_recv.jpg'}")`;
 
         const footer = document.createElement('div');
         footer.className = 'pv-card-footer';
@@ -457,6 +483,9 @@ function createMessageBubbleElement(message) {
         generateButton.hidden = hasImageMedia && (!media || livePending || media.state === 'ready');
         generateButton.addEventListener('click', async event => {
             event.preventDefault();
+            // ★ 必须在 stopPropagation 之前判：多选模式下这次点击要留给
+            //   #message-area 的委托去勾选，吞掉事件就勾不上了。
+            if (isMultiSelectBlockingDetail()) return;
             event.stopPropagation();
             if (typeof generateImageForMessage !== 'function') {
                 if (typeof showToast === 'function') showToast('图片生成功能尚未加载');
@@ -487,6 +516,8 @@ function createMessageBubbleElement(message) {
             zoomButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
             zoomButton.addEventListener('click', event => {
                 event.preventDefault();
+                // 多选模式下别开图片查看器，这次点击留给委托去勾选
+                if (isMultiSelectBlockingDetail()) return;
                 event.stopPropagation();
                 const src = overlay.dataset.imageObjectUrl;
                 if (src && typeof openImageViewer === 'function') openImageViewer(message, src);
@@ -606,6 +637,8 @@ function createMessageBubbleElement(message) {
         legacyZoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
         legacyZoom.addEventListener('click', event => {
             event.preventDefault();
+            // 多选模式下别开图片查看器，这次点击留给委托去勾选
+            if (isMultiSelectBlockingDetail()) return;
             event.stopPropagation();
             if (legacyImage.src && typeof openImageViewer === 'function') openImageViewer(message, legacyImage.src);
         });
@@ -625,7 +658,7 @@ function createMessageBubbleElement(message) {
                 event.preventDefault();
                 // 多选模式下不吞事件：交给 chat_room 的委托去勾选这条消息。
                 // 转文字不可逆，误触的代价比"少一次转化"大得多。
-                if (typeof isInMultiSelectMode !== 'undefined' && isInMultiSelectMode) return;
+                if (isMultiSelectBlockingDetail()) return;
                 event.stopPropagation();
                 if (typeof isImageConverting === 'function' && isImageConverting(message.id)) {
                     if (typeof showToast === 'function') showToast('该图片正在转化中');
@@ -808,6 +841,9 @@ function createCollapsedCallBubble(sessionId, sessionMsgs, isSentByUser) {
         <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
     </svg>`;
     expandBtn.addEventListener('click', async (e) => {
+        // 多选模式下别弹"展开通话记录"的确认框（它还会 await，把勾选卡住），
+        // 这次点击留给委托去勾选。放在 stopPropagation 之前。
+        if (isMultiSelectBlockingDetail()) return;
         e.stopPropagation();
         const ok = await AppUI.confirm('展开通话期间的聊天记录？', '通话记录','展开','取消');
         if (ok) expandCallSession(sessionId, wrapper);
