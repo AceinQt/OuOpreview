@@ -841,7 +841,7 @@
 }
 
 .share-detail-category {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--accent-color);
     /* 类别太长别顶飞 X */
     overflow: hidden;
