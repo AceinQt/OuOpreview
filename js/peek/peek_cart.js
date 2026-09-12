@@ -9,7 +9,7 @@ function _buildCartItemHtml(item, isEdit) {
     const isSelected = isEdit && PeekDeleteManager.selectedIds.has(item.id);
     return `
         <li class="cart-item ${isEdit ? 'is-selecting' : ''} ${isSelected ? 'selected' : ''}" data-id="${item.id}">
-            <img src="https://i.postimg.cc/wMbSMvR9/export202509181930036600.png" class="cart-item-image" alt="${item.title}">
+            <img src="./png/peek_cart_item.png" class="cart-item-image" alt="${item.title}">
             <div class="cart-item-details">
                 <h3 class="cart-item-title">${item.title} ${item.isNew ? '<span class="new-badge">new!</span>' : ''}</h3>
                 <p class="cart-item-spec">规格：${item.spec}</p>

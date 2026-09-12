@@ -4,15 +4,15 @@
 // ==========================================
 
 const peekScreenApps = {
-    'messages': { name: '消息', url: 'https://i.postimg.cc/Kvs4tDh5/export202509181826424260.png' },
-    'memos': { name: '备忘录', url: 'https://i.postimg.cc/JzD0xH1C/export202509181829064550.png' },
-    'cart': { name: '购物车', url: 'https://i.postimg.cc/pLwT6VTh/export202509181830143960.png' },
-    'transfer': { name: '中转站', url: 'https://i.postimg.cc/63wQBHCB/export202509181831140230.png' },
-    'browser': { name: '浏览器', url: 'https://i.postimg.cc/SKcsF02Z/export202509181830445980.png' },
-    'drafts': { name: '草稿箱', url: 'https://i.postimg.cc/ZKqC9D2R/export202509181827225860.png' },
-    'album': { name: '相册', url: 'https://i.postimg.cc/qBcdpqNc/export202509221549335970.png' },
-    'steps': { name: '步数', url: 'https://i.postimg.cc/5NndFrq6/export202509181824532800.png' },
-    'unlock': { name: 'unlock！', url: 'https://i.postimg.cc/28zNyYWs/export202509221542593320.png' }
+    'messages': { name: '消息', url: './png/peek_app_messages.png' },
+    'memos': { name: '备忘录', url: './png/peek_app_memos.png' },
+    'cart': { name: '购物车', url: './png/peek_app_cart.png' },
+    'transfer': { name: '中转站', url: './png/peek_app_transfer.png' },
+    'browser': { name: '浏览器', url: './png/peek_app_browser.png' },
+    'drafts': { name: '草稿箱', url: './png/peek_app_drafts.png' },
+    'album': { name: '相册', url: './png/peek_app_album.png' },
+    'steps': { name: '步数', url: './png/peek_app_steps.png' },
+    'unlock': { name: 'unlock！', url: './png/peek_app_unlock.png' }
 };
 
 // ==========================================

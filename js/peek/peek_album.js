@@ -61,7 +61,7 @@ function _buildAlbumPhotoEl(photo, isEdit) {
     photoEl.dataset.description = photo.description;
 
     const img = document.createElement('img');
-    img.src = 'https://i.postimg.cc/1tH6ds9g/1752301200490.jpg';
+    img.src = './png/card_photo_recv.jpg';
     img.alt = "相册照片";
     photoEl.appendChild(img);
 

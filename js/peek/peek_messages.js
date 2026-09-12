@@ -38,7 +38,7 @@ function renderPeekChatList(conversations =[], isAppend = false, resetPage = fal
         li.dataset.name = convo.partnerName;
         li.dataset.id = convo.id;
 
-        const avatarUrl = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+        const avatarUrl = './png/avatar_default.jpg';
         
         // 屏蔽标记图标
         const hiddenIcon = convo.isHidden ? 
@@ -105,7 +105,7 @@ function _buildPeekMessageEl(msg, isEdit) {
     } else {
         const avatar = document.createElement('img');
         avatar.className = 'message-avatar';
-        avatar.src = 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+        avatar.src = './png/avatar_default.jpg';
         bubbleRow.appendChild(avatar);
         bubbleRow.appendChild(bubble);
     }

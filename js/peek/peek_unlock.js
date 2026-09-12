@@ -85,7 +85,7 @@ function renderPeekUnlock(data, isAppend = false, resetPage = false) {
     const bio = data.bio || '';
     const posts = data.posts ||[];
 
-    const fixedAvatar = peekSettings.unlockAvatar || 'https://i.postimg.cc/SNwL1XwR/chan-11.png';
+    const fixedAvatar = peekSettings.unlockAvatar || './png/peek_unlock_avatar.png';
 
     const feed = document.getElementById('unlock-post-feed');
     const isEdit = PeekDeleteManager.isEditMode && PeekDeleteManager.currentAppType === 'unlock';
@@ -412,7 +412,7 @@ function initPeekUnlock() {
             // 数据回显与预览图更新
             const currentAvatar = peekSettings.unlockAvatar || '';
             if(avatarInput) avatarInput.value = currentAvatar;
-            if(avatarPreview) avatarPreview.src = currentAvatar || 'https://i.postimg.cc/SNwL1XwR/chan-11.png';
+            if(avatarPreview) avatarPreview.src = currentAvatar || './png/peek_unlock_avatar.png';
             
             document.getElementById('peek-unlock-fixed-nickname').value = peekSettings.unlockFixedNickname || '';
             document.getElementById('peek-unlock-fixed-handle').value = peekSettings.unlockFixedHandle || '';
@@ -424,7 +424,7 @@ function initPeekUnlock() {
     // 绑定输入框变化实时更新预览图
     if (avatarInput && avatarPreview) {
         avatarInput.addEventListener('input', () => {
-            avatarPreview.src = avatarInput.value.trim() || 'https://i.postimg.cc/SNwL1XwR/chan-11.png';
+            avatarPreview.src = avatarInput.value.trim() || './png/peek_unlock_avatar.png';
         });
     }
 
