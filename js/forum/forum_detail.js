@@ -122,7 +122,7 @@
                 avatarEl.style.backgroundColor = '';
                 let displayAvatar = post.avatar;
                 if (post.isUser || (post.username === myIdentity.nickname && myIdentity.nickname !== '一只喵叽')) {
-                    displayAvatar = myIdentity.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                    displayAvatar = myIdentity.avatar || './png/avatar_default.jpg';
                 }
 
                 if (displayAvatar) {
@@ -156,7 +156,7 @@
 
                         let commentDisplayAvatar = comment.avatar;
                         if (comment.isUser || (comment.username === myIdentity.nickname && myIdentity.nickname !== '一只喵叽')) {
-                            commentDisplayAvatar = myIdentity.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                            commentDisplayAvatar = myIdentity.avatar || './png/avatar_default.jpg';
                         }
 
                         let avatarHtml = '';
@@ -279,7 +279,7 @@
                     let isUserComment = false;
 
                     if (!isAnon) {
-                        commentAvatar = myIdentity.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                        commentAvatar = myIdentity.avatar || './png/avatar_default.jpg';
                         isUserComment = true;
                     }
 

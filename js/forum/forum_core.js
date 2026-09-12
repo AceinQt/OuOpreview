@@ -205,7 +205,7 @@ const scrollableArea = document.querySelector('#forum-screen .forum-content-area
 
                         // 如果不是匿名，标记为本人并保存头像
                         if (!isAnon) {
-                            postAvatar = myIdentity.avatar || 'https://i.postimg.cc/Y96LPskq/o-o-2.jpg';
+                            postAvatar = myIdentity.avatar || './png/avatar_default.jpg';
                             isUserPost = true;
                         }
 
