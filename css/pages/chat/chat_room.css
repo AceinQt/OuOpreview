@@ -1874,7 +1874,7 @@
 .forum-share-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 3px;
     font-size: 13px;
     color: var(--accent-color);
     margin-bottom: 8px;

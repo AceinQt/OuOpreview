@@ -578,7 +578,7 @@
     cursor: not-allowed;
 }
 
-/* 面性图标（礼物）：必须和上面 .expansion-item-icon svg 的 fill 一一对应地盖掉，
+/* 面性图标（如转发分享的箭头）：必须和上面 .expansion-item-icon svg 的 fill 一一对应地盖掉，
    svg 上没写 fill 的子元素（如定位图标的圆圈）靠继承拿到同一个灰 */
 .expansion-item.disabled .expansion-item-icon svg {
     fill: var(--expansion-disabled-icon);
@@ -617,6 +617,22 @@
 #voice-setting-modal input.mb-0,
 #voice-setting-modal select.mb-0 {
     margin-bottom: 0;
+}
+
+/* UC 预设的「一键填入」按钮排。
+   ★ 布局刻意写在 CSS 里而不是 inline style：inline 的 display:flex 会盖住
+     hidden 属性自带的 display:none，切到不支持负面词的服务商时按钮藏不掉
+     （和忙锁那处「!important 压 inline」是同一个坑）。
+   ★ [hidden] 这条也要显式写：它和上面那条 display:flex 特异度同级，
+     光靠浏览器默认样式压不住。 */
+#image-generation-uc-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+#image-generation-uc-presets[hidden] {
+    display: none;
 }
 
 /* 2. 统一小字提示的排版，向右边那张好看的图看齐 */
