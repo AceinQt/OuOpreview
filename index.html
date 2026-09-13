@@ -3603,6 +3603,14 @@
                             d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" />
                     </svg>
                 </button>
+
+                <!-- 长按多选时这条栏子就地换成「取消 + 计数」。
+                     共用同一个容器是为了位置严丝合缝：.forum-top-search-bar 是绝对定位
+                     但没写 top，吃的是静态位置，另起一条绝对定位的栏子对不齐。
+                     显隐全在 CSS 里，见 forum.css 的 body.forum-multi-select-on 那一段。 -->
+                <button class="forum-multi-cancel-btn" id="forum-multi-cancel-btn">取消</button>
+                <span class="forum-multi-count" id="forum-multi-count">已选择 0 个帖子</span>
+                <span class="forum-multi-spacer"></span>
             </div>
 
             <!-- Main 内容区域 -->
@@ -3682,6 +3690,15 @@
                         </svg>
                         <span>世界书</span>
                     </button>
+
+                    <!-- 3. 管理按钮（论坛 API / 批量删帖 / 正文样式） -->
+                    <button class="world-sidebar-btn" data-tab="admin">
+                        <svg viewBox="0 0 24 24">
+                            <path
+                                d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+                        </svg>
+                        <span>管理</span>
+                    </button>
                 </div>
 
                 <div class="world-content-wrapper">
@@ -3692,14 +3709,6 @@
                     <!-- Tab 1: 角色 (默认显示 active) -->
                     <!-- Tab 1: 角色 -->
                     <div id="world-tab-char" class="world-tab-pane active">
-                    <div class="setting-row">
-    <div style="display:flex; flex-direction:column;">
-        <span style="font-size:14px; font-weight:600; color:#333;">论坛功能 API</span>
-    </div>
-    <select id="forum-api-preset-select" class="setting-select" style="max-width:140px; font-size:13px;">
-        <option value="">全局默认</option>
-    </select>
-</div>
                         <div class="setting-row" style="padding-top:0;">
                             <div style="display:flex; flex-direction:column;">
                                 <span style="font-size:14px; font-weight:600; color:#333;">关联聊天记忆</span>
@@ -3736,6 +3745,36 @@
                             <ul id="forum-worldbook-list" class="binding-list">
                                 <!-- JS 填充 -->
                             </ul>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: 管理 (默认隐藏) -->
+                    <div id="world-tab-admin" class="world-tab-pane">
+                        <div class="world-admin-scroll">
+                            <div class="setting-row">
+                                <div style="display:flex; flex-direction:column;">
+                                    <span style="font-size:14px; font-weight:600; color:#333;">论坛功能 API</span>
+                                </div>
+                                <select id="forum-api-preset-select" class="setting-select"
+                                    style="max-width:140px; font-size:13px;">
+                                    <option value="">全局默认</option>
+                                </select>
+                            </div>
+
+                            <div class="setting-row">
+                                <div style="display:flex; flex-direction:column;">
+                                    <span style="font-size:14px; font-weight:600; color:#333;">批量删除帖子</span>
+                                    <span style="font-size:11px; color:#999;">按时间范围清理，删掉不可恢复</span>
+                                </div>
+                                <button id="forum-batch-delete-btn" class="btn btn-danger btn-small"
+                                    style="width:auto; margin:0;">选择范围</button>
+                            </div>
+
+                            <div class="world-section-title" style="margin-top:6px;">帖子正文样式</div>
+                            <textarea id="forum-detail-css-input" class="field-textarea css-editor"
+                                placeholder=".post-detail-content-body{正文}
+.inline-quote{引用}"></textarea>
+                            <p style="font-size:11px; color:#999; margin:6px 0 0;">改完点右上角保存。</p>
                         </div>
                     </div>
                 </div>
@@ -3860,15 +3899,11 @@
                 我的档案
                 <div class="active-bar"></div>
             </div>
-            <div class="me-tab-item" data-tab="css">
-                正文样式
-                <div class="active-bar"></div>
-            </div>
         </div>
 
         <!-- Tab 内容区域 (无卡片背景，直接衔接) -->
         <div class="me-tab-content-container">
-            
+
             <!-- Tab 1: 档案内容 -->
             <div class="me-tab-pane active" id="tab-persona">
                 <div class="field-group">
@@ -3877,18 +3912,10 @@
                     <div class="me-load-btn">
                     <button id="me-load-persona-btn" class="btn btn-secondary">读取预设</button></div>
                 </div>
-                
+
                 <div class="field-group">
                     <label>设定</label>
                     <textarea id="me-persona-input" readonly class="field-textarea" placeholder="暂无设定信息"></textarea>
-                </div>
-            </div>
-
-            <!-- Tab 2: CSS 内容 -->
-            <div class="me-tab-pane" id="tab-css">
-                <div class="field-group">
-                    <textarea id="me-custom-css-input" class="field-textarea css-editor" placeholder=".post-detail-content-body{正文}
-.inline-quote{引用}"></textarea>
                 </div>
             </div>
 </div>
@@ -3947,6 +3974,35 @@
                     <span>我</span>
                 </div>
             </nav>
+
+            <!-- 喵坛长按多选的底部操作条：盖在全局底部导航栏那一格上（同位置同高度）。
+                 它是 .bottom-tab-bar 的兄弟节点，为的是共用同一个绝对定位包含块。
+                 ★ 这里不给 inline 的 display —— switchScreen 会往 .bottom-tab-bar 上写
+                   inline style，多选态是靠 body 上的类 + !important 盖住它的，
+                   自己这条也必须由那个类来开关，否则 inline 优先级会把 CSS 压掉。 -->
+            <div class="forum-multi-action-bar" id="forum-multi-action-bar">
+                <button class="forum-multi-action is-danger" id="forum-multi-delete-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z" />
+                    </svg>
+                    <span>删除</span>
+                </button>
+                <button class="forum-multi-action" id="forum-multi-fav-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z" />
+                    </svg>
+                    <span>收藏</span>
+                </button>
+                <button class="forum-multi-action" id="forum-multi-forward-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" />
+                    </svg>
+                    <span>转发</span>
+                </button>
+            </div>
 
 
         <div id="forum-post-detail-screen" class="screen">
@@ -7339,6 +7395,49 @@
 </div>
 
     <!-- 论坛弹窗 -->
+    <!-- 批量删帖：按时间范围（沿用总结范围弹窗那套 date-input 结构） -->
+    <div id="forum-batch-delete-modal" class="modal-overlay">
+        <div class="modal-window">
+            <h3>批量删除帖子</h3>
+            <div id="forum-del-range" class="form-group">
+                <label>起始时间：</label>
+                <div class="date-input-group">
+                    <input type="number" id="forum-del-start-year" class="date-input-field" placeholder="YYYY"
+                        style="width: 54px;">
+                    <span class="date-label">年</span>
+                    <input type="number" id="forum-del-start-month" class="date-input-field" placeholder="MM" min="1"
+                        max="12">
+                    <span class="date-label">月</span>
+                    <input type="number" id="forum-del-start-day" class="date-input-field" placeholder="DD" min="1"
+                        max="31">
+                    <span class="date-label">日</span>
+                    <input type="number" id="forum-del-start-hour" class="date-input-field" placeholder="HH" min="0"
+                        max="23">
+                    <span class="date-label">时</span>
+                </div>
+                <label>截止时间：</label>
+                <div class="date-input-group">
+                    <input type="number" id="forum-del-end-year" class="date-input-field" placeholder="YYYY"
+                        style="width: 54px;">
+                    <span class="date-label">年</span>
+                    <input type="number" id="forum-del-end-month" class="date-input-field" placeholder="MM" min="1"
+                        max="12">
+                    <span class="date-label">月</span>
+                    <input type="number" id="forum-del-end-day" class="date-input-field" placeholder="DD" min="1"
+                        max="31">
+                    <span class="date-label">日</span>
+                    <input type="number" id="forum-del-end-hour" class="date-input-field" placeholder="HH" min="0"
+                        max="23">
+                    <span class="date-label">时</span>
+                </div>
+                <div id="forum-del-range-result"
+                    style="font-size:12px; color:#888; text-align:center; margin-top:10px; min-height:18px; line-height:1.4;">
+                </div>
+            </div>
+            <button class="btn btn-danger" id="forum-del-confirm-btn" style="width:100%; margin-top:10px;">删除</button>
+        </div>
+    </div>
+
     <!-- 手动发帖弹窗 -->
     <div id="forum-create-post-modal" class="modal-overlay">
         <div class="modal-window">
@@ -7725,7 +7824,9 @@
     <script src="js/forum/forum_detail.js"></script>
     <script src="js/forum/forum_me_page.js"></script>
     <script src="js/forum/forum_bindings.js"></script>
+    <script src="js/forum/forum_admin.js"></script>
     <script src="js/forum/forum_favorites.js"></script>
+    <script src="js/forum/forum_multiselect.js"></script>
     <script src="js/forum/forum_share.js"></script>
     <script src="js/forum/forum_api.js"></script>
     <script src="js/forum/forum_generation.js"></script>
