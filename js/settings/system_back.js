@@ -143,6 +143,14 @@
             return;
         }
 
+        // 喵坛长按多选：同上，返回键先退出多选，页面不动。
+        // 这里不能走 backBtn.click() —— 喵坛主页那个返回键是直接回主屏的
+        if (typeof isForumMultiSelectActive === 'function' && isForumMultiSelectActive()) {
+            exitForumMultiSelectMode();
+            pushEntry();
+            return;
+        }
+
         if (backBtn) { backBtn.click(); return; } // 计数由 wrapper 的 fromPop 分支处理
         if (typeof navigateTo === 'function') navigateTo('home-screen');
     }
