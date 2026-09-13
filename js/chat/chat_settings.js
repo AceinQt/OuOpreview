@@ -255,6 +255,7 @@ function setupChatSettings() {
                 imageAutoGenerate: document.getElementById('setting-chat-image-auto').value === '1',
                 imageContentRule: document.getElementById('setting-chat-image-rule').value || '',
                 imageStylePrompt: document.getElementById('setting-chat-image-style').value || '',
+                imageNegativePrompt: document.getElementById('setting-chat-image-negative').value || '',
                 imageReference: document.getElementById('setting-chat-image-reference').value || ''
             });
             if (!result) return;
@@ -262,6 +263,7 @@ function setupChatSettings() {
             document.getElementById('setting-chat-image-auto').value = result.imageAutoGenerate ? '1' : '0';
             document.getElementById('setting-chat-image-rule').value = result.imageContentRule;
             document.getElementById('setting-chat-image-style').value = result.imageStylePrompt;
+            document.getElementById('setting-chat-image-negative').value = result.imageNegativePrompt;
             document.getElementById('setting-chat-image-reference').value = result.imageReference;
             _refreshChatImageGenerationDisplay();
         });
@@ -465,15 +467,18 @@ function loadSettingsToSidebar() {
                     imageAutoGenerate: !!e.imageAutoGenerate,
                     imageContentRule: e.imageContentRule || '',
                     imageStylePrompt: e.imageStylePrompt || '',
+                    imageNegativePrompt: e.imageNegativePrompt || '',
                     imageReference: e.imageReference || ''
                 };
             imagePresetInput.value = binding.imageApiPresetId;
             imageAutoInput.value = binding.imageAutoGenerate ? '1' : '0';
             const imageRuleInput = document.getElementById('setting-chat-image-rule');
             const imageStyleInput = document.getElementById('setting-chat-image-style');
+            const imageNegativeInput = document.getElementById('setting-chat-image-negative');
             const imageRefInput = document.getElementById('setting-chat-image-reference');
             if (imageRuleInput) imageRuleInput.value = binding.imageContentRule;
             if (imageStyleInput) imageStyleInput.value = binding.imageStylePrompt;
+            if (imageNegativeInput) imageNegativeInput.value = binding.imageNegativePrompt;
             if (imageRefInput) imageRefInput.value = binding.imageReference;
             _refreshChatImageGenerationDisplay();
         }
@@ -586,9 +591,11 @@ async function saveSettingsFromSidebar() {
             e.imageAutoGenerate = imageAutoInput.value === '1';
             const imageRuleInput = document.getElementById('setting-chat-image-rule');
             const imageStyleInput = document.getElementById('setting-chat-image-style');
+            const imageNegativeInput = document.getElementById('setting-chat-image-negative');
             const imageRefInput = document.getElementById('setting-chat-image-reference');
             if (imageRuleInput) e.imageContentRule = imageRuleInput.value || '';
             if (imageStyleInput) e.imageStylePrompt = imageStyleInput.value || '';
+            if (imageNegativeInput) e.imageNegativePrompt = imageNegativeInput.value || '';
             if (imageRefInput) e.imageReference = imageRefInput.value || '';
         }
 

@@ -351,6 +351,10 @@ async function checkAndDeliverProactiveMessages() {
                         const matched = chat.members.find(m => m.realName === sName || m.groupNickname === sName);
                         newMsg.senderId = matched ? matched.id : chat.members[0].id;
                     }
+                    // 双语照片描述：与实时回复路径(chat_ai_service.js)对齐，英文摘到
+                    // imagePromptEn、content 只留中文。主动消息同样会产出照片(见 1238 行示例格式)，
+                    // 漏掉这里就会在通知和气泡里漏出英文
+                    if (typeof stripBilingualImagePrompt === 'function') stripBilingualImagePrompt(newMsg);
                     chat.history.push(newMsg);
                     putMsgs.push(newMsg);
                     if (typeof currentChatId !== 'undefined' && currentChatId === chat.id && typeof addMessageBubble === 'function') {
@@ -663,6 +667,8 @@ async function checkAndDeliverProactiveMessages() {
                         else newMsg.senderId = chat.members[0].id;
                     }
 
+                    // 双语照片描述：与实时回复路径(chat_ai_service.js)对齐，英文摘走、content 只留中文
+                    if (typeof stripBilingualImagePrompt === 'function') stripBilingualImagePrompt(newMsg);
                     chat.history.push(newMsg);
                     msgsToPut.push(newMsg);
                     

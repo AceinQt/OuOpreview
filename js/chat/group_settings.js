@@ -498,6 +498,7 @@ function setupGroupChatSystem() {
                 imageAutoGenerate: document.getElementById('setting-group-image-auto').value === '1',
                 imageContentRule: document.getElementById('setting-group-image-rule').value || '',
                 imageStylePrompt: document.getElementById('setting-group-image-style').value || '',
+                imageNegativePrompt: document.getElementById('setting-group-image-negative').value || '',
                 imageReference: document.getElementById('setting-group-image-reference').value || ''
             });
             if (!result) return;
@@ -505,6 +506,7 @@ function setupGroupChatSystem() {
             document.getElementById('setting-group-image-auto').value = result.imageAutoGenerate ? '1' : '0';
             document.getElementById('setting-group-image-rule').value = result.imageContentRule;
             document.getElementById('setting-group-image-style').value = result.imageStylePrompt;
+            document.getElementById('setting-group-image-negative').value = result.imageNegativePrompt;
             document.getElementById('setting-group-image-reference').value = result.imageReference;
             _refreshGroupImageGenerationDisplay();
         });
@@ -655,15 +657,18 @@ if (groupImagePresetInput && groupImageAutoInput) {
             imageAutoGenerate: !!group.imageAutoGenerate,
             imageContentRule: group.imageContentRule || '',
             imageStylePrompt: group.imageStylePrompt || '',
+            imageNegativePrompt: group.imageNegativePrompt || '',
             imageReference: group.imageReference || ''
         };
     groupImagePresetInput.value = binding.imageApiPresetId;
     groupImageAutoInput.value = binding.imageAutoGenerate ? '1' : '0';
     const groupImageRuleInput = document.getElementById('setting-group-image-rule');
     const groupImageStyleInput = document.getElementById('setting-group-image-style');
+    const groupImageNegativeInput = document.getElementById('setting-group-image-negative');
     const groupImageRefInput = document.getElementById('setting-group-image-reference');
     if (groupImageRuleInput) groupImageRuleInput.value = binding.imageContentRule;
     if (groupImageStyleInput) groupImageStyleInput.value = binding.imageStylePrompt;
+    if (groupImageNegativeInput) groupImageNegativeInput.value = binding.imageNegativePrompt;
     if (groupImageRefInput) groupImageRefInput.value = binding.imageReference;
     _refreshGroupImageGenerationDisplay();
 }
@@ -858,9 +863,11 @@ if (groupImagePresetInputSave && groupImageAutoInputSave) {
     group.imageAutoGenerate = groupImageAutoInputSave.value === '1';
     const groupImageRuleSave = document.getElementById('setting-group-image-rule');
     const groupImageStyleSave = document.getElementById('setting-group-image-style');
+    const groupImageNegativeSave = document.getElementById('setting-group-image-negative');
     const groupImageRefSave = document.getElementById('setting-group-image-reference');
     if (groupImageRuleSave) group.imageContentRule = groupImageRuleSave.value || '';
     if (groupImageStyleSave) group.imageStylePrompt = groupImageStyleSave.value || '';
+    if (groupImageNegativeSave) group.imageNegativePrompt = groupImageNegativeSave.value || '';
     if (groupImageRefSave) group.imageReference = groupImageRefSave.value || '';
 }
 const groupVoiceToneSave = document.getElementById('setting-group-voice-tone');

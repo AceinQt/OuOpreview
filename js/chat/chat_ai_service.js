@@ -529,6 +529,9 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         } else if (giftRegex.test(message.content)) {
                             message.giftStatus = 'sent';
                         }
+                        // 双语照片描述：英文摘到 message.imagePromptEn，content 只留中文。
+                        // 必须在 push / addMessageBubble 之前，否则英文会漏进气泡和列表预览
+                        if (typeof stripBilingualImagePrompt === 'function') stripBilingualImagePrompt(message);
                         // 照片/视频描述走这一支：把预生成占的 id 和画好的图装配回来
                         if (typeof applyPreparedImage === 'function') applyPreparedImage(item, message);
                         if (chat.currentCallSessionId) message.callSessionId = chat.currentCallSessionId;
@@ -597,6 +600,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                                 timestamp: Date.now(),
                                 senderId: sender.id
                             };
+                            // 双语照片描述：同私聊路径，英文摘走、content 只留中文
+                            if (typeof stripBilingualImagePrompt === 'function') stripBilingualImagePrompt(message);
                             // 群聊的照片/视频也走 standardMatch 这一支，同样要装配预生成结果
                             if (typeof applyPreparedImage === 'function') applyPreparedImage(item, message);
                             group.history.push(message);

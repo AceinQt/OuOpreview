@@ -379,6 +379,15 @@ async function saveMessageEdit() {
     chat.history[messageIndex].content = newContent;
     chat.history[messageIndex].parts = [{ type: 'text', text: newContent }];
 
+    // 双语照片描述：用户改了中文，之前那份英文提示词就过时了，必须清掉。
+    // 留着的话下次点生成会拿旧英文去画，画出来和眼前的描述对不上 ——
+    // 宁可退回用新的中文（效果差一点），也不要画一张明显不对的图。
+    // 用户若把英文连括号一起手写进来，紧接着的 strip 会重新摘出去。
+    delete chat.history[messageIndex].imagePromptEn;
+    if (typeof stripBilingualImagePrompt === 'function') {
+        stripBilingualImagePrompt(chat.history[messageIndex]);
+    }
+
     await saveMessageToDB(chat.history[messageIndex], currentChatId, currentChatType);
     await saveSingleChat(currentChatId, currentChatType);
     

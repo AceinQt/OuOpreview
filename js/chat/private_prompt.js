@@ -279,6 +279,17 @@ if (watchingContext) {
                         character, `[${character.realName}的语音：{语音内容}]`);
                     if (voiceToneLine) prompt += `13.2 ${voiceToneLine}`;
                 }
+                // 13.3 双语照片描述。
+                // ★ 只在这个聊天真的绑了生图预设时注入：没绑的话这段每轮都在白占 token。
+                // ★ 不限 NAI —— 中文喂生图模型会跑偏（实测"水蜜桃"被画成西瓜），
+                //   DALL-E / Gemini 同样受益于英文提示词。
+                // ★ 顺序和下面那条「双语模式」是**反的**（那条是外语在前）。照片这条
+                //   中文在前，为的是降级安全：模型只写一半时退化成纯中文，和没有这个
+                //   功能时完全一样；反过来则会把一串英文直接甩给用户看。
+                //   切分实现见 chat_image_service.js 的 splitBilingualImageDescription。
+                if (typeof resolveImagePresetForChat === 'function' && resolveImagePresetForChat(character)) {
+                    prompt += `13.3 **照片/视频描述要写成中英双语**：使用 [${character.realName}发来的照片/视频：{描述}] 格式时，{描述}写成「{中文描述}（{英文提示词}）」—— 中文在前，是给用户看的；括号里的英文是给生图模型用的提示词，用半角逗号分隔的英文关键词，不要写成句子。例如：[${character.realName}发来的照片/视频：窗边打盹的猫，午后阳光（cat, no humans, animal focus, windowsill, sunlight, indoors, sleeping）]。英文部分请务必写上，缺了生成的图片会跑偏。\n`;
+                }
                 if (character.bilingualModeEnabled) {
                     prompt += `✨双语模式特别指令✨：当你的角色的母语为中文以外的语言时，你的消息回复必须严格遵循双语模式下的普通消息格式：[${character.realName}的消息：{外语原文}（中文翻译）],例如: [${character.realName}的消息：Of course, I'd love to.（当然，我很乐意。）],中文翻译文本视为系统自翻译，不视为角色的原话;当你的角色想要说中文时，需要根据你的角色设定自行判断对于中文的熟悉程度来造句，并使用普通消息的标准格式: [${character.realName}的消息：{中文消息内容}] 。这条规则的优先级非常高，请务必遵守。\n`;
                     prompt += `**注意：括号内中文翻译为纯文本翻译，原句中的颜文字、表情等内容禁止翻译！如："なので、メッセージを頂けて、めちゃくちゃ嬉しいです！(ฅ́˘ฅ̀)♡（笑） （所以，能收到你的消息，我超级开心的！）"此句，颜文字和"（笑）"禁止出现在中文翻译中**`;

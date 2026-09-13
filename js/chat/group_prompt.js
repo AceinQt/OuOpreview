@@ -156,6 +156,12 @@ function generateGroupSystemPrompt(group, retrievedContext = '', weatherText = '
             group, '[{成员真名}的语音：{语音转述的文字}]');
         if (groupVoiceToneLine) prompt += `   - ${groupVoiceToneLine}\n`;
     }
+    // 双语照片描述。和私聊那条(private_prompt.js 的 13.3)是同一套规则，
+    // 两处各写一份必然漂移——改这里记得同步改那边。
+    // 只在群真的绑了生图预设时注入；中文在前是为了降级安全（理由见私聊那条注释）。
+    if (typeof resolveImagePresetForChat === 'function' && resolveImagePresetForChat(group)) {
+        prompt += `   - **照片/视频描述要写成中英双语**: 使用 [{成员真名}发来的照片/视频：{内容描述}] 格式时，{内容描述}写成「{中文描述}（{英文提示词}）」—— 中文在前给用户看，括号里的英文是给生图模型用的，用半角逗号分隔的英文关键词，不要写成句子。例如：[小雨发来的照片/视频：窗边打盹的猫，午后阳光（cat, no humans, animal focus, windowsill, sunlight, indoors, sleeping）]。英文部分请务必写上，缺了生成的图片会跑偏。\n`;
+    }
     prompt += `   - **重要**: 群聊不支持AI成员接收/退回转账的特殊指令，也不支持更新状态。你只需要通过普通消息来回应我发送的转账即可。\n\n`;
 
     prompt += `5. **模拟群聊氛围**: 为了让群聊看起来真实、活跃且混乱，你的每一次回复都必须遵循以下随机性要求：\n`;
