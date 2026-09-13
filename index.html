@@ -971,6 +971,7 @@
             <input type="hidden" id="setting-chat-image-preset" value="off">
             <input type="hidden" id="setting-chat-image-auto" value="0">
             <input type="hidden" id="setting-chat-image-style" value="">
+            <input type="hidden" id="setting-chat-image-negative" value="">
             <input type="hidden" id="setting-chat-image-rule" value="">
             <input type="hidden" id="setting-chat-image-reference" value="">
             <!-- 语音：音色 + 语气要求都由弹窗回填（空语气 = 不注入任何要求） -->
@@ -1126,6 +1127,7 @@
             <input type="hidden" id="setting-group-image-preset" value="off">
             <input type="hidden" id="setting-group-image-auto" value="0">
             <input type="hidden" id="setting-group-image-style" value="">
+            <input type="hidden" id="setting-group-image-negative" value="">
             <input type="hidden" id="setting-group-image-rule" value="">
             <input type="hidden" id="setting-group-image-reference" value="">
             <!-- 语音语气要求（弹窗回填；空 = 不注入。群里对所有成员生效） -->
@@ -2535,7 +2537,7 @@
                                 <option value="512x512">512x512 (适用于 DALL-E 2)</option>
                             </select>
                         </div>
-                        <div style="flex:1;">
+                        <div style="flex:1;" id="api-image-quality-col">
                             <label for="api-image-quality">画面质量</label>
                             <select id="api-image-quality">
                                 <option value="standard">标准 (Standard)</option>
@@ -2544,7 +2546,7 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" id="api-image-style-row">
                         <label for="api-image-style">画面风格 <span class="field-hint">仅 DALL-E 3 有效</span></label>
                         <select id="api-image-style">
                             <option value="vivid">生动 / 夸张色彩 (Vivid)</option>
@@ -2561,6 +2563,13 @@
                         <label for="api-image-preview-text">测试提示词 <span class="field-hint">支持长文本描述</span></label>
                         <!-- 改成了 textarea，取消了 200 字限制，设为 2000 -->
                         <textarea id="api-image-preview-text" rows="4" placeholder="例如：一只戴着墨镜的猫在喝咖啡，赛博朋克风格，霓虹灯背景，高细节，8k分辨率..." maxlength="2000"></textarea>
+                    </div>
+
+                    <!-- 测试负面词：只对 NAI 显示。没有它的话，负面词只能靠在聊天里
+                         真生成一张图来试，慢且花钱；试不出效果又容易误判成"没生效" -->
+                    <div class="form-group" id="api-image-preview-negative-row" hidden>
+                        <label for="api-image-preview-negative">测试负面提示词 <span class="field-hint">仅用于这里的测试生成，不会存进任何聊天</span></label>
+                        <textarea id="api-image-preview-negative" rows="2" placeholder="半角逗号分隔。例如：lowres, worst quality, watermark" maxlength="600"></textarea>
                     </div>
 
                     <!-- 按钮组：测试生成 + 下载/取消（下载与取消共用同一槽位，生成中显示取消） -->
@@ -6049,15 +6058,29 @@
             </div>
         </div>
 
-        <!-- ④ 画面风格 -->
+        <!-- ④ 画面风格与负面词 —— 两项都是发给生图模型的，所以同一个折叠；
+             「内容约束」那项是发给文字模型的，刻意不放进来 -->
         <div class="collapsible-section">
             <div class="collapsible-header">
-                <h4>画面风格</h4>
+                <h4>画面风格与负面词</h4>
                 <span class="collapsible-arrow">▼</span>
             </div>
             <div class="collapsible-content">
-                <div class="form-group mb-0">
+                <div class="form-group">
+                    <label for="image-generation-style">画面风格 <span class="field-hint">画风、画师串</span></label>
                     <textarea id="image-generation-style" rows="3" placeholder="连同画面比例一起并进生图提示词。例如：写实风格，电影质感" maxlength="200" class="mb-0"></textarea>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="image-generation-negative">负面提示词 <span class="field-hint" id="image-generation-negative-hint">不希望出现在画面里的内容</span></label>
+                    <textarea id="image-generation-negative" rows="3" placeholder="半角逗号分隔。例如：lowres, worst quality, watermark" maxlength="600" class="mb-0"></textarea>
+                    <!-- 间距靠 CSS 给（见 chat_modal.css 的 #image-generation-uc-presets）：
+                         内联 display:flex 会压住 hidden 属性自带的 display:none，
+                         切到不支持负面词的服务商时按钮藏不掉 -->
+                    <div id="image-generation-uc-presets">
+                        <button type="button" class="btn btn-neutral btn-small" data-uc="heavy">填入 Heavy</button>
+                        <button type="button" class="btn btn-neutral btn-small" data-uc="light">填入 Light</button>
+                        <button type="button" class="btn btn-neutral btn-small" data-uc="humanFocus">填入 Human Focus</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -6440,7 +6463,7 @@
         <!-- 万能分享卡片：发送弹窗 -->
         <div id="send-share-modal" class="modal-overlay">
             <div class="modal-window">
-                <h3>分享</h3>
+                <h3>转发分享</h3>
                 <form id="send-share-form">
                     <!-- 手机高度不一：四个输入项放滚动区，按钮钉在外面 -->
                     <div class="share-form-scroll">
