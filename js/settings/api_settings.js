@@ -33,7 +33,10 @@ const EMB_PROVIDER_URLS = {
 // 所以域名与 CHAT_PROVIDER_URLS 一致。openai 那档是任意 OpenAI 兼容中转站。
 const IMAGE_PROVIDER_URLS = {
     openai: 'https://api.openai.com',
-    vertexExpress: 'https://aiplatform.googleapis.com'
+    vertexExpress: 'https://aiplatform.googleapis.com',
+    // NAI 官方。和 Vertex 一样在切换服务商时强制覆盖（填完还能手改成中转站）——
+    // 留着上一家的地址去拼 /ai/generate-image 必然 404，比覆盖更坑。
+    nai: 'https://image.novelai.net'
 };
 
 // ============================================================
@@ -1974,11 +1977,15 @@ function _applyImagePresetToForm(presetId) {
     _setVal('api-image-project', preset ? (preset.projectId || '') : '');
 
     _setImageModelSelectValue(preset ? preset.model : 'dall-e-3');
-    _setVal('api-image-size', preset ? preset.size : '1024x1024');
+
+    // ★ 顺序不能反：_syncImageProviderFields 会按服务商重铺整套尺寸选项，
+    //   先写尺寸再 sync 的话，刚写进去的值会被重铺冲掉、select 静默回落到第一项，
+    //   用户一保存尺寸就被悄悄改了。
+    _syncImageProviderFields();
+    _setImageSizeValue(preset ? preset.size : '1024x1024');
     _setVal('api-image-quality', preset ? preset.quality : 'standard');
     _setVal('api-image-style', preset ? preset.style : 'vivid');
 
-    _syncImageProviderFields();
     _updateImageDefaultToggle();
     _populateImagePresetSelect(_imageLoadedPresetId);
 }
@@ -1991,31 +1998,97 @@ function _applyImagePresetToForm(presetId) {
 function _syncImageProviderFields() {
     const provider = _getVal('api-image-provider') || 'openai';
     const isVertex = provider === 'vertexExpress';
+    const isNai = provider === 'nai';
 
     const projectRow = document.getElementById('api-image-project-row');
     if (projectRow) projectRow.hidden = !isVertex;
+
+    // quality / style 是 DALL-E 3 专属的枚举，NAI 和 Vertex 都不认。
+    // 留着只会让用户以为调了有用，所以直接藏起来。
+    const qualityCol = document.getElementById('api-image-quality-col');
+    if (qualityCol) qualityCol.hidden = isNai;
+    const styleRow = document.getElementById('api-image-style-row');
+    if (styleRow) styleRow.hidden = isNai;
+
+    _fillImageSizeOptions(provider);
+
+    // 测试负面词只对认这个字段的服务商显示（目前只有 NAI），
+    // 免得在 DALL-E 下摆一个填了也不会发送的框
+    const previewNegativeRow = document.getElementById('api-image-preview-negative-row');
+    if (previewNegativeRow) {
+        previewNegativeRow.hidden = !(typeof imageProviderSupportsNegativePrompt === 'function'
+            && imageProviderSupportsNegativePrompt(provider));
+    }
 
     const urlHint = document.getElementById('api-image-url-hint');
     if (urlHint) {
         urlHint.textContent = isVertex
             ? '固定 https://aiplatform.googleapis.com'
-            : 'OpenAI格式，不含 /v1';
+            : isNai
+                ? '官方 https://image.novelai.net；中转站填站点根即可，/ai/generate-image 会自动补'
+                : 'OpenAI格式，不含 /v1';
     }
 
     // Vertex 的列模型端点要 OAuth 而不是 API Key，拉不动（同文字 tab），
     // 所以按钮改成从内置清单填，而不是让用户点了之后撞一个 401。
+    // NAI 同理：官方压根没有列模型端点，中转站的 /v1/models 实测返回空数组。
     const fetchBtn = document.getElementById('api-image-fetch-btn');
     if (fetchBtn) {
         const label = fetchBtn.querySelector('.btn-text');
-        if (label) label.textContent = isVertex ? '填入内置生图模型' : '点击拉取模型';
+        if (label) label.textContent = (isVertex || isNai) ? '填入内置生图模型' : '点击拉取模型';
     }
 
     const modelHint = document.querySelector('label[for="api-image-model"] .field-hint');
     if (modelHint) {
         modelHint.textContent = isVertex
             ? '必须是生图模型，名字里带 image'
-            : 'dall-e-3, dall-e-2, midjourney等';
+            : isNai
+                ? 'nai-diffusion-5-full 等；V3 只吃 tag，V4 起才懂自然语言'
+                : 'dall-e-3, dall-e-2, midjourney等';
     }
+
+    const keyHint = document.querySelector('label[for="api-image-key"] .field-hint');
+    if (keyHint && isNai) keyHint.textContent = '官方用 pst- 开头的持久令牌；中转站用它自己签发的 Key';
+}
+
+/**
+ * 按服务商铺整套尺寸选项。
+ * ★ NAI 的尺寸必须是 64 的倍数，和 DALL-E 那几档（1792x1024 之类）完全不通用，
+ *   所以是「换整套」而不是「混在一个下拉里」——混着放，用户迟早选到一个
+ *   对当前服务商非法的值，然后对着一个 400 猜半天。
+ */
+function _fillImageSizeOptions(provider) {
+    const sel = document.getElementById('api-image-size');
+    if (!sel) return;
+    const options = provider === 'nai' ? NAI_IMAGE_SIZES : OPENAI_IMAGE_SIZES;
+    const current = sel.value;
+    sel.innerHTML = '';
+    options.forEach(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        sel.appendChild(opt);
+    });
+    if (current && options.some(([v]) => v === current)) sel.value = current;
+}
+
+/**
+ * 把尺寸写进下拉框；值不在当前清单里就先补一条。
+ * 同 _setImageModelSelectValue 的路数：不补的话 select 会静默回落到第一项，
+ * 用户一保存，存了很久的尺寸就被悄悄改掉了，而且毫无提示。
+ */
+function _setImageSizeValue(size) {
+    const sel = document.getElementById('api-image-size');
+    if (!sel) return;
+    const wanted = String(size || '').trim();
+    if (!wanted) return;
+    if (!Array.from(sel.options).some(o => o.value === wanted)) {
+        const opt = document.createElement('option');
+        opt.value = wanted;
+        opt.textContent = `${wanted} (自定义)`;
+        sel.appendChild(opt);
+    }
+    sel.value = wanted;
 }
 
 function _readImagePresetFromForm() {
@@ -2124,16 +2197,50 @@ const VERTEX_IMAGE_MODELS = [
     'gemini-3.1-flash-lite-image'
 ];
 
+// NovelAI 的模型。官方没有列模型端点，中转站的 /v1/models 实测也是空数组
+// （penguinsama 返回 {"object":"list","data":[]}），所以同样只能内置。
+// ID 以 docs.novelai.net 的机型表 + 两个 2026 年仍在维护的社区客户端交叉核对为准。
+const NAI_IMAGE_MODELS = [
+    'nai-diffusion-5-full',
+    'nai-diffusion-5-curated',
+    'nai-diffusion-4-5-full',
+    'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-full',
+    'nai-diffusion-4-curated-preview',
+    'nai-diffusion-3',
+    'nai-diffusion-furry-3'
+];
+
+// 尺寸按服务商分两套：NAI 要求 64 的倍数，DALL-E 那几档它一概不收。
+const NAI_IMAGE_SIZES = [
+    ['832x1216', '832x1216 (竖图・最常用)'],
+    ['1216x832', '1216x832 (横图)'],
+    ['1024x1024', '1024x1024 (方图)'],
+    ['1024x1536', '1024x1536 (大竖图)'],
+    ['1536x1024', '1536x1024 (大横图)'],
+    ['512x768', '512x768 (小竖图・省 Anlas)']
+];
+const OPENAI_IMAGE_SIZES = [
+    ['1024x1024', '1024x1024 (1:1)'],
+    ['1024x1792', '1024x1792 (9:16)'],
+    ['1792x1024', '1792x1024 (16:9)'],
+    ['512x512', '512x512 (适用于 DALL-E 2)']
+];
+
 async function fetchImageModels() {
     let url = _getVal('api-image-url').trim();
     const key = _getVal('api-image-key').trim();
     const btn = document.getElementById('api-image-fetch-btn');
     const modelSel = document.getElementById('api-image-model');
 
-    // Vertex：拉不动列模型端点，直接把内置清单铺进下拉框，别让用户白撞一次 401。
-    if (_getVal('api-image-provider') === 'vertexExpress') {
+    // Vertex / NAI：都拉不动列模型端点（一个要 OAuth，一个压根没这个接口），
+    // 直接把内置清单铺进下拉框，别让用户白撞一次 401 或者拿到一个空列表。
+    const builtinModels = _getVal('api-image-provider') === 'vertexExpress' ? VERTEX_IMAGE_MODELS
+        : _getVal('api-image-provider') === 'nai' ? NAI_IMAGE_MODELS
+        : null;
+    if (builtinModels) {
         const current = modelSel.value;
-        const models = VERTEX_IMAGE_MODELS.slice();
+        const models = builtinModels.slice();
         if (current && !models.includes(current)) models.push(current);
         modelSel.innerHTML = '';
         models.forEach(m => {
@@ -2242,6 +2349,10 @@ async function previewImageGeneration() {
         const result = await generateImage({
             prompt: prompt,
             preset: preset,
+            // 测试生成只用这一页上填的东西。聊天里的「画面风格」和「负面提示词」
+            // 是按聊天存的，这里拿不到也不该乱猜——所以负面词单独给了个测试框，
+            // 不然调负面词就只能去聊天里真烧一张图，还容易误判成"没生效"。
+            negativePrompt: _getVal('api-image-preview-negative').trim(),
             signal: requestController.signal,
             slowAfterMs: 120000,
             onSlow: ({ elapsedMs }) => {
@@ -2409,15 +2520,18 @@ function initImageApiTab() {
     const providerSelect = document.getElementById('api-image-provider');
     if (providerSelect) providerSelect.addEventListener('change', () => {
         const urlInput = document.getElementById('api-image-url');
-        // Vertex 的端点是固定的一个域名，用户没有别的可填，所以哪怕框里已经有
-        // OpenAI 中转站的地址也要换掉（否则会拿着中转站地址去拼 Google 的路径）。
-        const isVertex = providerSelect.value === 'vertexExpress';
-        if (urlInput && (isVertex || !urlInput.value.trim())) {
-            if (isVertex) {
-                urlInput.value = IMAGE_PROVIDER_URLS.vertexExpress;
-            } else if (providerSelect.value === 'openai') {
-                urlInput.value = IMAGE_PROVIDER_URLS.openai;
-            }
+        const provider = providerSelect.value;
+        // Vertex / NAI 都覆盖式填官方地址，openai 那档只在框空时填。
+        // 理由：openai 档本来就是"任意中转站"，没有一个能算默认的地址，
+        // 覆盖等于把用户填的站点抹掉；而切到 Vertex/NAI 时框里留着的一定是
+        // 上一家的地址（拿它去拼 /ai/generate-image 或 Google 的路径必然 404），
+        // 留着比换掉更坑。NAI 用中转站的人在填完地址后不会再动服务商下拉，
+        // 而且这里只在 change 事件里覆盖 —— 加载已存好的 NAI 预设走
+        // _applyImagePresetToForm，读的是预设里的地址，不会被这条覆盖。
+        const forceFill = provider === 'vertexExpress' || provider === 'nai';
+        if (urlInput && (forceFill || !urlInput.value.trim())) {
+            const url = IMAGE_PROVIDER_URLS[provider];
+            if (url) urlInput.value = url;
 
             // 触发脏数据标记
             urlInput.dispatchEvent(new Event('input', { bubbles: true }));
