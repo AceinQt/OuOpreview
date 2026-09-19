@@ -1612,7 +1612,18 @@ const contextContent = `[系统情景通知：距离上一次互动已经过去$
                 } else {
                     let userText = text;
 
-                    messageContent = `[${myName}的消息：${userText}]`;
+                    // ★ 通话里自己说的话也存成语音气泡（和 AI 那边同一条规则，
+                    //   见 chat_voice_call.js 顶部）：这样事后展开通话记录，
+                    //   整通电话两边都是语音条，而不是一半语音一半文字。
+                    //   注意自己发的语音**永远合不出音频**（没有"我"的音色，
+                    //   _voiceProfileForBubble 对 sent 气泡直接返回 null），
+                    //   那个播放键点下去是"看文字稿"，这是既有行为。
+                    // ★ 喂给模型时会被还原成「的消息」（chat_ai_service.js 的
+                    //   historySlice 那一处），所以提示词一个字都不用改。
+                    const inCall = currentChatType === 'private' && chat.callMode;
+                    messageContent = (inCall && typeof buildCallVoiceContent === 'function')
+                        ? buildCallVoiceContent(myName, userText)
+                        : `[${myName}的消息：${userText}]`;
                 }
 
                 const message = {
