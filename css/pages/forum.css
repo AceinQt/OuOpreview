@@ -1005,7 +1005,7 @@ body.forum-multi-select-on .forum-multi-cancel-btn {
     font-size: 15px;
     font-family: var(--font-miao);
     color: var(--primary-color);
-    text-align: left;
+    text-align: center;
     cursor: pointer;
 }
 
@@ -1096,7 +1096,7 @@ body.forum-multi-select-on .forum-multi-action-bar {
     padding: 10px 0;
     background: none;
     border: none;
-    color: #666;
+    color: var(--primary-color);
     font-size: 11px;
     font-family: var(--font-miao);
     cursor: pointer;
@@ -1106,10 +1106,6 @@ body.forum-multi-select-on .forum-multi-action-bar {
 .forum-multi-action svg {
     width: 26px;
     height: 26px;
-}
-
-.forum-multi-action.is-danger {
-    color: #ff4444;
 }
 
 .forum-multi-action:disabled {
@@ -1299,6 +1295,93 @@ body.forum-multi-select-on .forum-multi-action-bar {
     overflow-y: auto;
     min-height: 0;
     padding-bottom: calc(70px + var(--safe-bottom, 0px));
+}
+
+/* --- 世界页：内联样式收编 ---
+   全部限定在 #world-screen 之下，页外零影响；类名带 world- 前缀防撞名。
+   三个 Tab 的设置项共用 world-label / world-sublabel，小标题样式统一。 */
+
+/* 设置项标题组（角色 Tab 的「关联聊天记忆」、管理 Tab 的三项） */
+#world-screen .world-label-group {
+    display: flex;
+    flex-direction: column;
+}
+
+#world-screen .world-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+#world-screen .world-sublabel {
+    font-size: 11px;
+    color: #999;
+}
+
+/* 「角色」Tab：关联聊天记忆那行的残留内联 */
+#world-tab-char .setting-row {
+    padding-top: 0;
+}
+
+#world-tab-char .world-history-controls {
+    display: flex;
+    align-items: center;
+}
+
+#world-tab-char .switch {
+    margin-right: -5px;
+}
+
+/* 条数输入框默认隐藏占位；开关勾上后 forum_bindings.js 写内联 opacity/pointerEvents 显出来，
+   内联权重更高，这里的默认值只负责初始态和取消勾选后的回落 */
+#world-history-limit {
+    width: 45px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+/* 「管理」Tab */
+#world-tab-admin .world-admin-scroll {
+    display: flex;
+    flex-direction: column;
+}
+
+#world-tab-admin .world-admin-select {
+    max-width: 140px;
+    font-size: 13px;
+}
+
+#world-tab-admin .world-admin-action-btn {
+    width: auto;
+    margin: 0;
+}
+
+/* 正文 CSS 这一组：标题 + 输入框纵向排布，整组吃掉 Tab 剩余高度，
+   输入框在组内 flex:1 撑满（min-height 保底，屏矮时靠外层滚动）。
+   padding:0 5px 对齐 .setting-row 的横向内边距，标题才不会比上面两行靠左 */
+#world-tab-admin .world-admin-css-block {
+    margin-top: 6px;
+    padding: 0 5px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* flex 列布局没有块级 margin 折叠，标题组和输入框之间留口气 */
+#world-tab-admin .world-admin-css-block .world-label-group {
+    margin-bottom: 6px;
+}
+
+/* 双 id 权重盖掉 .css-editor 的固定 height:160px，改为撑满剩余空间；
+   margin-bottom 在输入框和底部悬浮导航栏之间留空隙（padding-bottom 那 70px 减去导航栏
+   60px 只剩 10px，太近，flex 子项的 margin 会占住布局空间、不会被滚动容器吃掉） */
+#world-tab-admin #forum-detail-css-input {
+    flex: 1;
+    height: auto;
+    min-height: 220px;
+    margin-bottom: 12px;
 }
 
 /* --- 修改：世界页面微调 --- */
