@@ -37,23 +37,27 @@
 | **safe_toggle.js** (50) | 顶部/底部安全区开关（写 CSS 变量 `--safe-top/--safe-bottom`） |
 | **screen_adapt.js** (40) | 屏幕自适应：按 360 基准改写 viewport meta 缩放 |
 | **swipe_back.js** (166) | 左缘右滑返回手势 + 渐变指示条 overlay |
-| **system_back.js** (170) | 安卓系统返回键接管：history 栈镜像（sentinel pushState、弹窗→页面逐层退） |
+| **system_back.js** (170) | 安卓系统返回键接管：history 栈镜像（sentinel pushState、弹窗→页面逐层退）。★ 每条哨兵带 `{sysBack, lvl}` 层级号，popstate 先用 `event.state.lvl` 把 depth 精确对平（自愈计数漂移），`consumeEntry`/`clearEntries` 在栈底（depth≤0 / 超过 baseIndex）拒绝回退 —— 防止 back()/go(-N) 退过本文档第一条记录、落到同 URL 前一个文档条目上造成「假重启」（2026-09-15 两次异常重启的根因） |
 
 ## 四、社区喵坛 `js/forum/`
 
 | 文件 | 职责 / 关键函数 |
 |---|---|
-| **forum_core.js** (335) | 论坛主入口 `setupForumFeature()`：分页+滚动加载、懒加载前缀补齐(`window.LAZY_FORUM`)、滚动位置记忆、匿名名"喵叽+4位代号"、自定义 CSS 注入、`setupBottomNavigation`、发帖(落库 `saveSinglePost`)、MutationObserver |
+| **forum_core.js** (335) | 论坛主入口 `setupForumFeature()`：分页+滚动加载、懒加载前缀补齐(`window.LAZY_FORUM`)、滚动位置记忆、匿名名"喵叽+4位代号"、自定义 CSS 注入、发帖(落库 `saveSinglePost`)、MutationObserver。**底部导航没有自己的监听**（原 `setupBottomNavigation` 已删）—— 4 个 `.tab-item` 都带 `data-target`，`main.js:315` 的 body 委托本来就管；两处都绑会让 `switchScreen` 跑两遍、下游 observer 也翻倍 |
 | **forum_api.js** (267) | AI 上下文/请求：`getWatchingPostsContext`、`getForumGenerationContext`(大 prompt)、`_getForumApiConfig`(预设回退全局)、`_forumStreamFetch`(SSE 流式) |
 | **forum_render.js** (152) | 列表渲染：`renderHotPosts`(24h 热帖 Top3)、`renderForumPosts` |
 | **forum_detail.js** (488) | 详情页：标题/正文/评论、星标收藏、评论回复/删除、删帖、复制、匿名回复 |
-| **forum_me_page.js** (414) | "我"页 `setupMePageFeature`：昵称/人设/匿名代号/详情 CSS 编辑、统计、头像 |
-| **forum_bindings.js** (210) | 绑定 `setupForumBindingFeature`：世界书/角色/群聊/聊天记录/专属 API 预设，写 `db.forumBindings` |
+| **forum_me_page.js** (414) | "我"页 `setupMePageFeature`：昵称/人设/匿名代号/统计/头像。**正文 CSS 已不在这页**（搬去世界页「管理」Tab），保存身份时把 `customDetailCss` 从 db 原样带过去 |
+| **forum_bindings.js** (210) | 世界页 `setupForumBindingFeature`：左侧栏 Tab 切换(`data-tab` → `world-tab-${tab}`)、世界书/角色/群聊/聊天记录绑定，写 `db.forumBindings`；右上角保存按钮（三个 Tab 共用，保存时顺手调 `saveForumAdminPane()`） |
+| **forum_admin.js** | 世界页「管理」Tab `setupForumAdminFeature`：论坛 API 预设(DOM 在这、读写仍归 bindings)、**按时间范围批量删帖**(`_forumCountPostsInRange`/`_forumDeletePostsInRange`，走 `forumPosts` 的 timestamp 索引查库，**不能拿 `db.forumPosts` 当数据源** —— 懒加载下内存只有窗口，窗口外的老帖会删不掉)、帖子正文 CSS 的读写(`loadForumAdminPane`/`saveForumAdminPane`，只改 `forumUserIdentity.customDetailCss` 一个字段)。回归测试 `tests/forum_admin.test.cjs`。★ textarea 的 placeholder 示例必须跟 forum_core 的注入形式一致：整段用户 CSS 被包进 `.post-detail-content-body{...}`，所以直写属性=正文本身、写一行 `选择器{属性}`=嵌套作用于正文里的子元素（p/em/blockquote/.inline-quote 等）；别在示例里写 `.post-detail-content-body{...}` 这种自引用选择器，嵌套后变成找子级同名元素、永远不命中。管理 Tab 的内联样式已全部收编到 forum.css（共享类 `world-label*` 限定 `#world-screen`，管理 Tab 专属 `world-admin-*` 限定 `#world-tab-admin`），别再往 HTML 里写回内联 |
 | **forum_favorites.js** (170) | 收藏/在看 `setupFavoritesFeature`：Tab 切换、批量删除；`window.renderFavoritesList` |
-| **forum_share.js** (214) | 分享到聊天 `setupShareModal`：帖子→私聊/群聊 |
+| **forum_share.js** (214) | 分享到聊天 `setupShareModal`：帖子→私聊/群聊。`openSharePostModal` 吃单个 id（详情页）或一串 id（主页长按多选→转发），发送时按 `modal.dataset.postIds` 逐帖投递 —— **一帖一张卡片，不合并**（卡片字段边界靠行首关键字切，几帖挤一张迟早切坏） |
+| **forum_multiselect.js** | 主页长按多选 `setupForumMultiSelectFeature`：长按（500ms，位移 >10px 算滚动取消）/右键进多选，顶栏就地换「取消 + 已选择 N 个帖子」（复用 `.forum-top-search-bar` 同一个容器，它绝对定位但没写 `top`，另起一条对不齐），底栏盖一条「删除/收藏/转发」。删除/收藏各有 `AppUI.confirm` 二次确认，转发直接开帖子分享弹窗。批量删帖 `forumDeletePostsByIds` 跟详情页单条删帖同口径：库、内存窗口、收藏、在看四处一起删。★ **盖导航栏只能靠 body 上的 `.forum-multi-select-on` + CSS `!important`**，不能改 `.bottom-tab-bar` 的 inline `display` —— 那是 `switchScreen` 写的，退出多选时按「恢复成 flex」写就会在无导航栏的页面上凭空多一条。离开主页（`forum_core.js` 的 observer）和安卓返回键（`system_back.js`）都会先退出多选。回归测试 `tests/forum_multiselect.test.cjs` |
 | **forum_generation.js** (631) | AI 生成核心：`handleForumRefresh`(AI 刷新新帖)、`handleGenerateComments`(楼层评论)；标签归一化 `normalizeForumTags`(编辑距离容错 `#AUTHOR#/#CONTENT#/...`)、随机网名 |
 
 数据：内存挂在 `db`(`forumPosts`/`forumUserIdentity`/`favoritePostIds`/`watchingPostIds`/`forumBindings`) + Dexie 持久化；懒加载补帖 `window.fetchOlderForumPosts`(lazy_load.js:430)。
+
+**进页面只渲染一次**：`world-screen`/`me-screen`/`favorites-screen` 三个 observer 都是「记住上次 active、只在跳变时渲染」。别改回 `for (mutation of mutations) { if (class) render() }` —— `switchScreen` 一次会攒出好几条 class 变更记录（先给所有 `.screen` 去 active、再给目标加 active），旧写法一次进页面能渲染五六遍：世界页那遍要把每个角色的 base64 头像(压缩后仍 100KB+ 一张)重新塞进 DOM，「我」页那遍要跑一次 `countMyForumPosts` 全表扫描。实测修完是 1 次/点。
 
 **New! 标记**：语义是「你还没看过」，实现是帖子/评论上的 `isNew` 字段，进入详情页即已读（`renderPostDetail` 收尾清标记 + `saveSinglePost` 落盘），与 peek 的红点同一套路。AI 生成的新帖与新评论才带 `isNew`，用户自己发的帖/回复不带。徽章只在论坛主列表显示，收藏页与 24h 热帖榜不显示。旧实现把标记写成标题前缀 `[New!] xxx`、靠下一次刷新遍历内存洗掉，论坛转懒加载后窗口外的帖子永远扫不到，标记只增不减 —— Dexie v17 已全表洗掉该前缀；`forumCleanTitle`(forum_core.js) 保留仅为兼容导入旧备份。
 
