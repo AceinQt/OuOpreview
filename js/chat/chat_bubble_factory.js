@@ -30,8 +30,9 @@ function isMultiSelectBlockingDetail() {
 //   1. 下面那条 invisibleRegex 会把 `[system:…]` 一律 return null，塞进去也画不出东西；
 //   2. 它们全是 role:'user'，走完整气泡会顶着用户头像渲染成自己发的蓝气泡，
 //      和真消息混在一起分不清，误删真消息的风险比"看不见"更糟；
-//   3. `[剧情旁白：…]`（chat_feature_basic.js 那条 AI 上下文双胞胎）会和屏幕上
-//      已有的 `[system-display:…]` 旁白气泡长得一模一样，画出来就是重影。
+//   3. 旧数据里那条隐藏的 `[剧情旁白：…]`（老版"用户旁白"存的 AI 上下文双胞胎）
+//      现在会被气泡工厂认成旁白气泡画出来，和它那条可见的 `[system-display:…]`
+//      孪生叠成重影 —— 这正是"判可见性要先看 isHidden、再进工厂"那条顺序的由来。
 // 所以这里另起一个极简行：只有时间 + 「隐藏」标签 + 原文，一眼看得出不是真消息。
 //
 // class 必须带 `message-wrapper` 且有 data-id —— #message-area 的委托是靠
@@ -95,16 +96,31 @@ function createMessageBubbleElement(message) {
         return dividerWrapper; // 提前结束，不渲染头像和气泡
     }
     // --- 渲染旁白气泡 (支持 Markdown) ---
+    // 两种来源共用这一套气泡：
+    //   `[system-narration:…]` —— AI 在线下模式/通话里写的旁白
+    //   `[剧情旁白：…]`        —— 用户自己发的剧情旁白（"+"面板那项，只有一条，见
+    //                            chat_feature_basic.js 的 sendTimeSkipMessage）
+    // 用户那种多挂一个 narration-mine：其余样式全套照抄（用户在外观里调旁白气泡时
+    // 两种一起变），只去掉描边，这样一眼分得出是谁写的。多条连成一张大卡片的拼接
+    // 也只在**同类之间**发生，规则在 css/pages/chat/chat_room.css 和
+    // js/chat/bubble_css_preset.js 的生成端各有一份，两处必须一致。
+    //
+    // ★ 旧数据里那条隐藏的 `[剧情旁白：…]`（老的"AI 上下文双胞胎"）同样命中下面这个
+    //   正则，但它带 isHidden，chat_room.js 的 _bubbleOrHiddenRow 在进工厂之前就拦掉了，
+    //   所以不会和它那条 `[system-display:…]` 的可见孪生画成重影。
     const narrationRegex = /\[system-narration:([\s\S]+?)\]/;
+    const mineNarrationRegex = /^\[剧情旁白[:：]([\s\S]+?)\]$/;
     const narrationMatch = content.match(narrationRegex);
+    const mineNarrationMatch = narrationMatch ? null : content.match(mineNarrationRegex);
 
-    if (narrationMatch) {
-        let text = narrationMatch[1].trim();
+    if (narrationMatch || mineNarrationMatch) {
+        let text = (narrationMatch || mineNarrationMatch)[1].trim();
         text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
         const wrapper = document.createElement('div');
         wrapper.dataset.id = id;
-        wrapper.className = 'message-wrapper system-notification narration-wrapper';
+        wrapper.className = 'message-wrapper system-notification narration-wrapper'
+            + (mineNarrationMatch ? ' narration-mine' : '');
 
         const bubble = document.createElement('div');
         bubble.className = 'narration-bubble markdown-content';

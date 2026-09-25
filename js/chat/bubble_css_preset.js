@@ -115,15 +115,22 @@ function getDynamicBubblePreview() {
     html += getRow(true, `<div class="message-bubble sent">这是我方回复的普通消息。</div>`);
 
 // 2. 旁白气泡 (中立，不需要调 getRow，独立结构)
+//    最后单独摆一条 narration-mine：那是用户自己在"+"面板发的剧情旁白，
+//    样式跟着同一组设置走、只是不画描边，所以预览里必须两种都看得见，
+//    不然调完描边只看见 AI 那种，会以为"我方那条没生效"。
+//    它和上面三条不同类，按同类才拼接的规则，预览里也应当是断开的。
     html += `
         <div class="message-wrapper system-notification narration-wrapper">
             <div class="narration-bubble markdown-content">这是一段旁白气泡内容。</div>
         </div>
         <div class="message-wrapper system-notification narration-wrapper">
-            <div class="narration-bubble markdown-content">旁白气泡不区分我方和对方。固定显示在屏幕中间位置。多个旁白气泡将连接为一整个气泡。</div>
+            <div class="narration-bubble markdown-content">旁白气泡不区分我方和对方。固定显示在屏幕中间位置。相邻的同类旁白会连接为一整个气泡。</div>
         </div>
         <div class="message-wrapper system-notification narration-wrapper">
-            <div class="narration-bubble markdown-content">旁白气泡只在【线下模式】中出现，用于描述角色的行动。</div>
+            <div class="narration-bubble markdown-content">这种是 AI 写的旁白，出现在【线下模式】和【通话】里，用于描述角色的行动。</div>
+        </div>
+        <div class="message-wrapper system-notification narration-wrapper narration-mine">
+            <div class="narration-bubble markdown-content">这种是我自己发的【剧情旁白】，样式与上面一致，但不带描边，用来区分是谁写的。</div>
         </div>
     `;
 
@@ -582,22 +589,30 @@ function setupBubblePresets() {
                 // 所以这里必须把拼接规则按用户的新半径重新生成一遍：
                 // 首条只圆上两角、末条只圆下两角、中间四角全平。
                 if (isNarration) {
-                    const nw = '.message-wrapper.narration-wrapper';
+                    // ★ 只和**同类**拼接：AI 旁白是 :not(.narration-mine)，用户自己发的
+                    //   剧情旁白是 .narration-mine。分组方式必须和 chat_room.css 那几条
+                    //   一模一样，否则"默认样式下谁跟谁连"和"自定义之后谁跟谁连"会分叉。
                     const r = `${conf.radius}px`;
-                    // 后面还有旁白 → 我不是最后一条 → 底部两角压平
-                    basicCss += `${nw}:has(+ ${nw}) ${sel} {`
-                        + ` border-bottom-left-radius: 0 !important;`
-                        + ` border-bottom-right-radius: 0 !important;`
-                        + ` border-top-left-radius: ${r} !important;`
-                        + ` border-top-right-radius: ${r} !important; }\n`;
-                    // 前面还有旁白 → 我不是第一条 → 顶部两角压平
-                    basicCss += `${nw} + ${nw} ${sel} {`
-                        + ` border-top-left-radius: 0 !important;`
-                        + ` border-top-right-radius: 0 !important; }\n`;
-                    // 既有前也有后 → 中间条 → 四角全平
-                    // （上面两条已经能推出这个结果，但显式写一遍防止将来谁改动其中一条时破功）
-                    basicCss += `${nw} + ${nw}:has(+ ${nw}) ${sel} {`
-                        + ` border-radius: 0 !important; }\n`;
+                    const nwKinds = [
+                        '.message-wrapper.narration-wrapper:not(.narration-mine)',
+                        '.message-wrapper.narration-wrapper.narration-mine'
+                    ];
+                    for (const nw of nwKinds) {
+                        // 后面还有同类旁白 → 我不是最后一条 → 底部两角压平
+                        basicCss += `${nw}:has(+ ${nw}) ${sel} {`
+                            + ` border-bottom-left-radius: 0 !important;`
+                            + ` border-bottom-right-radius: 0 !important;`
+                            + ` border-top-left-radius: ${r} !important;`
+                            + ` border-top-right-radius: ${r} !important; }\n`;
+                        // 前面还有同类旁白 → 我不是第一条 → 顶部两角压平
+                        basicCss += `${nw} + ${nw} ${sel} {`
+                            + ` border-top-left-radius: 0 !important;`
+                            + ` border-top-right-radius: 0 !important; }\n`;
+                        // 既有前也有后 → 中间条 → 四角全平
+                        // （上面两条已经能推出这个结果，但显式写一遍防止将来谁改动其中一条时破功）
+                        basicCss += `${nw} + ${nw}:has(+ ${nw}) ${sel} {`
+                            + ` border-radius: 0 !important; }\n`;
+                    }
                 }
             }
 
@@ -637,13 +652,22 @@ function setupBubblePresets() {
                     typeCss += ` border: none !important;`;
                 }
 
+                // 我方旁白（用户自己发的剧情旁白）一律不吃描边 —— 这是它和 AI 旁白唯一的
+                // 区别，靠它一眼分清谁写的。上面那句 border 是打在
+                // `.narration-wrapper .narration-bubble` 上的，带 !important 又有 ID 作用域，
+                // chat_room.css 里那条同名规则盖不住，所以这里补一条特异性更高的关掉。
+                if (isNarration) {
+                    basicCss += `.message-wrapper.narration-wrapper.narration-mine ${sel} { border: none !important; }\n`;
+                }
+
                 // 旁白的上下描边同样要「只描整组的外沿」，理由和圆角那条一样：
                 // 选了上+下的话，每条旁白都会各自画一条上边和一条下边，
                 // 相邻两条的接缝处就叠出两条横线，横穿本该是一整张的大卡片。
                 // 所以把内侧那条边去掉：不是最后一条就没有下边，不是第一条就没有上边。
                 // 左右边不用管 —— 它们沿着卡片侧面连成一条，本来就是想要的效果。
+                // ★ 只处理 AI 那一侧：我方旁白整体无描边，没有内侧边可去。
                 if (isNarration && conf.strokeW > 0) {
-                    const nw = '.message-wrapper.narration-wrapper';
+                    const nw = '.message-wrapper.narration-wrapper:not(.narration-mine)';
                     if (sides.length === 4 || sides.includes('bottom')) {
                         // 后面还有旁白 → 我不是最后一条 → 去掉下边
                         basicCss += `${nw}:has(+ ${nw}) ${sel} { border-bottom: none !important; }\n`;

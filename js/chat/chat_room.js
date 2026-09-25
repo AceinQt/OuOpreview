@@ -76,6 +76,36 @@ function _getNewerRenderStart(chat) {
     return Math.min(chat.history.length, Math.max(domBottom, floor));
 }
 
+// 实时追加一条消息后把底部游标推到数组末尾 —— addMessageBubble 开头调它。
+//
+// ★ 为什么非得有这一步：底部游标原来只有三条路径在维护 —— 全量重绘(= history.length)、
+//   前插平移、下翻分页。`addMessageBubble` 这条"实时追加"的路径（30+ 个调用点）一条都不占。
+//   追加**可见**气泡时看不出问题，因为气泡自己就在 DOM 里，_getRenderedRange 能从 DOM 把底
+//   反推出来；但只进 history、不进 DOM 的那些就漏了：
+//     · 时间流逝一次 push 两条：`[time-divider]`(可见，画出来了) + `[系统情景通知：…]`(画不出来)，
+//       游标停在时间戳那条，情景通知落在渲染窗口**之外**；
+//     · `[X接收了Y的转账]` / `[…更新状态为：…]`：走 addMessageBubble 的早返回分支，只改状态不画气泡。
+//   它们全落在 [_renderTopCeil, _renderBottomFloor) 外面 → _injectHiddenRows 扫不到 →
+//   多选开「显示隐藏」看不见刚生成的那条，**退出聊天室再进才出现**（全量重绘把游标
+//   重置成 history.length）。症状只在"刚生成的"那几条上，很容易误判成生成端没存盘。
+//
+// ★ 只在视图本来就贴着最新时才推。用户翻在历史里时推了，会让 _isViewingLatest 误判成
+//   "在最新"，sendMessage 就不再重置回底部，新气泡被追加到几天前那段 DOM 的下面。
+//   判据是「已覆盖到这条消息之前」(covered >= 它的下标)：调用时还没 append，贴底时
+//   DOM 实际底恰好等于这条消息的下标，而同一批 push 的兄弟（时间流逝那两条）排在它
+//   后面，一并被这次 history.length 覆盖进来。
+function _advanceRenderFloorToLatest(message) {
+    if (!message) return;
+    const chat = (currentChatType === 'private')
+        ? db.characters.find(c => c.id === currentChatId)
+        : db.groups.find(g => g.id === currentChatId);
+    if (!chat || !chat.history) return;
+    const idx = chat.history.findIndex(m => m.id === message.id);
+    if (idx === -1) return;                          // 还没 push 进 history，轮不到推游标
+    if (_getNewerRenderStart(chat) < idx) return;    // 视图停在历史里，别动
+    window._renderBottomFloor = Math.max(Number(window._renderBottomFloor) || 0, chat.history.length);
+}
+
 // 下面还有没有"值得渲染"的东西（用于滚动门槛）：
 // 末尾常挂着 isHidden 的 context 消息，只看下标会导致反复空转转圈，所以要求至少有一条可见消息。
 // ★ 例外：多选开了「显示隐藏」时看不见的消息**本身就是**要渲染的东西，这时候不能再把它们当空气 ——
@@ -117,7 +147,8 @@ function isShowingHiddenMessages() {
 // 渲染一条消息：能画正常气泡就画，画不出来的（isHidden / 撞 invisibleRegex）
 // 在「显示隐藏」开着时退回极简行，否则照旧当空气。
 // ★ isHidden 的不进气泡工厂：它们全是 role:'user'，走完整气泡会顶着用户头像渲染成
-//   自己发的蓝气泡和真消息混在一起；`[剧情旁白：…]` 那条还会跟屏幕上已有的旁白气泡重影。
+//   自己发的蓝气泡和真消息混在一起；旧数据里那条隐藏的 `[剧情旁白：…]` 还会被气泡工厂
+//   认成旁白气泡，和它那条可见的 `[system-display:…]` 孪生叠成重影。
 function _bubbleOrHiddenRow(msg) {
     const bubble = msg.isHidden ? null : createMessageBubbleElement(msg);
     if (bubble) return bubble;
@@ -220,7 +251,10 @@ function _injectHiddenRows(chat) {
     if (!chat || !chat.history) return;
     const h = chat.history;
     const top = Math.max(0, Number(window._renderTopCeil) || 0);
-    const bottom = Math.min(h.length, Number(window._renderBottomFloor) || 0);
+    // 底部取「游标 ∪ DOM 实际底」，和下翻那条路径共用 _getNewerRenderStart 这一套校正：
+    // 游标是别人维护的，实时追加的气泡可能已经贴进 DOM 而游标还没跟上。读裸游标的话
+    // 窗口会比屏幕上实际画出来的还窄，末尾几条补不出来。
+    const bottom = Math.min(h.length, _getNewerRenderStart(chat));
     let cursor = null;
 
     for (let i = top; i < bottom; i++) {
@@ -1589,6 +1623,11 @@ if (isInvisible) return;
                 }
 
                 // --- Original logic for when the chat is active ---
+                // ★ 先推底部游标再做别的：下面几个分支（改状态/收转账/收礼物）会直接 return，
+                //   画不出气泡的消息只有这一次机会被纳入渲染窗口，否则「显示隐藏」扫不到它。
+                //   详见 _advanceRenderFloorToLatest 的注释。
+                _advanceRenderFloorToLatest(message);
+
                 if (currentChatType === 'private') {
                     const character = db.characters.find(c => c.id === currentChatId);
                     const updateStatusRegex = new RegExp(`\\[${character.realName}更新状态为：(.*?)\\]`);
@@ -1636,7 +1675,9 @@ if (statusEl) statusEl.textContent = character.status;
                             await saveSingleChat(currentChatId, currentChatType);
                         }
                     } else {
-                        const bubbleElement = createMessageBubbleElement(message);
+                        // isHidden 的一律不进气泡工厂，理由同 _bubbleOrHiddenRow 顶上那段：
+                        // 旧数据里那条隐藏的 `[剧情旁白：…]` 现在画得出旁白气泡，会跟它的可见孪生重影。
+                        const bubbleElement = message.isHidden ? null : createMessageBubbleElement(message);
                         if (bubbleElement) {
                             
  bubbleElement.classList.add('new-message-anim');                           messageArea.appendChild(bubbleElement);
@@ -1650,7 +1691,8 @@ if (statusEl) statusEl.textContent = character.status;
                         }
                     }
                 } else { // For group chats
-                    const bubbleElement = createMessageBubbleElement(message);
+                    // 同上：isHidden 的不进气泡工厂
+                    const bubbleElement = message.isHidden ? null : createMessageBubbleElement(message);
                     if (bubbleElement) {
    bubbleElement.classList.add('new-message-anim');                     
                         messageArea.appendChild(bubbleElement);
