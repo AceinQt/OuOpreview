@@ -442,12 +442,45 @@ function enterMultiSelectMode(initialMessageId) {
                 multiSelectBar.classList.add('visible');
                 chatRoomScreen.classList.add('multi-select-active');
                 selectedMessageIds.clear();
-                selectCount.textContent = '已选择 0 项';
-                deleteSelectedBtn.disabled = true;
-                if (forwardSelectedBtn) forwardSelectedBtn.disabled = true;
+                // 「显示隐藏」每次进多选都从关着开始：它是个临时视图，不该跨会话记着
+                showHiddenInSelect = false;
+                if (typeof _removeHiddenRows === 'function') _removeHiddenRows();
+                syncHiddenToggleBtn();
+                updateMultiSelectBar();
                 if (initialMessageId) {
                     toggleMessageSelection(initialMessageId);
                 }
+            }
+
+            // 多选栏的计数和两个按钮的可用态，就这三行，三个调用方共用
+            function updateMultiSelectBar() {
+                selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
+                deleteSelectedBtn.disabled = selectedMessageIds.size === 0;
+                if (forwardSelectedBtn) forwardSelectedBtn.disabled = selectedMessageIds.size === 0;
+            }
+
+            // 把 showHiddenInSelect 反映到界面上：按钮文案/状态 + 屏幕上那个模式类。
+            // 模式类是给 CSS 用的 —— 时间戳 `[time-divider]` 本来就画在 DOM 里、也有 data-id，
+            // 只是 .time-divider-wrapper 写了 pointer-events:none 点不着，开关打开时靠它放开。
+            function syncHiddenToggleBtn() {
+                const on = !!showHiddenInSelect;
+                if (chatRoomScreen) chatRoomScreen.classList.toggle('show-hidden-msgs', on);
+                if (!toggleHiddenMsgBtn) return;
+                toggleHiddenMsgBtn.textContent = on ? '收起隐藏' : '显示隐藏';
+                toggleHiddenMsgBtn.classList.toggle('active', on);
+            }
+
+            // 「显示隐藏」：把平时画不出来的消息都摆出来，让用户能逐条勾选删或转。
+            // 判据是"普通视图里画不出可勾选的气泡"，不是 isHidden —— 详见
+            // chat_room.js 里 isShowingHiddenMessages 上面那段。
+            // 只增删 DOM 行，不重绘整页（见 applyHiddenMessageVisibility 注释）。
+            function toggleHiddenMessagesInSelect() {
+                if (!isInMultiSelectMode) return;
+                showHiddenInSelect = !showHiddenInSelect;
+                syncHiddenToggleBtn();
+                applyHiddenMessageVisibility();
+                // 收起时里面被勾上的那些会一起取消勾选，计数得跟着退回来
+                updateMultiSelectBar();
             }
 
             function exitMultiSelectMode() {
@@ -457,6 +490,11 @@ function enterMultiSelectMode(initialMessageId) {
                 document.querySelector('.chat-input-wrapper').style.display = 'block';
                 multiSelectBar.classList.remove('visible');
                 chatRoomScreen.classList.remove('multi-select-active');
+                // 隐藏行只属于多选模式，退出就得连行带勾选一起清掉，
+                // 不然它们会一直挂在 DOM 里，普通模式下点一下还会触发长按菜单之类的动作
+                showHiddenInSelect = false;
+                if (typeof _removeHiddenRows === 'function') _removeHiddenRows();
+                syncHiddenToggleBtn();
                 selectedMessageIds.forEach(id => {
                     const el = messageArea.querySelector(`.message-wrapper[data-id="${id}"]`);
                     if (el) el.classList.remove('multi-select-selected');
@@ -467,25 +505,36 @@ function enterMultiSelectMode(initialMessageId) {
             function toggleMessageSelection(messageId) {
                 const el = messageArea.querySelector(`.message-wrapper[data-id="${messageId}"]`);
                 if (!el) return;
+                // 折叠的通话气泡一勾就是整段通话的全部消息，见 idsForMessageSelection
+                const ids = idsForMessageSelection(el);
                 if (selectedMessageIds.has(messageId)) {
-                    selectedMessageIds.delete(messageId);
+                    ids.forEach(id => selectedMessageIds.delete(id));
                     el.classList.remove('multi-select-selected');
                 } else {
-                    selectedMessageIds.add(messageId);
+                    ids.forEach(id => selectedMessageIds.add(id));
                     el.classList.add('multi-select-selected');
                 }
-                selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
-                deleteSelectedBtn.disabled = selectedMessageIds.size === 0;
-                if (forwardSelectedBtn) forwardSelectedBtn.disabled = selectedMessageIds.size === 0;
+                updateMultiSelectBar();
             }
 
             async function deleteSelectedMessages() {
                 if (selectedMessageIds.size === 0) return;
 
+                const chatForCount = (currentChatType === 'private')
+                    ? db.characters.find(c => c.id === currentChatId)
+                    : db.groups.find(g => g.id === currentChatId);
+                // 隐藏消息是给 AI 看的上下文（场景切换、通话起止……），成对出现的居多，
+                // 删一半会让 AI 那边的情节对不上，所以单独把条数说出来，别让人误以为在删普通消息
+                const hiddenCount = ((chatForCount && chatForCount.history) || [])
+                    .filter(m => selectedMessageIds.has(m.id) && m.isHidden).length;
+
                 // ★ 二次确认是必需的，不是礼貌：删除键旁边就是转发键，两个都在
                 //   多选栏右下角、指头底下差几毫米，误触一次就是不可恢复的删除。
+                const hiddenNote = hiddenCount
+                    ? `（其中 ${hiddenCount} 条是隐藏消息，是给 AI 看的上下文，删了可能影响剧情连贯）`
+                    : '';
                 const ok = await AppUI.confirm(
-                    `将删除选中的 ${selectedMessageIds.size} 条消息，删掉就找不回来了。`,
+                    `将删除选中的 ${selectedMessageIds.size} 条消息${hiddenNote}，删掉就找不回来了。`,
                     '删除消息', '删除', '取消'
                 );
                 if (!ok) return;
@@ -499,10 +548,12 @@ function enterMultiSelectMode(initialMessageId) {
                 chat.history = chat.history.filter(m => !selectedMessageIds.has(m.id));
                 await deleteMessagesFromDB(Array.from(selectedMessageIds));
     await saveSingleChat(currentChatId, currentChatType);
+                // ★ 先退出多选再重绘：反过来的话，重绘那一下「显示隐藏」还开着，
+                //   隐藏行会先画出来、紧接着被 exitMultiSelectMode 清掉，闪一下。
+                exitMultiSelectMode();
                 currentPage = 1;
                 renderMessages(false, true);
                 renderChatList();
-                exitMultiSelectMode();
                 showToast(`已删除 ${deletedCount} 条消息`);
             }
             

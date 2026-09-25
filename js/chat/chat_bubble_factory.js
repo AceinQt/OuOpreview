@@ -22,6 +22,50 @@ function isMultiSelectBlockingDetail() {
     return typeof isInMultiSelectMode !== 'undefined' && isInMultiSelectMode;
 }
 
+// ================================================================
+// === createHiddenMessageRow: 多选「显示隐藏」时画的那一行占位行 ===
+// ================================================================
+// 隐藏消息（isHidden，内容形如 `[system: 场景切换：…]`）平时不进 DOM。多选模式
+// 开了「显示隐藏」后要把它们画出来让用户勾选，但**不能走 createMessageBubbleElement**：
+//   1. 下面那条 invisibleRegex 会把 `[system:…]` 一律 return null，塞进去也画不出东西；
+//   2. 它们全是 role:'user'，走完整气泡会顶着用户头像渲染成自己发的蓝气泡，
+//      和真消息混在一起分不清，误删真消息的风险比"看不见"更糟；
+//   3. `[剧情旁白：…]`（chat_feature_basic.js 那条 AI 上下文双胞胎）会和屏幕上
+//      已有的 `[system-display:…]` 旁白气泡长得一模一样，画出来就是重影。
+// 所以这里另起一个极简行：只有时间 + 「隐藏」标签 + 原文，一眼看得出不是真消息。
+//
+// class 必须带 `message-wrapper` 且有 data-id —— #message-area 的委托是靠
+// `closest('.message-wrapper').dataset.id` 翻成勾选的，`.multi-select-selected`
+// 的选中底色也挂在这个类上。
+function createHiddenMessageRow(message) {
+    if (!message) return null;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-wrapper hidden-msg-wrapper';
+    wrapper.dataset.id = message.id;
+
+    const raw = (typeof message.content === 'string') ? message.content : '';
+    let timeText = '';
+    if (message.timestamp) {
+        const d = new Date(message.timestamp);
+        if (!isNaN(d.getTime())) {
+            timeText = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+    }
+
+    const row = document.createElement('div');
+    row.className = 'hidden-msg-row';
+    const tag = document.createElement('span');
+    tag.className = 'hidden-msg-tag';
+    tag.textContent = timeText ? `隐藏 ${timeText}` : '隐藏';
+    const text = document.createElement('span');
+    text.className = 'hidden-msg-text';
+    text.textContent = raw || '(空内容)';   // 用 textContent：原文里的尖括号照原样显示，也天然免疫注入
+    row.appendChild(tag);
+    row.appendChild(text);
+    wrapper.appendChild(row);
+    return wrapper;
+}
+
 function createMessageBubbleElement(message) {
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
     const { role, content, timestamp, id, transferStatus, giftStatus, stickerData, senderId, quote, isWithdrawn, originalContent } = message;
@@ -813,6 +857,12 @@ function createCollapsedCallBubble(sessionId, sessionMsgs, isSentByUser) {
     const wrapper = document.createElement('div');
     wrapper.className = `message-wrapper ${isSentByUser ? 'sent' : 'received'} collapsed-call-bubble`;
     wrapper.dataset.callSessionId = sessionId;
+    // ★ data-id 是多选勾选的唯一抓手（#message-area 的委托读 closest('.message-wrapper').dataset.id）。
+    //   以前这里只设 callSessionId，于是多选模式下点折叠的通话气泡**什么都不会发生**
+    //   —— toggleMessageSelection 收到 undefined 就 bail，整段通话谁也删不掉。
+    //   挂首条的 id 只为让它"可点"，真正勾中哪些消息由 idsForMessageSelection 按
+    //   callSessionId 展开成整段（否则删完会剩半段孤零零的通话）。
+    if (sessionMsgs && sessionMsgs.length) wrapper.dataset.id = sessionMsgs[0].id;
 
     // --- bubble row (复用现有布局) ---
     const bubbleRow = document.createElement('div');
