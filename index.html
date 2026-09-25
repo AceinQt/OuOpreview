@@ -782,7 +782,9 @@
                 <div class="title-container">
                     <h1 class="title" id="multi-select-title">选择消息</h1>
                 </div>
-                <div class="placeholder"></div>
+                <!-- 「显示隐藏」把 isHidden 的上下文消息（[system:…]）画出来，好逐条勾选删/转。
+                     文案在「显示隐藏 / 收起隐藏」之间切，见 chat_actions.js 的 syncHiddenToggleBtn。 -->
+                <button class="action-btn" id="toggle-hidden-msg-btn">显示隐藏</button>
             </header>
             <main class="content">
                 <div class="message-area" id="message-area"></div>
@@ -974,8 +976,10 @@
             <input type="hidden" id="setting-chat-image-negative" value="">
             <input type="hidden" id="setting-chat-image-rule" value="">
             <input type="hidden" id="setting-chat-image-reference" value="">
-            <!-- 语音：音色 + 语气要求都由弹窗回填（空语气 = 不注入任何要求） -->
+            <!-- 语音：音色 + 通话开关 + 语气要求都由弹窗回填（空语气 = 不注入任何要求）。
+                 通话开关和通话界面工具箱那颗按钮是同一个字段 chat.callVoiceEnabled -->
             <input type="hidden" id="setting-chat-voice-preset" value="off">
+            <input type="hidden" id="setting-chat-voice-call" value="0">
             <input type="hidden" id="setting-chat-voice-tone" value="">
             <!-- ============================== -->
 
@@ -1015,11 +1019,23 @@
                     <span id="setting-chat-weather-display" class="item-value">不开启</span>
                     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
-                <!-- 语音（音色 + 语气要求合并成一行，点开是折叠式弹窗，同图像生成那套） -->
+                <!-- 语音（音色 + 通话开关 + 语气要求合并成一行，点开是折叠式弹窗，同图像生成那套） -->
                 <div class="settings-item" id="setting-chat-voice-item">
                     <div class="setting-icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"></path><path d="M19 11v1a7 7 0 0 1-14 0v-1"></path><path d="M12 19v2"></path></svg></div>
                     <div class="item-details"><span class="item-name">语音</span></div>
-                    <span id="setting-chat-voice-display" class="item-value">不使用语音</span>
+                    <!-- 这一行右边只放音色名 + 两枚小标记（亮着=该功能开着）。
+                         ★ 通话/语气**不能**写成「· 通话出声 · 已设语气」这种文字后缀：
+                           .item-value 不收缩，两个中文后缀叠上去会把整行挤变形。
+                         ★ 标记是静态 DOM，JS 只切 .is-on 类 —— 音色名是用户自己起的，
+                           拼 innerHTML 塞进去就是一条没必要的注入面。
+                           **别改成 hidden 属性**：SVG 没有那个 IDL 属性，赋值是空操作，
+                           详见 settings_sidebar.css 里 .item-value-flag 那段。
+                         哪枚该亮的规则在 voiceSettingRowFlags 里定义一次。 -->
+                    <span id="setting-chat-voice-display" class="item-value">
+                        <span id="setting-chat-voice-name">不使用语音</span>
+                        <svg id="setting-chat-voice-flag-call" class="item-value-flag" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>通话中自动出声</title><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                        <svg id="setting-chat-voice-flag-tone" class="item-value-flag" role="img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>已设语气要求</title><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    </span>
                     <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </div>
                 <!-- 最大记忆轮数 (Prompt触发) -->
@@ -6209,7 +6225,31 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
             </div>
         </div>
 
-        <!-- ② 语气要求（注入语言模型，不是 TTS 参数） -->
+        <!-- ② 通话语音。**群模式下 JS 会把这一节整块隐掉** —— 通话只支持私聊。
+             这和通话界面顶部工具箱那颗按钮是同一个开关（chat.callVoiceEnabled），
+             多这个入口是因为那颗按钮必须先拨通才够得着，等翻出来点开，
+             开头几句已经出完了。默认展开：它正是用来"提前打开"的，再折一层就白加了 -->
+        <div class="collapsible-section open" id="voice-setting-call-block">
+            <div class="collapsible-header">
+                <h4>通话语音</h4>
+                <span class="collapsible-arrow">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="form-group mb-0" style="display:flex; flex-direction:row;justify-content:space-between; align-items:center;">
+                    <!-- 保持 label：.form-group label 给的蓝色（--secondary-color）就靠它；
+                         补上 for 之后点文字也能拨动开关 -->
+                    <label for="voice-setting-call">通话中自动出声</label>
+                    <label class="switch">
+                        <input type="checkbox" id="voice-setting-call">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <!-- 这行文案是活的：开关打开后会如实报"现在还差什么"，见 _syncCallVoiceHint -->
+                <p class="field-hint" id="voice-setting-call-hint">开启后，语音/视频通话里对方说的每句话都会自动合成并播放。关着也照样存成语音条，事后能手动点播放。</p>
+            </div>
+        </div>
+
+        <!-- ③ 语气要求（注入语言模型，不是 TTS 参数） -->
         <div class="collapsible-section">
             <div class="collapsible-header">
                 <h4>语气要求</h4>

@@ -1696,6 +1696,92 @@
     height: auto;
 }
 
+/* 多选头部右边的「显示隐藏」。
+   `.app-header .action-btn` 把宽度写死成 40px，四个汉字塞不进去必须 width:auto。
+   关着时用描边、开着时填色 —— 它是个有状态的开关，不是一次性动作，
+   光靠文案切换（显示/收起）在扫一眼时不够醒目。 */
+#toggle-hidden-msg-btn {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--primary-color);
+    background-color: transparent;
+    border: 1px solid var(--primary-color);
+    border-radius: 10px;
+    padding: 4px 9px;
+    width: auto;
+    height: auto;
+    white-space: nowrap;
+}
+
+#toggle-hidden-msg-btn.active {
+    color: var(--white-color);
+    background-color: var(--primary-color);
+}
+
+/* 隐藏消息的占位行：只在多选开了「显示隐藏」时存在。
+   刻意做得和真气泡毫不相像（虚线框、灰字、无头像、贴左），
+   免得用户在多选里把它当成普通消息勾错 —— 见 chat_bubble_factory.js 的 createHiddenMessageRow。 */
+.hidden-msg-wrapper {
+    margin-bottom: 8px;
+    width: 100%;
+}
+
+.hidden-msg-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    border: 1px dashed var(--border-color, #d0d0d0);
+    border-radius: 8px;
+    background-color: rgba(128, 128, 128, 0.06);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #8a8a8a;
+}
+
+.hidden-msg-tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 0 5px;
+    border-radius: 4px;
+    background-color: rgba(128, 128, 128, 0.18);
+    color: #6f6f6f;
+    white-space: nowrap;
+}
+
+.hidden-msg-text {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* 隐藏行被勾中时要**明显**：一屏里常有六七条长得几乎一样的通话 [system:…]，
+   而 .multi-select-selected 的淡蓝底色挂在外层 wrapper 上，被这里的灰底盖得
+   几乎看不出来。删除不可恢复，勾没勾中不能靠猜，所以边框也一起换成实线主色。 */
+.hidden-msg-wrapper.multi-select-selected .hidden-msg-row {
+    border-style: solid;
+    border-color: var(--primary-color);
+    background-color: rgba(144, 202, 249, 0.3);
+}
+
+/* 时间戳 `[time-divider]` 是**存在 history 里的真消息**（chat_room.js 插的，还会存盘），
+   气泡工厂给它画了 .message-wrapper 和 data-id，本来就该能勾 —— 只是下面
+   .time-divider-wrapper 的 pointer-events:none 把它点没了。那条是为了防普通模式下
+   误触长按，多选模式里长按早就被拦掉了（chat_actions.js 开头那句），所以
+   「显示隐藏」开着时放开它，让这条也能勾选删除。 */
+#chat-room-screen.show-hidden-msgs .time-divider-wrapper {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+#chat-room-screen.show-hidden-msgs .time-divider-wrapper.multi-select-selected .chat-time-divider {
+    background-color: var(--primary-color);
+    color: var(--white-color);
+}
+
 /* 时间分割线的外壳：强制居中且不可点击 */
 .time-divider-wrapper {
     display: flex;
