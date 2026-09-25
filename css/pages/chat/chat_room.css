@@ -644,20 +644,38 @@
 
 
 
+/* 我方旁白（用户自己在"+"面板发的剧情旁白）：其余样式和 AI 旁白完全一致
+   —— 用户在外观里调「旁白气泡」时两种一起变 —— 只去掉描边，这是两者唯一的区别，
+   用来一眼分清哪段是自己写的。
+   ★ 用户自定义描边时，生成端（bubble_css_preset.js 的「6. 描边设置对比」分支）
+     会再补一条同样的覆盖：那份带 ID 作用域和 !important，光靠这条选择器盖不住。
+     两条通道必须一起改，否则又是"预览生效、保存不生效"那类分叉。 */
+.message-wrapper.narration-wrapper.narration-mine .narration-bubble {
+    border: none;
+}
+
+
 /* =========================================
    核心逻辑：仅针对“旁白”进行无缝拼接
+   ----------------------------------------
+   ★ 只和**同类**拼接：我方旁白只跟我方连，AI 旁白只跟 AI 连。
+     混着连的话一张大卡片会上半截没描边、下半截挂着描边，看着像画坏了。
+     区分靠 narration-mine：带它的是我方，:not(.narration-mine) 的是 AI。
+     生成端 bubble_css_preset.js 里那几条是照这个分组抄的，改这里要一起改。
    ========================================= */
 
-/* 
-   步骤 1: 处理【上方气泡】(我是旁白，且后面也是旁白)
+/*
+   步骤 1: 处理【上方气泡】(我是旁白，且后面是同类旁白)
    - 这个气泡可能是“第一个”，也可能是“中间的”
    - 目标: 强制把底部变平（去掉底部圆角和底部边框），并且拉近底部间距
 */
-.message-wrapper.narration-wrapper:has(+ .message-wrapper.narration-wrapper) {
+.message-wrapper.narration-wrapper:not(.narration-mine):has(+ .message-wrapper.narration-wrapper:not(.narration-mine)),
+.message-wrapper.narration-wrapper.narration-mine:has(+ .message-wrapper.narration-wrapper.narration-mine) {
     margin-bottom: 0 !important; /* 强制覆盖原生间距 */
 }
 
-.message-wrapper.narration-wrapper:has(+ .message-wrapper.narration-wrapper) .narration-bubble {
+.message-wrapper.narration-wrapper:not(.narration-mine):has(+ .message-wrapper.narration-wrapper:not(.narration-mine)) .narration-bubble,
+.message-wrapper.narration-wrapper.narration-mine:has(+ .message-wrapper.narration-wrapper.narration-mine) .narration-bubble {
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
     border-bottom: none !important;
@@ -665,16 +683,18 @@
     z-index: 2;
 }
 
-/* 
-   步骤 2: 处理【下方气泡】(我是旁白，且前面也是旁白)
+/*
+   步骤 2: 处理【下方气泡】(我是旁白，且前面是同类旁白)
    - 这个气泡可能是“最后一个”，也可能是“中间的”
    - 目标: 强制把顶部变平（去掉顶部圆角和顶部边框），防止双重边框
 */
-.message-wrapper.narration-wrapper + .message-wrapper.narration-wrapper {
-    margin-top: 0 !important; 
+.message-wrapper.narration-wrapper:not(.narration-mine) + .message-wrapper.narration-wrapper:not(.narration-mine),
+.message-wrapper.narration-wrapper.narration-mine + .message-wrapper.narration-wrapper.narration-mine {
+    margin-top: 0 !important;
 }
 
-.message-wrapper.narration-wrapper + .message-wrapper.narration-wrapper .narration-bubble {
+.message-wrapper.narration-wrapper:not(.narration-mine) + .message-wrapper.narration-wrapper:not(.narration-mine) .narration-bubble,
+.message-wrapper.narration-wrapper.narration-mine + .message-wrapper.narration-wrapper.narration-mine .narration-bubble {
     border-top-left-radius: 0 !important;
     border-top-right-radius: 0 !important;
     border-top: none !important;
