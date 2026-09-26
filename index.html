@@ -6228,8 +6228,12 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
         <!-- ② 通话语音。**群模式下 JS 会把这一节整块隐掉** —— 通话只支持私聊。
              这和通话界面顶部工具箱那颗按钮是同一个开关（chat.callVoiceEnabled），
              多这个入口是因为那颗按钮必须先拨通才够得着，等翻出来点开，
-             开头几句已经出完了。默认展开：它正是用来"提前打开"的，再折一层就白加了 -->
-        <div class="collapsible-section open" id="voice-setting-call-block">
+             开头几句已经出完了。
+             ★ 默认**收起**：一度默认展开（理由是"它正是用来提前打开的"），但一开弹窗
+               就有两节摊开，弹窗一屏装不下、还得先滚一段才看得见音色下拉。
+               展开状态由 openVoiceSettingDialog 每次开弹窗复位，别指望这里的 class ——
+               `open` 是运行时 toggle 上去的，弹窗全局共用同一份 DOM。 -->
+        <div class="collapsible-section" id="voice-setting-call-block">
             <div class="collapsible-header">
                 <h4>通话语音</h4>
                 <span class="collapsible-arrow">▼</span>
