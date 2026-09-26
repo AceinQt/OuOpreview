@@ -5904,53 +5904,8 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                 </div>
                 <p class="placeholder-text" id="pomodoro-no-tasks-placeholder">还没有专注任务，点击右上角“+”创建一个吧。</p>
             </main>
-        <!-- Pomodoro Settings Sidebar -->
-        <div id="pomodoro-settings-sidebar" class="settings-sidebar">
-            <div class="header">专注设置</div>
-            <div class="content">
-                <form id="pomodoro-settings-form">
-                    <div class="form-group">
-                        <label for="pomodoro-char-select">绑定陪伴角色</label>
-                        <select id="pomodoro-char-select" class="form-group"></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="pomodoro-user-persona-select">选择你的设定</label>
-                        <select id="pomodoro-user-persona-select" class="form-group"></select>
-                    </div>
-                    <hr>
-                    <div class="form-group">
-                        <label for="pomodoro-encouragement-minutes">鼓励机制 (分钟)</label>
-                        <input type="number" id="pomodoro-encouragement-minutes" class="form-group"
-                            placeholder="专注多少分钟后收到鼓励" min="1">
-                    </div>
-                    <div class="form-group">
-                        <label for="pomodoro-poke-limit">“戳一戳”次数上限</label>
-                        <input type="number" id="pomodoro-poke-limit" class="form-group" placeholder="每次专注允许戳几次"
-                            min="0">
-                    </div>
-                    <hr>
-                    <div class="form-group">
-                        <label for="pomodoro-focus-bg-url">专注界面背景 URL</label>
-                        <input type="url" id="pomodoro-focus-bg-url" class="form-group" placeholder="粘贴图片URL">
-                    </div>
-                    <div class="form-group">
-                        <label for="pomodoro-focus-bg-upload" class="btn btn-secondary">或从本地上传</label>
-                        <input type="file" id="pomodoro-focus-bg-upload" accept="image/*" style="display:none;">
-                    </div>
-                    <hr>
-                    <div class="form-group">
-                        <label for="pomodoro-task-card-bg-url">任务卡片背景 URL</label>
-                        <input type="url" id="pomodoro-task-card-bg-url" class="form-group" placeholder="粘贴图片URL">
-                    </div>
-                    <div class="form-group">
-                        <label for="pomodoro-task-card-bg-upload" class="btn btn-secondary">或从本地上传</label>
-                        <input type="file" id="pomodoro-task-card-bg-upload" accept="image/*" style="display:none;">
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="margin-top: 20px;">保存设置</button>
-                </form>
-            </div>
-        </div>
-        <!-- Pomodoro Global Settings Sidebar -->
+        <!-- Pomodoro Global Settings Sidebar（任务列表那一屏的「全局」设置，由
+             #pomodoro-settings-btn 打开，所以留在本屏；本任务设置在 focus 屏里） -->
         <div id="pomodoro-global-settings-sidebar" class="settings-sidebar">
             <div class="header">全局专注设置</div>
             <div class="content">
@@ -6026,7 +5981,60 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                     </div>
                 </div>
             </main>
+        <!-- Pomodoro Settings Sidebar（专注中的「本任务」设置）
+             必须挂在 #pomodoro-focus-screen 里面：开它的齿轮 #pomodoro-focus-settings-btn
+             就在这一屏。放在 #pomodoro-screen 下的话，切到专注屏时那一屏是 display:none，
+             整棵子树不渲染 —— .open 加上了、right 也算成 0，但盒子量出来 0×0，点了没反应。
+             （别为了防「侧边栏串页」再把它挪回去：串页已由 components.css 里
+             .settings-sidebar 的 visibility:hidden / pointer-events:none 根治。）
+             同理 #pomodoro-global-settings-sidebar 留在 #pomodoro-screen，因为开它的
+             #pomodoro-settings-btn 在任务列表那一屏。 -->
+        <div id="pomodoro-settings-sidebar" class="settings-sidebar">
+            <div class="header">专注设置</div>
+            <div class="content">
+                <form id="pomodoro-settings-form">
+                    <div class="form-group">
+                        <label for="pomodoro-char-select">绑定陪伴角色</label>
+                        <select id="pomodoro-char-select" class="form-group"></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="pomodoro-user-persona-select">选择你的设定</label>
+                        <select id="pomodoro-user-persona-select" class="form-group"></select>
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label for="pomodoro-encouragement-minutes">鼓励机制 (分钟)</label>
+                        <input type="number" id="pomodoro-encouragement-minutes" class="form-group"
+                            placeholder="专注多少分钟后收到鼓励" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="pomodoro-poke-limit">“戳一戳”次数上限</label>
+                        <input type="number" id="pomodoro-poke-limit" class="form-group" placeholder="每次专注允许戳几次"
+                            min="0">
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label for="pomodoro-focus-bg-url">专注界面背景 URL</label>
+                        <input type="url" id="pomodoro-focus-bg-url" class="form-group" placeholder="粘贴图片URL">
+                    </div>
+                    <div class="form-group">
+                        <label for="pomodoro-focus-bg-upload" class="btn btn-secondary">或从本地上传</label>
+                        <input type="file" id="pomodoro-focus-bg-upload" accept="image/*" style="display:none;">
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label for="pomodoro-task-card-bg-url">任务卡片背景 URL</label>
+                        <input type="url" id="pomodoro-task-card-bg-url" class="form-group" placeholder="粘贴图片URL">
+                    </div>
+                    <div class="form-group">
+                        <label for="pomodoro-task-card-bg-upload" class="btn btn-secondary">或从本地上传</label>
+                        <input type="file" id="pomodoro-task-card-bg-upload" accept="image/*" style="display:none;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="margin-top: 20px;">保存设置</button>
+                </form>
+            </div>
         </div>
+</div>
 
 
 
