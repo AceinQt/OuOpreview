@@ -667,15 +667,25 @@ function openCallHistory() {
     );
 
     list.innerHTML = '';
+
+    // 两侧取名规则对齐：都是「备注/昵称优先，真名兜底」（角色 remarkName→realName，
+    // 用户 myNickname→myName，和 private_prompt.js 喂给模型的那一套同源）。
+    // 以前用户这一侧硬写「用户」，同一份通话记录里一边是名字、一边是通称。
+    const userLabel = chat.myNickname || chat.myName || '用户';
+
     callMsgs.forEach(m => {
         const item = document.createElement('div');
         item.className = 'call-history-item';
 
         let label = '';
         let text  = m.content;
+        // 配色走这个键，不拿 label 文本反推：用户完全可以把自己的昵称设成「旁白」，
+        // 那一行就会串成旁白的颜色（以前判的是 label === '用户'，写死的通称才碰不上）
+        let kind  = '';
 
         if (m.role === 'user') {
-            label = '用户';
+            label = userLabel;
+            kind  = 'user';
             // 通话里用户发的话也存成语音气泡（[我的语音：…]），所以两种格式都要认 ——
             // 只认「的消息」的话，这通电话里自己说过的每一句都会在记录里显示成
             // 带方括号的原始字符串
@@ -683,12 +693,14 @@ function openCallHistory() {
             text = match ? match[1] : m.content;
         } else if (m.role === 'assistant') {
             label = chat.remarkName || chat.realName;
+            kind  = 'ai';
             const dialogueMatch  = m.content.match(/\[.*?(?:的消息|的语音)[:：]([\s\S]+?)\]$/);
             const narrationMatch = m.content.match(/^\[system-narration:([\s\S]+?)\]$/);
             if (dialogueMatch) {
                 text = dialogueMatch[1];
             } else if (narrationMatch) {
                 label = '旁白';
+                kind  = 'narration';
                 text  = narrationMatch[1];
             } else {
                 return;
@@ -697,20 +709,17 @@ function openCallHistory() {
             return;
         }
 
-        // 根据角色决定颜色类
-        let labelCls, textCls;
-        if (label === '旁白') {
-            labelCls = 'call-history-label call-history-label--narration';
-            textCls  = 'call-history-text call-history-text--narration';
-        } else if (label === '用户') {
-            labelCls = 'call-history-label call-history-label--user';
-            textCls  = 'call-history-text call-history-text--user';
-        } else {
-            labelCls = 'call-history-label call-history-label--ai';
-            textCls  = 'call-history-text call-history-text--ai';
-        }
+        // 两个 span 都用 textContent 拼：label 现在来自用户自己填的昵称，
+        // 原先那句 innerHTML 模板会把名字里的尖括号当标签吃掉（台词同理）
+        const labelEl = document.createElement('span');
+        labelEl.className = `call-history-label call-history-label--${kind}`;
+        labelEl.textContent = label;
+        const textEl = document.createElement('span');
+        textEl.className = `call-history-text call-history-text--${kind}`;
+        textEl.textContent = text;
 
-        item.innerHTML = `<span class="${labelCls}">${label}</span><span class="${textCls}">${text}</span>`;
+        item.appendChild(labelEl);
+        item.appendChild(textEl);
         list.appendChild(item);
     });
 

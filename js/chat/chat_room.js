@@ -155,10 +155,17 @@ function _bubbleOrHiddenRow(msg) {
     return isShowingHiddenMessages() ? createHiddenMessageRow(msg) : null;
 }
 
+// 折叠成一个气泡的那段通话。展开后的容器**不算** —— 那时 session 里每条各归各位。
+function _collapsedCallNode(sid) {
+    return sid
+        ? messageArea.querySelector(`.collapsed-call-bubble[data-call-session-id="${sid}"]`)
+        : null;
+}
+
 // 一段通话在 DOM 里的节点（折叠成一个气泡，或展开后的容器）
 function _callSessionNode(sid) {
     if (!sid) return null;
-    return messageArea.querySelector(`.collapsed-call-bubble[data-call-session-id="${sid}"]`)
+    return _collapsedCallNode(sid)
         || messageArea.querySelector(`[data-call-session-expanded-container="${sid}"]`)
         || null;
 }
@@ -171,14 +178,26 @@ function _findRenderedNodeFor(msg) {
 }
 
 // 【判据用】这条消息在 DOM 里"有没有被代表"。
-// ★ 和上面那个**不是**一个问题，混用过一次就踩了坑：通话中间那几条隐藏消息的
-//   *落点* 是折叠气泡（定位对的），但折叠气泡只代表 session 里**可见**的那几条
-//   —— createCollapsedCallBubble 收到的 range.msgs 是 getCallSessionRange 给的，
-//   那个函数滤掉了 isHidden。少判这里的 !msg.isHidden，通话里的隐藏消息就会被
-//   当成"已经画过了"而永远补不出来（症状：开了显示隐藏，通话那段还是少三行）。
+// ★ 和上面那个**不是**一个问题，混用过一次就踩了坑（见下面折叠/展开的分野）。
 function _isRepresentedInDom(msg) {
     if (!msg) return true;
     if (messageArea.querySelector(`.message-wrapper[data-id="${msg.id}"]`)) return true;
+
+    // 折叠气泡 = 整段通话压成一条，**连里面的隐藏消息一起代表**。勾它就是勾整段
+    // （idsForMessageSelection 按 callSessionId 筛 history，隐藏的也一并带走），
+    // 所以块外面不该再补出任何一行。
+    // ★ 这里一度写作 `!msg.isHidden && ...`，于是通话起止那两条隐藏指令
+    //   （`[system: 场景切换：…]` / `[system: …已结束…]`）被判成"还没画"，补成了折叠块
+    //   **外面**的两行 —— 一行在块前、一行在块后。后果不只是位置难看：用户去点那一行
+    //   想"把它也选上"，而它早已被折叠块连带勾上了，这一点等于取消勾选，
+    //   删完整块之后正好剩下这两条。
+    // ★ 反过来也别整段免判：展开状态下隐藏消息必须照常补出来，
+    //   漏了就是"开了显示隐藏，通话那段还是少几行"（这条是 _collapsedCallNode
+    //   只认折叠气泡、不认展开容器的全部理由）。
+    if (_collapsedCallNode(msg.callSessionId)) return true;
+
+    // 展开状态：可见的那几条各自成气泡（上面第一个 querySelector 就命中了），
+    // 走到这儿还没命中的是气泡工厂画不出来的，交给 _injectHiddenRows 补进容器里。
     return !msg.isHidden && !!_callSessionNode(msg.callSessionId);
 }
 
@@ -267,7 +286,15 @@ function _injectHiddenRows(chat) {
 
         const row = createHiddenMessageRow(msg);
         if (!row) continue;
-        if (cursor) {
+        // 这一条属于一段**展开着**的通话时，它的位置在容器里面。
+        // ★ 尤其是打头那条隐藏的场景切换：游标此刻还停在通话之前的气泡上，
+        //   照常 cursor.after() 会把它甩到容器外面 —— 正是折叠态那个老毛病的展开版。
+        const expandedBox = msg.callSessionId
+            ? messageArea.querySelector(`[data-call-session-expanded-container="${msg.callSessionId}"]`)
+            : null;
+        if (expandedBox && !(cursor && expandedBox.contains(cursor))) {
+            expandedBox.prepend(row);
+        } else if (cursor) {
             cursor.after(row);
         } else {
             // 窗口顶部就是看不见的消息：插在第一个气泡前面（loading 指示器要留在最上面）
@@ -276,6 +303,17 @@ function _injectHiddenRows(chat) {
         }
         cursor = row;
     }
+}
+
+// 把某个子树里的隐藏行从选中集里摘掉（不删行，只退勾选）。
+// 行要被移出 DOM 之前调它：id 还留在 selectedMessageIds 里的话，屏幕上什么都没高亮，
+// 删除时却会连着一条看不见的消息一起删。
+function _unselectHiddenRowsIn(root) {
+    if (!root || typeof selectedMessageIds === 'undefined') return;
+    root.querySelectorAll('.hidden-msg-wrapper').forEach(el => {
+        selectedMessageIds.delete(el.dataset.id);
+    });
+    if (typeof updateMultiSelectBar === 'function') updateMultiSelectBar();
 }
 
 function _removeHiddenRows() {
@@ -950,7 +988,13 @@ function collapseCallSession(sessionId) {
     if (!range) return;
 
     const isSentByUser = range.msgs.some(m => m.id?.includes('_start_vis_'));
-    
+
+    // 折叠会把容器连里面的隐藏行一起换掉，勾选得跟着退掉 —— 同 _removeHiddenRows 那条
+    // 「行没了但 id 还留在选中集里，会连着一条看不见的消息一起删」。
+    // （真要删整段，勾折叠气泡就行，它代表 session 的全部消息。）
+    _unselectHiddenRowsIn(
+        messageArea.querySelector(`[data-call-session-expanded-container="${sessionId}"]`));
+
     // --- 【修改点2】：优先寻找新增的包裹容器进行折叠还原 ---
     const container = messageArea.querySelector(`[data-call-session-expanded-container="${sessionId}"]`);
 

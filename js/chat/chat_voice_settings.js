@@ -192,6 +192,17 @@ async function openVoiceSettingDialog(current = {}, { includePreset = true } = {
         _voiceModalEventBound = true;
     }
 
+    // 每次开弹窗都把折叠状态复位成「只展开音色」。
+    // ★ 不能只靠 index.html 里写死的 class：`open` 是上面那个监听运行时 toggle 上去的，
+    //   而弹窗是全局共用的同一份 DOM、从不重建 —— 光改 HTML 的话"默认只展开音色"
+    //   只在页面加载后第一次打开成立，用户手动展开过一次通话语音，之后每次打开都是展开的。
+    // ★ 群聊那一节顶替音色的位置（见 includePreset），所以它也算"第一项"，一起展开。
+    modal.querySelectorAll('.collapsible-section').forEach(section => {
+        section.classList.toggle('open',
+            section.id === 'voice-setting-preset-block' ||
+            section.id === 'voice-setting-preset-group-hint');
+    });
+
     const binding = normalizeChatVoiceBinding(current);
     const off = _voiceBindingOffValue();
 
