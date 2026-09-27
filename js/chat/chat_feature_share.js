@@ -361,6 +361,8 @@ async function sendShareMessage(share) {
  *
  * 只管数据落盘，不碰 UI（不上气泡、不刷列表）—— 调用方比这里更清楚当前
  * 停在哪个页面。投到当前会话时要不要立刻上气泡，由调用方决定。
+ * （唯一的例外是时间感知，见 push 里的注释：那条分割线属于"数据"，
+ * 它得跟卡片一起落盘，不能指望调用方各自补。）
  *
  * @param {{charIds?: string[], groupIds?: string[]}} targets
  * @param {{title:string, category:string, body:string, extra?:string}} share
@@ -370,6 +372,22 @@ async function deliverShareToChats(targets, share) {
     const delivered = [];
 
     const push = async (chat, chatId, chatType, senderName) => {
+        if (!chat.history) chat.history = [];
+
+        // 时间感知必须在卡片入列**之前**跑。它按 history 末尾那条真互动算间隔
+        // （getLastValidInteractMsg），卡片先 push 进去就成了"上一次互动"，
+        // 间隔归零、分割线和 [系统情景通知] 永远不会出现 —— 症状就是「开着
+        // 时间感知，分享帖子却不触发时间流逝」。+ 号面板那条路径
+        // （sendShareMessage）一直是先感知后 push，这里漏了。
+        //
+        // 投给**别的**聊天也照跑，不用挑当前会话：processTimePerception 里
+        // 那个 addMessageBubble 拿到 [time-divider] 会按不可见消息提前 return，
+        // 不会把气泡画进当前聊天室、也不加未读、不弹通知条。
+        // 内部还会自己看 chat.timePerceptionEnabled，关着就直接返回。
+        if (typeof processTimePerception === 'function') {
+            await processTimePerception(chat, chatId, chatType);
+        }
+
         const content = buildShareMessageContent(senderName, share);
         const message = {
             id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -381,7 +399,6 @@ async function deliverShareToChats(targets, share) {
         // 群聊消息不带 senderId 的话，渲染层认不出是"我"发的，会当成未知成员
         if (chatType === 'group') message.senderId = 'user_me';
 
-        if (!chat.history) chat.history = [];
         chat.history.push(message);
         await saveMessageToDB(message, chatId, chatType);
         await saveSingleChat(chatId, chatType);

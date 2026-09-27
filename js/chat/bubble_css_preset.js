@@ -97,11 +97,14 @@ function getDynamicBubblePreview() {
     // 3. 如果你想改变它们在预览里的上下顺序，直接调换 `html += ...` 代码块的位置即可。
     // 4. 如果你想删掉某个预览（比如觉得太多了），直接删掉对应的 `html += ...` 行。
 
+    // getRow 里的 meta 行必须和 chat_bubble_factory.js 真实那份结构一致（含 meta-time-only），
+    // 否则「显示消息时间」在预览里拨了没反应 —— 生成的两条规则正是冲着这两个 class 去的。
     const getRow = (isSent, innerHtml) => `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
             <div class="message-bubble-row" ${isSent ? 'style="flex-direction: row-reverse;"' : ''}>
                 <img src="${isSent ? './png/avatar_default_me.jpg' : './png/avatar_default.jpg'}" class="message-avatar avatar">
                 <div class="message-content-col" ${isSent ? 'style="align-items: flex-end;"' : ''}>
+                    <div class="message-meta-info meta-time-only"><span class="message-time">12:30</span></div>
                     ${innerHtml}
                 </div>
             </div>
@@ -114,23 +117,23 @@ function getDynamicBubblePreview() {
     html += getRow(false, `<div class="message-bubble received">这是一条对方发来的普通消息。</div>`);
     html += getRow(true, `<div class="message-bubble sent">这是我方回复的普通消息。</div>`);
 
-// 2. 旁白气泡 (中立，不需要调 getRow，独立结构)
-//    最后单独摆一条 narration-mine：那是用户自己在"+"面板发的剧情旁白，
-//    样式跟着同一组设置走、只是不画描边，所以预览里必须两种都看得见，
-//    不然调完描边只看见 AI 那种，会以为"我方那条没生效"。
-//    它和上面三条不同类，按同类才拼接的规则，预览里也应当是断开的。
+// 2. 旁白气泡 (固定居中，不需要调 getRow，独立结构)
+//    分「对方」(AI 写的，:not(.narration-mine)) 和「我方」(用户在"+"面板发的剧情旁白，
+//    .narration-mine) 两类，各有一套独立设置，所以预览里必须两种都看得见 ——
+//    只画一种的话，调完另一种会以为"没生效"。
+//    连体拼接只在同类之间发生，所以预览里两组之间也应当是断开的。
     html += `
         <div class="message-wrapper system-notification narration-wrapper">
-            <div class="narration-bubble markdown-content">这是一段旁白气泡内容。</div>
+            <div class="narration-bubble markdown-content">这是【对方】的旁白，由 AI 写在【线下模式】和【通话】里，用来描述角色的行动。</div>
         </div>
         <div class="message-wrapper system-notification narration-wrapper">
-            <div class="narration-bubble markdown-content">旁白气泡不区分我方和对方。固定显示在屏幕中间位置。相邻的同类旁白会连接为一整个气泡。</div>
-        </div>
-        <div class="message-wrapper system-notification narration-wrapper">
-            <div class="narration-bubble markdown-content">这种是 AI 写的旁白，出现在【线下模式】和【通话】里，用于描述角色的行动。</div>
+            <div class="narration-bubble markdown-content">旁白固定显示在屏幕中间位置。相邻的同类旁白会连接为一整个气泡。</div>
         </div>
         <div class="message-wrapper system-notification narration-wrapper narration-mine">
-            <div class="narration-bubble markdown-content">这种是我自己发的【剧情旁白】，样式与上面一致，但不带描边，用来区分是谁写的。</div>
+            <div class="narration-bubble markdown-content">这是【我方】的旁白，是我自己在"+"面板里发的【剧情旁白】，样式单独一套。</div>
+        </div>
+        <div class="message-wrapper system-notification narration-wrapper narration-mine">
+            <div class="narration-bubble markdown-content">我方旁白默认不带描边，用来和对方的旁白一眼分开；想加也可以在左边选「我方」后自己调。</div>
         </div>
     `;
 
@@ -455,11 +458,20 @@ function setupBubblePresets() {
 
     // ================== 进阶基础 UI 数据管理与 CSS 生成 ==================
     const defaultBasicState = {
-        hideAvatar: false, customFont: '', 
+        hideAvatar: false, showTime: false, customFont: '',
         styles: {
             normal_sent:   { bg:'#0099FF', fontSize:16, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             normal_received:   { bg:'#FFFFFF', fontSize:16, fontColor:'#333333', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
-            narration:     { bg:'#FFFFFF', fontSize:15, fontColor:'#555555', opacity:0.8, blur:0, strokeW:3, strokeC:'#0099FF', radius:6, strokeSides:['left'] },
+            // 旁白也分我方/对方，和普通气泡一个口径：
+            //   narration_received = AI 写的旁白（线下模式/通话），选择器 :not(.narration-mine)
+            //   narration_sent     = 用户自己在"+"面板发的「剧情旁白」，选择器 .narration-mine
+            // 曾经这两者共用一个 `narration` 键、我方靠生成端硬写一条 border:none 区分，
+            // 于是"我方想单独换个底色/描边"做不到。现在各自独立。
+            // ★ 我方的默认值 = 对方的默认值但描边归零，这样拆分前后长得一模一样
+            //   （chat_room.css 的 `.narration-mine .narration-bubble { border: none }` 就是它）。
+            //   改这里要同步 tests/narration_radius_stitch.test.cjs 的默认值断言。
+            narration_received: { bg:'#FFFFFF', fontSize:15, fontColor:'#555555', opacity:0.8, blur:0, strokeW:3, strokeC:'#0099FF', radius:6, strokeSides:['left'] },
+            narration_sent:     { bg:'#FFFFFF', fontSize:15, fontColor:'#555555', opacity:0.8, blur:0, strokeW:0, strokeC:'#0099FF', radius:6, strokeSides:[] },
             voice_sent:    { bg:'#0099FF', fontSize:14, fontColor:'#FFFFFF', opacity:1, blur:5, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             voice_received:    { bg:'#FFFFFF', fontSize:14, fontColor:'#333333', opacity:1, blur:5, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             transfer_sent: { bg:'#FF9900', fontSize:14, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
@@ -497,9 +509,20 @@ function setupBubblePresets() {
         let hasChanges = false; // 核心标记：记录是否真的修改了基础样式
         
         // 判断全局设置是否修改
-        if (basicState.hideAvatar !== defaultBasicState.hideAvatar) { 
-            if (basicState.hideAvatar) basicCss += `.message-avatar { display: none !important; }\n`; 
-            hasChanges = true; 
+        if (basicState.hideAvatar !== defaultBasicState.hideAvatar) {
+            if (basicState.hideAvatar) basicCss += `.message-avatar { display: none !important; }\n`;
+            hasChanges = true;
+        }
+        // 每条消息上方那行时间。默认藏着（chat_room.css 里 .message-time 是 display:none），
+        // 打开时必须**同时**放开两条：时间本身，以及「整行只有时间」时被收掉的那一整行。
+        // 少放开第二条的话，私聊里打开开关等于什么都没发生（整行还是 display:none）。
+        // 那一行为什么要整行收掉，见 chat_room.css 的 .meta-time-only 注释（gap:4px 的坑）。
+        if (basicState.showTime !== defaultBasicState.showTime) {
+            if (basicState.showTime) {
+                basicCss += `.message-time { display: inline !important; }\n`;
+                basicCss += `.message-meta-info.meta-time-only { display: flex !important; }\n`;
+            }
+            hasChanges = true;
         }
         if (basicState.customFont !== defaultBasicState.customFont) {
             if (basicState.customFont) {
@@ -513,14 +536,23 @@ function setupBubblePresets() {
         for (const [typeKey, conf] of Object.entries(basicState.styles)) {
             if (typeKey.startsWith('voice_')) continue;
 
-            const isNarration = typeKey === 'narration';
+            const isNarration = typeKey.startsWith('narration');
             const baseType = isNarration ? 'narration' : typeKey.split('_')[0];
             const sel = classSelectorsMap[baseType];
             if(!sel) continue;
-            
+
+            // 旁白的「我方」是用户自己在"+"面板发的剧情旁白（.narration-mine），
+            // 「对方」是 AI 在线下模式/通话里写的（:not(.narration-mine)）。
+            // 下面主规则、圆角拼接、描边去内侧边三处都拿这一个 nwSelf 拼选择器 ——
+            // 分头硬写过一次，结果是调我方圆角会把对方的拼接规则一起盖掉。
+            const nwSelf = !isNarration ? ''
+                : (typeKey === 'narration_sent'
+                    ? '.message-wrapper.narration-wrapper.narration-mine'
+                    : '.message-wrapper.narration-wrapper:not(.narration-mine)');
+
             let ruleSel = '';
             if (isNarration) {
-                ruleSel = `.message-wrapper.narration-wrapper ${sel}`;
+                ruleSel = `${nwSelf} ${sel}`;
             } else {
                 const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
                 ruleSel = sel.split(',').map(s => {
@@ -592,27 +624,25 @@ function setupBubblePresets() {
                     // ★ 只和**同类**拼接：AI 旁白是 :not(.narration-mine)，用户自己发的
                     //   剧情旁白是 .narration-mine。分组方式必须和 chat_room.css 那几条
                     //   一模一样，否则"默认样式下谁跟谁连"和"自定义之后谁跟谁连"会分叉。
+                    //   两类各有自己的圆角，所以这里只生成 nwSelf 这一类 —— 早先是一次把
+                    //   两类都按同一个 conf.radius 生成，拆开之后那样会让后遍历到的那类
+                    //   把前一类刚生成的拼接规则按错误半径重写一遍。
                     const r = `${conf.radius}px`;
-                    const nwKinds = [
-                        '.message-wrapper.narration-wrapper:not(.narration-mine)',
-                        '.message-wrapper.narration-wrapper.narration-mine'
-                    ];
-                    for (const nw of nwKinds) {
-                        // 后面还有同类旁白 → 我不是最后一条 → 底部两角压平
-                        basicCss += `${nw}:has(+ ${nw}) ${sel} {`
-                            + ` border-bottom-left-radius: 0 !important;`
-                            + ` border-bottom-right-radius: 0 !important;`
-                            + ` border-top-left-radius: ${r} !important;`
-                            + ` border-top-right-radius: ${r} !important; }\n`;
-                        // 前面还有同类旁白 → 我不是第一条 → 顶部两角压平
-                        basicCss += `${nw} + ${nw} ${sel} {`
-                            + ` border-top-left-radius: 0 !important;`
-                            + ` border-top-right-radius: 0 !important; }\n`;
-                        // 既有前也有后 → 中间条 → 四角全平
-                        // （上面两条已经能推出这个结果，但显式写一遍防止将来谁改动其中一条时破功）
-                        basicCss += `${nw} + ${nw}:has(+ ${nw}) ${sel} {`
-                            + ` border-radius: 0 !important; }\n`;
-                    }
+                    const nw = nwSelf;
+                    // 后面还有同类旁白 → 我不是最后一条 → 底部两角压平
+                    basicCss += `${nw}:has(+ ${nw}) ${sel} {`
+                        + ` border-bottom-left-radius: 0 !important;`
+                        + ` border-bottom-right-radius: 0 !important;`
+                        + ` border-top-left-radius: ${r} !important;`
+                        + ` border-top-right-radius: ${r} !important; }\n`;
+                    // 前面还有同类旁白 → 我不是第一条 → 顶部两角压平
+                    basicCss += `${nw} + ${nw} ${sel} {`
+                        + ` border-top-left-radius: 0 !important;`
+                        + ` border-top-right-radius: 0 !important; }\n`;
+                    // 既有前也有后 → 中间条 → 四角全平
+                    // （上面两条已经能推出这个结果，但显式写一遍防止将来谁改动其中一条时破功）
+                    basicCss += `${nw} + ${nw}:has(+ ${nw}) ${sel} {`
+                        + ` border-radius: 0 !important; }\n`;
                 }
             }
 
@@ -652,22 +682,19 @@ function setupBubblePresets() {
                     typeCss += ` border: none !important;`;
                 }
 
-                // 我方旁白（用户自己发的剧情旁白）一律不吃描边 —— 这是它和 AI 旁白唯一的
-                // 区别，靠它一眼分清谁写的。上面那句 border 是打在
-                // `.narration-wrapper .narration-bubble` 上的，带 !important 又有 ID 作用域，
-                // chat_room.css 里那条同名规则盖不住，所以这里补一条特异性更高的关掉。
-                if (isNarration) {
-                    basicCss += `.message-wrapper.narration-wrapper.narration-mine ${sel} { border: none !important; }\n`;
-                }
+                // ★ 这里曾经硬写一条「我方旁白一律 border: none」—— 那是两类共用一套设置
+                //   时用来区分谁写的。现在我方是独立的一类（narration_sent，默认 strokeW:0），
+                //   描边归用户自己调，硬写会让他刚调好的我方描边当场消失。
+                //   "默认不画描边"这件事由默认值 + chat_room.css 那条静态规则负责。
 
-                // 旁白的上下描边同样要「只描整组的外沿」，理由和圆角那条一样：
+                // 旁白的上下描边要「只描整组的外沿」，理由和圆角那条一样：
                 // 选了上+下的话，每条旁白都会各自画一条上边和一条下边，
                 // 相邻两条的接缝处就叠出两条横线，横穿本该是一整张的大卡片。
                 // 所以把内侧那条边去掉：不是最后一条就没有下边，不是第一条就没有上边。
                 // 左右边不用管 —— 它们沿着卡片侧面连成一条，本来就是想要的效果。
-                // ★ 只处理 AI 那一侧：我方旁白整体无描边，没有内侧边可去。
+                // ★ 只处理 nwSelf 这一类：两类的描边各调各的，跨类去边会误伤。
                 if (isNarration && conf.strokeW > 0) {
-                    const nw = '.message-wrapper.narration-wrapper:not(.narration-mine)';
+                    const nw = nwSelf;
                     if (sides.length === 4 || sides.includes('bottom')) {
                         // 后面还有旁白 → 我不是最后一条 → 去掉下边
                         basicCss += `${nw}:has(+ ${nw}) ${sel} { border-bottom: none !important; }\n`;
@@ -730,6 +757,7 @@ function setupBubblePresets() {
 
     function updateUIFromState() {
         document.getElementById('setting-hide-avatar').checked = basicState.hideAvatar;
+        document.getElementById('setting-show-time').checked = basicState.showTime;
         document.getElementById('setting-custom-font').value = basicState.customFont;
         const typeConf = basicState.styles[currentSelectType];
         
@@ -767,14 +795,30 @@ function syncBasicUiFromCss(css) {
             if (metaMatch && metaMatch[1]) {
                 try {
                     const parsed = JSON.parse(metaMatch[1]);
-                    if (parsed.styles && parsed.styles.narration_sent) {
-                        parsed.styles.narration = parsed.styles.narration_sent;
-                        delete parsed.styles.narration_sent; delete parsed.styles.narration_received;
+                    // 兼容迁移：旁白曾经是**一个** `narration` 键（两侧共用一套设置，
+                    // 我方靠生成端硬写 border:none 区分）。现在拆成 narration_sent /
+                    // narration_received 两键，所以把老值往两边各复制一份。
+                    // ★ 我方那份必须把描边清零 —— 老版本我方**实际渲染出来**就是没描边的，
+                    //   原样复制过去会让老预设一加载就凭空长出一圈描边（用户看到的是
+                    //   "我啥也没动，我方旁白怎么多了条线"）。
+                    // ★ 比这更老的预设里也出现过 narration_sent/narration_received 这两个键名
+                    //   （那时候还没有"我方旁白"这个概念，是另一套语义）。它们键名正好对得上，
+                    //   原样放行即可，不值得为那批数据再猜一层。
+                    if (parsed.styles && parsed.styles.narration) {
+                        const legacy = parsed.styles.narration;
+                        if (!parsed.styles.narration_received) {
+                            parsed.styles.narration_received = { ...legacy };
+                        }
+                        if (!parsed.styles.narration_sent) {
+                            parsed.styles.narration_sent = { ...legacy, strokeW: 0, strokeSides: [] };
+                        }
+                        delete parsed.styles.narration;
                     }
 
                     // 【核心修复】使用深度合并，坚决防止 defaultBasicState 里的默认属性被意外覆盖为 undefined
                     basicState = JSON.parse(JSON.stringify(defaultBasicState));
                     if (parsed.hideAvatar !== undefined) basicState.hideAvatar = parsed.hideAvatar;
+                    if (parsed.showTime !== undefined) basicState.showTime = parsed.showTime;
                     if (parsed.customFont !== undefined) basicState.customFont = parsed.customFont;
                     if (parsed.marginY !== undefined) basicState.marginY = parsed.marginY;
                     if (parsed.marginX !== undefined) basicState.marginX = parsed.marginX;
@@ -888,7 +932,8 @@ function syncBasicUiFromCss(css) {
                 const classMap = {
                     'normal_sent': /\.message-bubble\.sent\s*(?:,[^{]*)?\{([^}]+)\}/ig,
                     'normal_received': /\.message-bubble\.received\s*(?:,[^{]*)?\{([^}]+)\}/ig,
-                    'narration': /\.narration-bubble[^{]*\{([^}]+)\}/ig,
+                    'narration_received': /\.narration-bubble[^{]*\{([^}]+)\}/ig,
+                    'narration_sent': /\.narration-bubble[^{]*\{([^}]+)\}/ig,
                     'voice_sent': /\.sent\s+\.voice-bubble\s*(?:,[^{]*)?\{([^}]+)\}/ig,
                     'voice_received': /\.received\s+\.voice-bubble\s*(?:,[^{]*)?\{([^}]+)\}/ig,
                     'transfer_sent': /\.sent(?:-transfer|\s+\.transfer-card)\s*(?:,[^{]*)?\{([^}]+)\}/ig,
@@ -905,9 +950,28 @@ function syncBasicUiFromCss(css) {
                     }
                 }
 
+                // 我方旁白（.narration-mine）的专属规则最后再盖一次：上面两侧都先吃了一遍
+                // 通用的 `.narration-bubble`，这一遍把"我方单独改过的那部分"补上。
+                // 已知不精确：那条通用正则也会吃到 `.narration-mine … .narration-bubble`，
+                // 于是我方的值会渗进对方那份。这条回退路径只在**手写 CSS 且没有 META 注释**时
+                // 才跑（生成端一律带 META），不值得为它再写一个选择器解析器。
+                const mineNarrationRegex = /\.narration-mine[^{]*\.narration-bubble[^{]*\{([^}]+)\}/ig;
+                let mineMatch; let mineRules = "";
+                while ((mineMatch = mineNarrationRegex.exec(css)) !== null) { mineRules += mineMatch[1] + ";"; }
+                if (mineRules) {
+                    parseRulesToState(mineRules, basicState.styles['narration_sent']);
+                }
+
                 if (/(?:\.message-avatar|\.avatar|avatar)[^{]*\{[^}]*(?:display:\s*none|opacity:\s*0|visibility:\s*hidden)/i.test(css) ||
                     /\.message-info[^{]*\{[^}]*display:\s*none/i.test(css)) {
-                    basicState.hideAvatar = true; 
+                    basicState.hideAvatar = true;
+                }
+
+                // 手写 CSS 里把时间放出来了（`.message-time { display: 除 none 以外的值 }`）
+                // 就把开关回显成打开，否则用户一碰别的滑块，生成端会按"开关是关的"
+                // 补一段规则，把他自己写的那条顶掉。
+                if (/\.message-time[^{]*\{[^}]*display:\s*(?!none)[a-z-]+/i.test(css)) {
+                    basicState.showTime = true;
                 }
                 
                 const fontFaceMatch = css.match(/@font-face\s*\{[^}]*src:\s*url\(['"]([^'"]+)['"]\)/i);
@@ -924,25 +988,22 @@ function syncBasicUiFromCss(css) {
     function updateTypeLabel() {
         const t = typeSelect.value;
         const s = sideSelect.value;
-        if (t === 'narration') {
-            sideSelect.disabled = true;
-            currentSelectType = 'narration';
-            document.getElementById('current-type-label').textContent = '旁白气泡 (中立)';
-        } else {
-            sideSelect.disabled = false;
-            currentSelectType = `${t}_${s}`;
-            const tName = typeSelect.options[typeSelect.selectedIndex].text;
-            const sName = sideSelect.options[sideSelect.selectedIndex].text;
-            document.getElementById('current-type-label').textContent = `${tName} - ${sName}`;
-        }
+        // 旁白以前是「中立」的一类、side 下拉被禁用；现在和普通气泡一样分两侧：
+        // 我方 = 用户自己发的剧情旁白，对方 = AI 写的旁白。
+        sideSelect.disabled = false;
+        currentSelectType = `${t}_${s}`;
+        const tName = typeSelect.options[typeSelect.selectedIndex].text;
+        const sName = sideSelect.options[sideSelect.selectedIndex].text;
+        document.getElementById('current-type-label').textContent = `${tName} - ${sName}`;
         updateUIFromState();
-        currentPreviewMode = 0; 
+        currentPreviewMode = 0;
         updatePreview();
     }
     typeSelect.addEventListener('change', updateTypeLabel);
-    sideSelect.addEventListener('change', updateTypeLabel);['setting-hide-avatar', 'setting-custom-font'].forEach(id => {
+    sideSelect.addEventListener('change', updateTypeLabel);['setting-hide-avatar', 'setting-show-time', 'setting-custom-font'].forEach(id => {
         document.getElementById(id).addEventListener('change', (e) => {
             if(id === 'setting-hide-avatar') basicState.hideAvatar = e.target.checked;
+            if(id === 'setting-show-time') basicState.showTime = e.target.checked;
             if(id === 'setting-custom-font') basicState.customFont = e.target.value;
             generateCssFromState();
         });

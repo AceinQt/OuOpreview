@@ -100,8 +100,9 @@ function createMessageBubbleElement(message) {
     //   `[system-narration:…]` —— AI 在线下模式/通话里写的旁白
     //   `[剧情旁白：…]`        —— 用户自己发的剧情旁白（"+"面板那项，只有一条，见
     //                            chat_feature_basic.js 的 sendTimeSkipMessage）
-    // 用户那种多挂一个 narration-mine：其余样式全套照抄（用户在外观里调旁白气泡时
-    // 两种一起变），只去掉描边，这样一眼分得出是谁写的。多条连成一张大卡片的拼接
+    // 用户那种多挂一个 narration-mine：外观里「旁白气泡」已经分我方/对方两套**独立**设置
+    // （bubble_css_preset.js 的 narration_sent / narration_received），我方默认不画描边，
+    // 这样一眼分得出是谁写的，想改也能各调各的。多条连成一张大卡片的拼接
     // 也只在**同类之间**发生，规则在 css/pages/chat/chat_room.css 和
     // js/chat/bubble_css_preset.js 的生成端各有一份，两处必须一致。
     //
@@ -184,8 +185,30 @@ function createMessageBubbleElement(message) {
         translationDiv.className = 'translation-text';
         translationDiv.textContent = chineseText;
 
-        bubbleRow.innerHTML = `<div class="message-info"><img src="${avatarUrl}" class="message-avatar"><span class="message-time">${timeString}</span></div>`;
-        bubbleRow.appendChild(bubbleElement);
+        // 结构和下面普通消息那条保持一致：头像 + 内容列（meta 行在上、气泡在下）。
+        // 这里以前是老版本的 `.message-info`（竖排，时间画在头像**下面**），
+        // 于是打开「显示消息时间」后，双语气泡的时间会跑到别处去，和其它气泡对不齐。
+        // 双语只有对方会发，所以不用管 sent 那一侧。
+        const avatarImg = document.createElement('img');
+        avatarImg.src = avatarUrl;
+        avatarImg.className = 'message-avatar';
+
+        const contentCol = document.createElement('div');
+        contentCol.className = 'message-content-col';
+
+        // 私聊/双语的 meta 行里只有时间 —— meta-time-only 的含义见下面普通消息那段注释
+        const metaRow = document.createElement('div');
+        metaRow.className = 'message-meta-info meta-time-only';
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'message-time';
+        timeSpan.textContent = timeString;
+        metaRow.appendChild(timeSpan);
+
+        contentCol.appendChild(metaRow);
+        contentCol.appendChild(bubbleElement);
+
+        bubbleRow.appendChild(avatarImg);
+        bubbleRow.appendChild(contentCol);
         wrapper.appendChild(bubbleRow);
         wrapper.appendChild(translationDiv);
         return wrapper;
@@ -790,14 +813,22 @@ function createMessageBubbleElement(message) {
         nameSpan.className = 'group-nickname';
         nameSpan.textContent = displayName;
         metaRow.appendChild(nameSpan);
-
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'message-time';
-        timeSpan.textContent = timeString;
-        metaRow.appendChild(timeSpan);
-
-        contentCol.appendChild(metaRow);
+    } else {
+        // 私聊的 meta 行里除了时间空无一物。时间默认是关的（外观 → 基础 → 显示消息时间），
+        // 那这一行就该**整行**消失 —— 只把 .message-time 那个 span 藏掉是不够的：
+        // 空行虽然量出来是零高度，但它仍然算 .message-content-col 的一个 flex item，
+        // 那条 gap:4px 照发，于是气泡被凭空顶下 4px、不再和头像齐平。
+        // （实测：没有 meta 行 0px / 空 meta 行 4px / 整行 display:none 0px）
+        // 靠这个 class 让 CSS 能一次收掉整行，见 chat_room.css 的 .meta-time-only。
+        metaRow.classList.add('meta-time-only');
     }
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'message-time';
+    timeSpan.textContent = timeString;
+    metaRow.appendChild(timeSpan);
+
+    contentCol.appendChild(metaRow);
 
     if (bubbleElement) {
         if (quote) {
