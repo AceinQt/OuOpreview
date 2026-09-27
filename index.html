@@ -371,9 +371,30 @@
                         <label>隐藏头像</label>
                         <label class="switch"><input type="checkbox" id="setting-hide-avatar"><span class="slider round"></span></label>
                     </div>
+                    <!-- 头像弧度：只在「显示头像」时才有意义，隐藏头像时由 JS 整行收掉 -->
+                    <div class="bubble-settings-item col" id="avatar-radius-row">
+                        <label>头像弧度：<span class="val-display" id="val-avatar-radius">正圆</span></label>
+                        <input type="range" class="bubble-slider" id="setting-avatar-radius" min="0" max="19" step="1">
+                    </div>
                     <div class="bubble-settings-item row">
-                        <label>显示消息时间</label>
-                        <label class="switch"><input type="checkbox" id="setting-show-time"><span class="slider round"></span></label>
+                        <label>消息时间：</label>
+                        <select id="setting-time-pos">
+                            <option value="none">不显示</option>
+                            <option value="avatar">头像下方</option>
+                            <option value="above">气泡上方</option>
+                            <option value="tail">气泡后</option>
+                        </select>
+                    </div>
+                    <!-- 时间格式：选了「不显示」以外的位置才出现，由 JS 整行收放 -->
+                    <div class="bubble-settings-item row" id="time-format-row">
+                        <label>时间格式
+                            <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'timeFormat')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                        </label>
+                        <input type="text" id="setting-time-format" placeholder="例如: HH:mm">
                     </div>
                     <div class="bubble-settings-item row">
                         <label>字体：</label>

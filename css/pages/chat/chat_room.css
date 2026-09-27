@@ -146,6 +146,25 @@
     margin-bottom:2px;
 }
 
+/* 头像外面那层壳，只为了「时间戳放头像下方」那个选项而存在（里面是头像 + .message-time-avatar）。
+   ★ 默认 display: contents —— 壳子不生成盒子，头像直接当 .message-bubble-row 的 flex item，
+     布局和没有这层壳时**逐像素一致**。这不是偷懒，是两件事逼出来的：
+     1. 「隐藏头像」生成的是 `.message-avatar { display:none }`（老预设里已经存着这一行，
+        用户不进外观页就永远不会重写）。要是这层壳是真 flex 盒，头像藏了它还在，
+        宽度塌成 0 但仍算一个 flex item，`.message-bubble-row` 的 gap:8px 照发 ——
+        气泡凭空右移 8px。和 .meta-time-only 那个 4px 坑是同一个病。
+     2. 折叠通话气泡和 peek 消息页（js/peek/peek_messages.js）都是裸的 img.message-avatar，
+        没这层壳。display:contents 让「有壳/没壳」表现一致，不用去同步那几处。
+   下面 flex-direction / align-items / gap 在 display:contents 下全是惰性的，
+   等「头像下方」那个选项把 display 翻成 flex（生成端在 bubble_css_preset.js）才生效。 */
+.message-avatar-col {
+    display: contents;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 2px;
+}
+
 .message-avatar {
     width: 38px;
     height: 38px;
@@ -212,13 +231,45 @@
 }
 
 
-/* 每条消息的时间，画在气泡正上方的 meta 行里。
-   默认关着，由外观 → 基础 →「显示消息时间」打开（生成端见 bubble_css_preset.js 的
-   showTime 分支，它会同时放开下面 .meta-time-only 那条）。 */
-.message-time {
+/* 每条消息的时间，一共三个槽位，气泡工厂对每条消息都把三个都画出来，
+   由外观 → 基础 →「消息时间」那个下拉决定放开哪一个（生成端见 bubble_css_preset.js 的
+   timePos 分支）。默认三个全关 = 「不显示」。
+     · .message-time        气泡上方（meta 行里，群聊那行还带身份标签和昵称）
+     · .message-time-avatar 头像下方（在 .message-avatar-col 里）
+     · .message-time-tail   气泡后（.message-bubble-row 的第三个 flex item）
+   ★ 为什么是"画三个 + CSS 挑一个"而不是"工厂按设置只画一个"：位置是跟着预设走的
+     per-chat CSS，纯 CSS 可切的话，用户在外观页拖下拉时**已经渲染出来的气泡**会立刻
+     跟着变，也不用让气泡工厂去解析预设 META。代价是每条消息多两个 span，
+     渲染窗口本来就只有一屏多，这点开销换掉一条跨模块依赖很值。
+   ★ 三个类名必须互不相同：以前只有 .message-time 一个类，生成端那条
+     `.message-time { display: inline }` 会把三个槽位一起放出来（同时冒出三个时间）。 */
+.message-time,
+.message-time-avatar,
+.message-time-tail {
     font-size: 10px;
     color: #aaa;
     display: none;
+}
+
+/* 头像下方那份：宽度掐在头像上下，长格式就折行，不去把头像列撑宽 ——
+   撑宽会让每条消息的头像列宽度随时间文字长短变化，气泡左边缘参差不齐。 */
+.message-time-avatar {
+    max-width: 46px;
+    text-align: center;
+    line-height: 1.25;
+    word-break: break-all;
+}
+
+/* 气泡后那份：.message-bubble-row 的第三个 flex item，**在流内**，
+   所以既不会被 .message-area 的 overflow 裁掉，长格式时也只是把内容列挤窄一点。
+   （早先想过绝对定位，left:100% 一伸出去就撞上 #chat-room-screen 那层 overflow:hidden。）
+   align-self:flex-end 让它贴着气泡底边；sent 那侧 row-reverse 会自动把它甩到气泡左边，
+   不用再写一份镜像规则。 */
+.message-time-tail {
+    align-self: flex-end;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding-bottom: 2px;
 }
 
 /* 私聊里 meta 行除了时间空无一物，时间一关这行就得**整行**消失。
@@ -226,6 +277,8 @@
      .message-content-col 的一个 flex item，那条 gap:4px 照发，气泡被凭空顶下 4px、
      不再和头像齐平 —— 这正是当初"加了时间就有条小空隙"、最后把时间整个删掉的原因。
      实测：没有 meta 行 0px ／ 空 meta 行 4px ／ 整行 display:none 0px。
+   ★ 所以只有「气泡上方」那个选项才放开这一条；选「头像下方」或「气泡后」时
+     这行要继续整行收着（时间画在别的槽位里，meta 行仍然是空的）。
    群聊的 meta 行里还有身份标签和昵称，不挂这个 class，照常显示。 */
 .message-meta-info.meta-time-only {
     display: none;
