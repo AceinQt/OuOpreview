@@ -212,9 +212,22 @@
 }
 
 
+/* 每条消息的时间，画在气泡正上方的 meta 行里。
+   默认关着，由外观 → 基础 →「显示消息时间」打开（生成端见 bubble_css_preset.js 的
+   showTime 分支，它会同时放开下面 .meta-time-only 那条）。 */
 .message-time {
     font-size: 10px;
     color: #aaa;
+    display: none;
+}
+
+/* 私聊里 meta 行除了时间空无一物，时间一关这行就得**整行**消失。
+   ★ 只把上面那个 .message-time 藏掉是不够的：空行量出来是零高度没错，但它仍然算
+     .message-content-col 的一个 flex item，那条 gap:4px 照发，气泡被凭空顶下 4px、
+     不再和头像齐平 —— 这正是当初"加了时间就有条小空隙"、最后把时间整个删掉的原因。
+     实测：没有 meta 行 0px ／ 空 meta 行 4px ／ 整行 display:none 0px。
+   群聊的 meta 行里还有身份标签和昵称，不挂这个 class，照常显示。 */
+.message-meta-info.meta-time-only {
     display: none;
 }
 
@@ -644,12 +657,15 @@
 
 
 
-/* 我方旁白（用户自己在"+"面板发的剧情旁白）：其余样式和 AI 旁白完全一致
-   —— 用户在外观里调「旁白气泡」时两种一起变 —— 只去掉描边，这是两者唯一的区别，
-   用来一眼分清哪段是自己写的。
-   ★ 用户自定义描边时，生成端（bubble_css_preset.js 的「6. 描边设置对比」分支）
-     会再补一条同样的覆盖：那份带 ID 作用域和 !important，光靠这条选择器盖不住。
-     两条通道必须一起改，否则又是"预览生效、保存不生效"那类分叉。 */
+/* 我方旁白（用户自己在"+"面板发的剧情旁白）的**默认**样子：除了不画描边，其余和
+   对方（AI）旁白一致。
+   ★ 这条只是默认值，不是强制。外观里「旁白气泡」已经分我方/对方两套独立设置
+     （bubble_css_preset.js 的 narration_sent / narration_received），用户给我方调了描边
+     的话，生成端会出一条带 ID 作用域 + !important 的规则盖掉这里。
+     生成端曾经硬写过一条「我方一律 border:none」来区分两者 —— 拆成两套之后那条被删了，
+     留着它会让用户刚调好的我方描边当场消失。
+   ★ 这里的 border:none 要和 defaultBasicState.styles.narration_sent.strokeW = 0 对齐：
+     对不上的话一打开外观页就会凭空生成一段 CSS。 */
 .message-wrapper.narration-wrapper.narration-mine .narration-bubble {
     border: none;
 }

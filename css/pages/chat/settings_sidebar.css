@@ -210,7 +210,8 @@
 /* 数值后面的小标记：亮着 = 那个子功能开着（目前只有语音那一行用）。
    为什么是图标不是「· 通话出声」这种文字后缀：这一行左边已经占了图标 + 标题，
    .item-value 又不收缩，再叠两个中文后缀就把整行挤变形了。
-   色用 --secondary-color 而不是 .item-value 的灰：灰的会被当成装饰，看不出"开着"。
+   色用 --accent-color 而不是 .item-value 的灰：灰的会被当成装饰，看不出"开着"。
+   （曾用过 --secondary-color，在浅色主题下仍是灰调，亮起来的对比不够，换成强调色。）
 
    🛑 默认藏起来、靠 .is-on 点亮，**不要改回 hidden 属性**：`hidden` 是
    HTMLElement 的 IDL 属性，SVGElement 压根没有它 —— JS 里写 `svg.hidden = false`
@@ -222,7 +223,7 @@
     height: 14px;
     margin-left: 5px;
     vertical-align: -2px;
-    color: var(--secondary-color);
+    color: var(--accent-color);
 }
 .item-value-flag.is-on {
     display: inline-block;
