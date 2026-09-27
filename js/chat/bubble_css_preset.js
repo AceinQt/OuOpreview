@@ -89,24 +89,52 @@ async function _persistChatsAfterPresetChange() {
 }
 // =================================== 更新预览区域核心逻辑 ===================================
 
+// 从一段预设 CSS 的 META 注释里取出时间格式。
+// 位置是纯 CSS，格式不是 —— 它得由气泡工厂在渲染时拼成文字，所以要有人把它从 CSS 里
+// 捞出来。实际聊天室走 chat_settings.js 的 updateCustomBubbleStyle（所有换预设/进聊天室
+// 的唯一汇合点），预览走下面的 getDynamicBubblePreview，两边都调这一个函数，
+// 免得"预览里是这个格式、聊天室里是另一个"。
+function getMessageTimeFormatFromCss(css) {
+    if (!css) return '';
+    const m = String(css).match(/\/\* META:(.+?) \*\//);
+    if (!m) return '';
+    try {
+        const parsed = JSON.parse(m[1]);
+        return (typeof parsed.timeFormat === 'string') ? parsed.timeFormat : '';
+    } catch (e) {
+        return '';
+    }
+}
+
 // 全景气泡预览生成器：将所有的气泡都放在一个窗口里
-function getDynamicBubblePreview() {
+function getDynamicBubblePreview(timeFormat) {
     // 【教学指南：如何自己修改这里的预览气泡？】
     // 1. `getRow(isSent, html)` 是生成一行消息的函数，isSent 为 true 表示是我方发出的。
     // 2. 所有的预览内容都在下方的 `let html = ""` 中拼接。
     // 3. 如果你想改变它们在预览里的上下顺序，直接调换 `html += ...` 代码块的位置即可。
     // 4. 如果你想删掉某个预览（比如觉得太多了），直接删掉对应的 `html += ...` 行。
 
-    // getRow 里的 meta 行必须和 chat_bubble_factory.js 真实那份结构一致（含 meta-time-only），
-    // 否则「显示消息时间」在预览里拨了没反应 —— 生成的两条规则正是冲着这两个 class 去的。
+    // 样例时间固定挑一个能把所有占位符都试出来的时刻：2026-09-27(周日) 下午 13:05:09。
+    // 分/秒故意带前导零，这样用户写 m 还是 mm 一眼看得出区别。
+    const sampleTime = (typeof formatMessageTimestamp === 'function')
+        ? formatMessageTimestamp(new Date(2026, 8, 27, 13, 5, 9).getTime(), timeFormat)
+        : '13:05';
+
+    // getRow 里的三个时间槽位必须和 chat_bubble_factory.js 真实那份结构一致
+    // （头像列里一个、meta 行里一个、气泡后一个），否则「消息时间」的位置在预览里
+    // 拨了没反应 —— 生成的规则正是冲着这三个 class 去的，缺哪个哪个位置就是空的。
     const getRow = (isSent, innerHtml) => `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
             <div class="message-bubble-row" ${isSent ? 'style="flex-direction: row-reverse;"' : ''}>
-                <img src="${isSent ? './png/avatar_default_me.jpg' : './png/avatar_default.jpg'}" class="message-avatar avatar">
+                <div class="message-avatar-col">
+                    <img src="${isSent ? './png/avatar_default_me.jpg' : './png/avatar_default.jpg'}" class="message-avatar avatar">
+                    <span class="message-time-avatar">${sampleTime}</span>
+                </div>
                 <div class="message-content-col" ${isSent ? 'style="align-items: flex-end;"' : ''}>
-                    <div class="message-meta-info meta-time-only"><span class="message-time">12:30</span></div>
+                    <div class="message-meta-info meta-time-only"><span class="message-time">${sampleTime}</span></div>
                     ${innerHtml}
                 </div>
+                <span class="message-time-tail">${sampleTime}</span>
             </div>
         </div>
     `;
@@ -196,7 +224,8 @@ function getDynamicBubblePreview() {
 // 从 index.html 真实的 #chat-room-screen clone 一份，改成适合预览的样子。
 // 关键点是：不重写结构，只做「隐藏浮层 + 填示例内容」这两件事。
 // 这样以后改 index.html 的顶栏/底栏，预览自动跟着变，不会再漂移。
-function buildPreviewShellHtml() {
+// timeFormat 是一路透传给示例气泡的时间模板，来源是正在编辑的那段 CSS 的 META。
+function buildPreviewShellHtml(timeFormat) {
     const real = document.getElementById('chat-room-screen');
     if (!real) return '';
 
@@ -241,7 +270,7 @@ function buildPreviewShellHtml() {
 
     // 示例气泡塞进真实的 #message-area
     const area = clone.querySelector('#message-area');
-    if (area) area.innerHTML = getDynamicBubblePreview();
+    if (area) area.innerHTML = getDynamicBubblePreview(timeFormat);
 
     return clone.outerHTML;
 }
@@ -327,7 +356,9 @@ function updateBubbleCssPreview(previewContainer, css, useDefault, theme) {
         ? scopeBubbleCss(rawUserCss, PREVIEW_CHAT_ID)
         : '';
 
-    const shellHtml = buildPreviewShellHtml();
+    // 时间格式取自**同一段** rawUserCss 的 META，而不是编辑器里的 basicState ——
+    // 预览的口径始终是"这段 CSS 存下去会长什么样"，和位置/颜色那些保持一致
+    const shellHtml = buildPreviewShellHtml(getMessageTimeFormatFromCss(rawUserCss));
     const focusCss = PREVIEW_FOCUS_CSS[mode.focus] || '';
 
     doc.write(`
@@ -457,8 +488,15 @@ function setupBubblePresets() {
     }
 
     // ================== 进阶基础 UI 数据管理与 CSS 生成 ==================
+    // timePos: 消息时间放哪儿 —— 'none' 不显示 / 'avatar' 头像下方 / 'above' 气泡上方 / 'tail' 气泡后。
+    //   三个槽位在气泡工厂里都画了出来（见 chat_bubble_factory.js 的组装段），这里只负责
+    //   放开其中一个，所以换位置是纯 CSS 的事，已经渲染出来的气泡会立刻跟着动。
+    //   ★ 老预设存的是布尔 `showTime`，迁移在 syncBasicUiFromCss 里：true → 'above'。
+    // timeFormat: 时间文字的模板，**不是 CSS**，由气泡工厂在渲染时按它拼字符串
+    //   （解析器 formatMessageTimestamp，说明文案见本文件底部的 AppHelp.register）。
+    // avatarRadius: 头像圆角，0 = 方角，19 = 正圆（头像 38px，19px 正好是 50%）。
     const defaultBasicState = {
-        hideAvatar: false, showTime: false, customFont: '',
+        hideAvatar: false, timePos: 'none', timeFormat: 'HH:mm', avatarRadius: 19, customFont: '',
         styles: {
             normal_sent:   { bg:'#0099FF', fontSize:16, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             normal_received:   { bg:'#FFFFFF', fontSize:16, fontColor:'#333333', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
@@ -513,15 +551,39 @@ function setupBubblePresets() {
             if (basicState.hideAvatar) basicCss += `.message-avatar { display: none !important; }\n`;
             hasChanges = true;
         }
-        // 每条消息上方那行时间。默认藏着（chat_room.css 里 .message-time 是 display:none），
-        // 打开时必须**同时**放开两条：时间本身，以及「整行只有时间」时被收掉的那一整行。
-        // 少放开第二条的话，私聊里打开开关等于什么都没发生（整行还是 display:none）。
-        // 那一行为什么要整行收掉，见 chat_room.css 的 .meta-time-only 注释（gap:4px 的坑）。
-        if (basicState.showTime !== defaultBasicState.showTime) {
-            if (basicState.showTime) {
+        // 头像圆角。默认 19 = 正圆，和 chat_room.css 里那条 border-radius:50% 是同一个意思，
+        // 所以不改就一个字节都不生成。到顶时输出 50% 而不是 19px —— 万一以后头像尺寸变了，
+        // 百分比还是正圆，19px 就变成一个莫名其妙的方角了。
+        if (basicState.avatarRadius !== defaultBasicState.avatarRadius) {
+            const r = basicState.avatarRadius >= 19 ? '50%' : `${basicState.avatarRadius}px`;
+            basicCss += `.message-avatar { border-radius: ${r} !important; }\n`;
+            hasChanges = true;
+        }
+        // 每条消息的时间放在哪儿。气泡工厂对每条消息画了三个槽位，默认全是 display:none
+        // （chat_room.css），这里按用户选的位置放开一个。
+        // ★「气泡上方」必须**同时**放开两条：时间本身，以及「整行只有时间」时被收掉的那整行。
+        //   少放开第二条的话，私聊里选了这个位置等于什么都没发生（整行还是 display:none）。
+        //   那一行为什么要整行收掉，见 chat_room.css 的 .meta-time-only 注释（gap:4px 的坑）。
+        // ★ 另外两个位置**不能**放开 .meta-time-only：时间画在别的槽位里，
+        //   meta 行仍然是空的，放开它就又把那 4px 空隙请回来了。
+        // ★ 'avatar' 还要把 .message-avatar-col 从 display:contents 翻成真正的 flex 列，
+        //   默认那个 contents 的用意见 chat_room.css 那段注释。
+        if (basicState.timePos !== defaultBasicState.timePos) {
+            if (basicState.timePos === 'above') {
                 basicCss += `.message-time { display: inline !important; }\n`;
                 basicCss += `.message-meta-info.meta-time-only { display: flex !important; }\n`;
+            } else if (basicState.timePos === 'avatar') {
+                basicCss += `.message-avatar-col { display: flex !important; }\n`;
+                basicCss += `.message-time-avatar { display: block !important; }\n`;
+            } else if (basicState.timePos === 'tail') {
+                basicCss += `.message-time-tail { display: block !important; }\n`;
             }
+            hasChanges = true;
+        }
+        // 时间格式只影响文字内容、生成不出 CSS，但仍要让 hasChanges 为真 ——
+        // 否则整个自动生成区块（连同存着 timeFormat 的 META 注释）会被下面那段
+        // 「没改动就彻底删掉」的逻辑连锅端走，用户改的格式存不下来。
+        if (basicState.timeFormat !== defaultBasicState.timeFormat) {
             hasChanges = true;
         }
         if (basicState.customFont !== defaultBasicState.customFont) {
@@ -755,10 +817,34 @@ function setupBubblePresets() {
         }
     }
 
+    // 两个条件行：头像弧度只在「显示头像」时有意义，时间格式只在时间真的显示时有意义。
+    // 收行用 display:'none' / 复原用 ''（让 CSS 里的 flex 生效），别写死 'flex' ——
+    // .row 和 .col 两种行的 flex-direction 不一样，写死会把竖排的滑块行压成横排。
+    function syncConditionalRows() {
+        const radiusRow = document.getElementById('avatar-radius-row');
+        if (radiusRow) radiusRow.style.display = basicState.hideAvatar ? 'none' : '';
+        const fmtRow = document.getElementById('time-format-row');
+        if (fmtRow) fmtRow.style.display = (basicState.timePos === 'none') ? 'none' : '';
+
+        // 头像藏了就不该还能选「头像下方」：那一档生成的是「把头像列翻成 flex 列」，
+        // 头像本身 display:none 之后列里只剩一个时间，宽度由时间文字决定，
+        // 气泡左边缘会随每条消息的时间长短参差不齐。选中时强制退回「气泡上方」。
+        const posSelect = document.getElementById('setting-time-pos');
+        if (posSelect) {
+            const avatarOpt = posSelect.querySelector('option[value="avatar"]');
+            if (avatarOpt) avatarOpt.disabled = basicState.hideAvatar;
+        }
+    }
+
     function updateUIFromState() {
         document.getElementById('setting-hide-avatar').checked = basicState.hideAvatar;
-        document.getElementById('setting-show-time').checked = basicState.showTime;
+        document.getElementById('setting-time-pos').value = basicState.timePos;
+        document.getElementById('setting-time-format').value = basicState.timeFormat;
+        document.getElementById('setting-avatar-radius').value = basicState.avatarRadius;
+        document.getElementById('val-avatar-radius').textContent =
+            basicState.avatarRadius >= 19 ? '正圆' : `${basicState.avatarRadius}px`;
         document.getElementById('setting-custom-font').value = basicState.customFont;
+        syncConditionalRows();
         const typeConf = basicState.styles[currentSelectType];
         
         // 色值同步
@@ -818,7 +904,16 @@ function syncBasicUiFromCss(css) {
                     // 【核心修复】使用深度合并，坚决防止 defaultBasicState 里的默认属性被意外覆盖为 undefined
                     basicState = JSON.parse(JSON.stringify(defaultBasicState));
                     if (parsed.hideAvatar !== undefined) basicState.hideAvatar = parsed.hideAvatar;
-                    if (parsed.showTime !== undefined) basicState.showTime = parsed.showTime;
+                    // 时间位置：老预设存的是布尔 showTime（那时候只有"气泡上方"一个位置），
+                    // 迁移成 timePos。两个都在时以新的为准 —— 生成端已经不写 showTime 了，
+                    // 还留着的一定是更老的那份。
+                    if (parsed.timePos !== undefined) {
+                        basicState.timePos = parsed.timePos;
+                    } else if (parsed.showTime !== undefined) {
+                        basicState.timePos = parsed.showTime ? 'above' : 'none';
+                    }
+                    if (parsed.timeFormat !== undefined) basicState.timeFormat = parsed.timeFormat;
+                    if (parsed.avatarRadius !== undefined) basicState.avatarRadius = parsed.avatarRadius;
                     if (parsed.customFont !== undefined) basicState.customFont = parsed.customFont;
                     if (parsed.marginY !== undefined) basicState.marginY = parsed.marginY;
                     if (parsed.marginX !== undefined) basicState.marginX = parsed.marginX;
@@ -967,11 +1062,26 @@ function syncBasicUiFromCss(css) {
                     basicState.hideAvatar = true;
                 }
 
-                // 手写 CSS 里把时间放出来了（`.message-time { display: 除 none 以外的值 }`）
-                // 就把开关回显成打开，否则用户一碰别的滑块，生成端会按"开关是关的"
-                // 补一段规则，把他自己写的那条顶掉。
-                if (/\.message-time[^{]*\{[^}]*display:\s*(?!none)[a-z-]+/i.test(css)) {
-                    basicState.showTime = true;
+                // 手写 CSS 里把某个时间槽位放出来了就把下拉回显到对应位置，否则用户一碰别的
+                // 滑块，生成端会按"当前是不显示"补一段规则，把他自己写的那条顶掉。
+                // 顺序即优先级：三个都写了的话按"最靠后的那个位置"算，反正手写成这样本来就没定论。
+                if (/\.message-time\b[^{]*\{[^}]*display:\s*(?!none)[a-z-]+/i.test(css)) {
+                    basicState.timePos = 'above';
+                }
+                if (/\.message-time-avatar[^{]*\{[^}]*display:\s*(?!none)[a-z-]+/i.test(css)) {
+                    basicState.timePos = 'avatar';
+                }
+                if (/\.message-time-tail[^{]*\{[^}]*display:\s*(?!none)[a-z-]+/i.test(css)) {
+                    basicState.timePos = 'tail';
+                }
+
+                // 头像圆角同理。`50%` 和 19px 都算正圆（头像 38px）。
+                const avatarRadiusMatch = css.match(/\.message-avatar\s*\{[^}]*border-radius:\s*([\d.]+)(px|%)/i);
+                if (avatarRadiusMatch) {
+                    const num = parseFloat(avatarRadiusMatch[1]);
+                    basicState.avatarRadius = (avatarRadiusMatch[2] === '%')
+                        ? 19
+                        : Math.max(0, Math.min(19, Math.round(num)));
                 }
                 
                 const fontFaceMatch = css.match(/@font-face\s*\{[^}]*src:\s*url\(['"]([^'"]+)['"]\)/i);
@@ -1000,14 +1110,46 @@ function syncBasicUiFromCss(css) {
         updatePreview();
     }
     typeSelect.addEventListener('change', updateTypeLabel);
-    sideSelect.addEventListener('change', updateTypeLabel);['setting-hide-avatar', 'setting-show-time', 'setting-custom-font'].forEach(id => {
+    sideSelect.addEventListener('change', updateTypeLabel);['setting-hide-avatar', 'setting-time-pos', 'setting-time-format', 'setting-custom-font'].forEach(id => {
         document.getElementById(id).addEventListener('change', (e) => {
-            if(id === 'setting-hide-avatar') basicState.hideAvatar = e.target.checked;
-            if(id === 'setting-show-time') basicState.showTime = e.target.checked;
+            if(id === 'setting-hide-avatar') {
+                basicState.hideAvatar = e.target.checked;
+                // 藏头像的同时正停在「头像下方」的话，把位置退回「气泡上方」——
+                // 理由见 syncConditionalRows 里那段注释（头像列宽度会随时间文字变化）
+                if (basicState.hideAvatar && basicState.timePos === 'avatar') {
+                    basicState.timePos = 'above';
+                    document.getElementById('setting-time-pos').value = 'above';
+                }
+            }
+            if(id === 'setting-time-pos') basicState.timePos = e.target.value;
+            if(id === 'setting-time-format') basicState.timeFormat = e.target.value.trim() || defaultBasicState.timeFormat;
             if(id === 'setting-custom-font') basicState.customFont = e.target.value;
+            syncConditionalRows();
             generateCssFromState();
         });
     });
+
+    // 时间格式用 input 而不是 change：边打字边在预览里看效果，不用先失焦
+    const timeFormatInput = document.getElementById('setting-time-format');
+    if (timeFormatInput) {
+        timeFormatInput.addEventListener('input', (e) => {
+            basicState.timeFormat = e.target.value.trim() || defaultBasicState.timeFormat;
+            generateCssFromState();
+        });
+    }
+
+    // 头像弧度滑块。到顶显示「正圆」而不是「19px」—— 用户要的是那个语义，
+    // 而且头像尺寸一改，19 这个数字就不成立了
+    const avatarRadiusInput = document.getElementById('setting-avatar-radius');
+    if (avatarRadiusInput) {
+        avatarRadiusInput.addEventListener('input', (e) => {
+            const v = parseInt(e.target.value, 10) || 0;
+            basicState.avatarRadius = v;
+            const disp = document.getElementById('val-avatar-radius');
+            if (disp) disp.textContent = v >= 19 ? '正圆' : `${v}px`;
+            generateCssFromState();
+        });
+    }
 
     const inputsMap = {
         'setting-bg':['bg', 'color'], 'setting-bg-text': ['bg', 'text'],
@@ -1403,3 +1545,40 @@ function syncBasicUiFromCss(css) {
 
 // 确保页面加载完成后执行绑定
 window.setupBubblePresets = setupBubblePresets;
+
+// ================================================================
+// === 「时间格式」那个问号弹窗的文案 ==============================
+// ================================================================
+// AppHelp 的约定是「谁的功能谁注册自己的文案」（见 js/core/utils.js 的那段说明），
+// 所以放在这里而不是 utils 里攒成大字典。HTML 那边是 showHelp('bubble', 'timeFormat')。
+// ★ 正文最终走 AppUI.alert，而它用的是 innerText —— 换行写 \n，不要写 <br>。
+if (typeof AppHelp !== 'undefined' && typeof AppHelp.register === 'function') {
+    AppHelp.register('bubble', {
+        timeFormat: {
+            title: '时间格式怎么写',
+            content:
+                '直接写你想看到的样子，字母会被换成对应的时间，其它字符原样保留。\n'
+                + '比如 HH:mm 会显示成 13:05，M月D日 HH:mm 会显示成 9月27日 13:05。\n\n'
+                + '【可用的字母】\n'
+                + 'YYYY 年份四位(2026)　YY 年份两位(26)\n'
+                + 'MM 月份两位(09)　　　M 月份(9)\n'
+                + 'DD 日期两位(27)　　　D 日期(27)\n'
+                + 'HH 小时两位(13)　　　H 小时(13)\n'
+                + 'hh 小时两位(13)　　　h 小时(13)\n'
+                + 'mm 分钟两位(05)　　　m 分钟(5)\n'
+                + 'ss 秒两位(09)　　　　s 秒(9)\n'
+                + 'A 上午/下午　　　　　a AM/PM\n'
+                + 'ddd 周日　　　　　　 dddd 星期日\n\n'
+                + '【关于 12 小时制】\n'
+                + '默认一律是 24 小时制，hh 和 HH 一个意思（13 点就显示 13）。\n'
+                + '只有当你写了 A 或 a 的时候，小时才会切成 12 小时制 ——\n'
+                + '比如 A hh:mm 显示成「下午 01:05」。\n'
+                + '（这点和网上常见的写法不同：那边 hh 单独用就是 12 小时制，\n'
+                + '于是 13:05 会变成没头没尾的 01:05，看着像出了 bug。）\n\n'
+                + '【想原样显示某个字母】\n'
+                + '用方括号括起来，比如 [at] HH:mm 会显示成「at 13:05」；\n'
+                + '不括的话 a 会被当成 AM/PM 换掉。\n\n'
+                + '留空的话按 HH:mm 算。'
+        }
+    });
+}

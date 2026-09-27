@@ -652,12 +652,24 @@ async function saveSettingsFromSidebar() {
 // 这是硬要求，不是巧合。这里以前是一套手写正则，预览是原样注入，
 // 两条通道语义不同，于是「预览生效、保存后不生效」（尤其是底栏）成了常态反馈。
 // 想改注入方式的话去改 bubble_css_scope.js，别在这里单独加逻辑。
+//
+// ★ 顺带把「消息时间格式」从这段 CSS 的 META 里捞出来放进全局。外观里的**位置**是纯 CSS
+//   （气泡工厂画三个槽位、CSS 放开一个），但**格式**是文字内容，CSS 变不出来，只能由
+//   气泡工厂在渲染时拼。选这里做落点是因为它是所有「进聊天室 / 换预设 / 存预设」
+//   路径的唯一汇合点（chat_room.js:866、本文件 :643、group_settings.js:847、
+//   bubble_css_preset.js 存/删预设那几处都调它），放别处必漏一条。
 function updateCustomBubbleStyle(chatId, css, enabled) {
     const styleId = `custom-bubble-style-for-${chatId}`;
     let styleElement = document.getElementById(styleId);
 
     const finalCss = (enabled && css && typeof scopeBubbleCss === 'function')
         ? scopeBubbleCss(css, chatId)
+        : '';
+
+    // 空串 = 用默认格式。必须**无条件**写一次：切到一个没设过格式的聊天时，
+    // 不写就会继续沿用上一个聊天的格式（下面那个 return 之前也得覆盖到）。
+    window.currentMessageTimeFormat = (enabled && css && typeof getMessageTimeFormatFromCss === 'function')
+        ? getMessageTimeFormatFromCss(css)
         : '';
 
     if (!finalCss) {
