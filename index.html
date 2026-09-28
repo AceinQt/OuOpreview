@@ -7549,6 +7549,24 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                     style="font-size:12px; color:#888; text-align:center; margin-top:10px; min-height:18px; line-height:1.4;">
                 </div>
             </div>
+            <!-- 过滤删除：两个开关默认都开着（HTML 的 checked + 每次打开弹窗时重置）。
+                 删帖不可恢复，安全方向是「少删」—— 想连收藏一起清的人自己关掉它。 -->
+            <div class="form-group"
+                style="display:flex; align-items:center; justify-content:space-between; margin-top:15px;">
+                <label for="forum-del-skip-fav" style="margin-bottom:0;">跳过收藏</label>
+                <label class="switch">
+                    <input type="checkbox" id="forum-del-skip-fav" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <div class="form-group"
+                style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+                <label for="forum-del-skip-watching" style="margin-bottom:0;">跳过在看</label>
+                <label class="switch">
+                    <input type="checkbox" id="forum-del-skip-watching" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
             <button class="btn btn-primary" id="forum-del-confirm-btn" style="width:100%; margin-top:10px;">删除</button>
         </div>
     </div>
