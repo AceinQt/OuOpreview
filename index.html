@@ -1746,6 +1746,37 @@
     </main>
 </div>
 
+<!-- === 喵坛帖子搜索结果页 === -->
+<!-- 结构照着上面那个聊天搜索结果页来（滚动容器 + list-container + 三个状态 span），
+     故意挨着放：两边的分批渲染/滚动加载是同一套打法，分家了容易只改一边。
+     ⚠ 返回按钮只写 data-target，不要再 addEventListener 调 switchScreen ——
+       main.js:315 的 body 委托已经接管所有 [data-target]，自己再绑一个会让
+       switchScreen 跑两遍（forum_core.js:60 那段注释记的就是这个坑）。
+       退出时的清理走 window._screenLeaveHooks，见 forum_search.js。 -->
+<div id="forum-search-results-screen" class="screen">
+    <header class="app-header">
+        <button class="back-btn" data-target="world-screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="title-container">
+            <h1 class="title">帖子搜索结果</h1>
+        </div>
+        <div class="placeholder"></div>
+    </header>
+    <main class="content" id="forum-search-scroll-container">
+        <div id="forum-search-results-list" class="list-container">
+            <!-- 结果项通过 JS 插入 -->
+        </div>
+        <div id="forum-search-status-bar" style="text-align: center; padding: 20px; color: #999; font-size: 13px;">
+            <span id="forum-search-loading" style="display: none;">正在加载更多...</span>
+            <span id="forum-search-no-more" style="display: none;">没有更多结果了</span>
+            <span id="forum-search-empty" style="display: none;">未找到匹配的帖子</span>
+        </div>
+    </main>
+</div>
+
 
 
         <!-- 世界书页面 -->
@@ -3797,6 +3828,14 @@
                                 <select id="forum-api-preset-select" class="setting-select world-admin-select">
                                     <option value="">全局默认</option>
                                 </select>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="world-label-group">
+                                    <span class="world-label">搜索帖子</span>
+                                    <span class="world-sublabel">按关键词或日期查找，可跳转到原帖</span>
+                                </div>
+                                <button id="forum-post-search-btn" class="btn btn-primary btn-small world-admin-action-btn">搜索帖子</button>
                             </div>
 
                             <div class="setting-row">
@@ -6813,7 +6852,43 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
             </div>
         </form>
     </div>
-</div> 
+</div>
+
+<!-- === 喵坛帖子搜索弹窗（入口在世界页「管理」Tab） === -->
+<!-- 结构和上面的聊天搜索弹窗一致，多一个「搜索范围」下拉。
+     ⚠ 范围是**召回宽窄**开关，不是性能开关：IndexedDB 没有字段投影、title 也没索引，
+       所以"只搜标题"和"搜全文"读的字节数完全一样（详见 lazy_load.js 的
+       searchForumPostsInDB 注释）。文案里不要写成"更快"，会把下次调优的人带偏。
+     ★ 默认值靠「全文」是第一个 option 来兜：form.reset() 在没有 selected 属性时
+       回到首项，别把默认项挪到中间去。 -->
+<div id="forum-search-config-modal" class="modal-overlay">
+    <div class="modal-window">
+        <h3>查找帖子</h3>
+        <form id="forum-search-config-form">
+            <div class="form-group">
+                <label>关键词</label>
+                <input type="text" id="forum-search-keyword-input" class="form-control" placeholder="输入标题、正文或评论内容...">
+            </div>
+            <div class="form-group">
+                <label>日期筛选</label>
+                <input type="date" id="forum-search-date-input" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>搜索范围</label>
+                <select id="forum-search-scope-select" class="form-control">
+                    <option value="all">全文（标题 + 正文 + 评论）</option>
+                    <option value="body">标题 + 正文</option>
+                    <option value="title">只搜标题</option>
+                </select>
+            </div>
+            <p class="input-hint">* 日期和关键词至少填写一项</p>
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary">开始搜索</button>
+                <button type="button" id="cancel-forum-search-btn" class="btn btn-neutral">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- ===== 通话类型选择底部菜单 ===== -->
 <div id="call-type-actionsheet" class="action-sheet-overlay">
@@ -7960,6 +8035,7 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
     <script src="js/forum/forum_me_page.js"></script>
     <script src="js/forum/forum_bindings.js"></script>
     <script src="js/forum/forum_admin.js"></script>
+    <script src="js/forum/forum_search.js"></script>
     <script src="js/forum/forum_favorites.js"></script>
     <script src="js/forum/forum_multiselect.js"></script>
     <script src="js/forum/forum_share.js"></script>
