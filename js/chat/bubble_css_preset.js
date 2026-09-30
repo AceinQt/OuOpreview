@@ -428,11 +428,28 @@ function populateChatThemeSelects() {
     const groupSel = document.getElementById('setting-group-theme-color');
     
     // 【修改点】过滤掉名称为“默认”的预设，防止和顶部的自带默认发生选项重复渲染
-    const optionsHtml = `<option value="default">默认</option>` + 
-        _getBubblePresets().filter(p => p.name !== '默认').map(p => `<option value="preset:${p.name}">${p.name}</option>`).join('');
-        
-    if (privateSel) privateSel.innerHTML = optionsHtml;
-    if (groupSel) groupSel.innerHTML = optionsHtml;
+    const names = _getBubblePresets().filter(p => p.name !== '默认').map(p => p.name);
+
+    // 预设名是用户自己起的，带 < 或 " 会把拼出来的 <option> 渲染坏，所以走
+    // createElement + textContent —— 跟下面 renderGlobalBubblePresets 同一写法。
+    // 两个 select 不能共用同一批 option 节点（会被搬走），所以每个现造一遍。
+    const fill = (sel) => {
+        if (!sel) return;
+        sel.innerHTML = '';
+        const def = document.createElement('option');
+        def.value       = 'default';
+        def.textContent = '默认';
+        sel.appendChild(def);
+        names.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value       = `preset:${name}`;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        });
+    };
+
+    fill(privateSel);
+    fill(groupSel);
 }
 window.populateChatThemeSelects = populateChatThemeSelects;
 
