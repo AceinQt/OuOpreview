@@ -356,9 +356,12 @@
             <!-- 下半部分：分栏卡片 (侧边Tab + 内容区) -->
             <div class="appearance-card" id="bottom-content-card">
                 <div class="bottom-btn-card" id="bottom-btn-card">
+                    <!-- data-tab 是「分组」而不是面板 id：「基础」下面挂着三块面板
+                         （气泡/顶栏/底栏），具体显示哪一块由预览翻到了哪个视图决定，
+                         见 bubble_css_preset.js 的 BASIC_PANE_IDS / syncAppearancePane。 -->
                     <div class="bottom-btn">
-                        <button class="side-tab-btn active" data-pane="pane-basic">基础</button>
-                        <button class="side-tab-btn" data-pane="pane-css">高级</button>
+                        <button class="side-tab-btn active" data-tab="basic">基础</button>
+                        <button class="side-tab-btn" data-tab="css">高级</button>
                     </div>
                     <button type="button" class="action-btn" id="reset-basic-css-btn">
                         <svg viewBox="0 0 24 24">
@@ -473,6 +476,65 @@
                         <div class="bubble-settings-item col">
                             <label>边角弧度：<span class="val-display" id="val-radius">8</span>px</label>
                             <input type="range" class="bubble-slider" id="setting-radius" min="0" max="30" step="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 「基础」的第二块：顶栏。预览翻到「顶部栏」视图时顶替上面那块。 -->
+                <div id="pane-basic-header" class="content-pane">
+                    <div class="bubble-settings-item row">
+                        <label>昵称位置：</label>
+                        <select id="setting-header-name-pos">
+                            <option value="left">靠左（默认）</option>
+                            <option value="center">居中</option>
+                            <option value="right">靠右</option>
+                        </select>
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>隐藏状态</label>
+                        <label class="switch"><input type="checkbox" id="setting-header-hide-status"><span class="slider round"></span></label>
+                    </div>
+                    <div class="setting-hint">「状态」是昵称下面那行小字（绿点 + 在线/自定义状态）。群聊本来就不显示，这个开关只对私聊有效。</div>
+                </div>
+
+                <!-- 「基础」的第三块：底栏。三个对象（发送键 / AI 回复键 / 输入栏）
+                     共用下面同一组控件，靠「修改对象」下拉切换，和气泡那块一个套路。 -->
+                <div id="pane-basic-footer" class="content-pane">
+                    <div class="bubble-settings-item row">
+                        <label>隐藏发送按钮</label>
+                        <label class="switch"><input type="checkbox" id="setting-footer-hide-send"><span class="slider round"></span></label>
+                    </div>
+                    <div class="setting-hint">藏起来之后用键盘自带的发送键（回车）照样能发出去。</div>
+                    <div class="bubble-settings-item row">
+                        <label>修改对象：</label>
+                        <select id="setting-footer-target">
+                            <option value="send">发送按钮</option>
+                            <option value="reply">AI 回复按钮</option>
+                            <option value="input">输入栏</option>
+                        </select>
+                    </div>
+
+                    <div id="footer-target-settings-box">
+                        <div class="bubble-settings-item"><label>当前正在修改：<span style="color:var(--primary-color);" id="current-footer-label">发送按钮</span></label></div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>颜色：</label>
+                            <input type="color" id="setting-footer-bg">
+                            <input type="text" id="setting-footer-bg-text" placeholder="#HEX">
+                        </div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>描边颜色：</label>
+                            <input type="color" id="setting-footer-stroke-c">
+                            <input type="text" id="setting-footer-stroke-c-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>描边宽度：<span class="val-display" id="val-footer-stroke-w">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-footer-stroke-w" min="0" max="5" step="1">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>边角弧度：<span class="val-display" id="val-footer-radius">5</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-footer-radius" min="0" max="30" step="1">
                         </div>
                     </div>
                 </div>
