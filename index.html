@@ -6821,9 +6821,20 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                     <!-- 动态填充 -->
                 </select>
             </div>
+            <!-- 超时秒数：min/max 必须和 chat_feature_basic.js 的
+                 VISION_TIMEOUT_MIN_SEC / VISION_TIMEOUT_MAX_SEC 一致（那边是真相源，
+                 保存时还会再 clamp 一次，这里的属性只是给手机键盘一个范围提示）。 -->
+            <div class="form-group">
+                <label for="vision-api-timeout-input">单张识图超时（秒）</label>
+                <input type="number" id="vision-api-timeout-input" class="form-control" min="10" max="600" step="10" placeholder="120">
+            </div>
+            <!-- 说明统一收在这一块灰底框里，两个表单项后面都别再挂 .input-hint ——
+                 那个类带 margin-top:-10px（给紧跟输入框的场景设计的），
+                 放在 form-group 里会直接压到输入框上。 -->
             <div id="vision-api-hint">
                 选"同聊天API"则跟随每个聊天各自的 API 设置；一旦在此指定预设，所有聊天的图片转化都使用设置的api。<br>
-                请选择支持识图（视觉）的模型，否则转化会失败。
+                请选择支持识图（视觉）的模型，否则转化会失败。<br>
+                超时默认 120 秒，网络差或图片大的时候老是提示"请求超时"就往上调；范围 10–600，留空按默认。
             </div>
             <div class="btn-group">
                 <button type="submit" class="btn btn-primary">保存设置</button>
