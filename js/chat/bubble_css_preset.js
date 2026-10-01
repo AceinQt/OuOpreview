@@ -39,6 +39,44 @@ const previewModes = [
     { title: '预览 3/3：底部栏 (Footer & Input)', focus: 'footer' }
 ];
 
+// 「基础」Tab 下面挂着三块面板，和上面三个预览视图一对一：
+// 翻到顶栏就改顶栏、翻到底栏就改底栏。顺序必须和 previewModes 对齐。
+// 「高级」只有一块 —— 三个视图写的是同一段 CSS，拆成三份没有意义。
+const BASIC_PANE_IDS = ['pane-basic', 'pane-basic-header', 'pane-basic-footer'];
+let currentAppearanceTab = 'basic'; // 'basic' | 'css'，对应 index.html 上的 data-tab
+
+// 当前该亮哪块面板 = 「哪个 Tab」×「预览翻到第几页」。
+// 两个维度都从模块级变量读，所以无论是点 Tab 还是点预览左右键都调这一个函数。
+function syncAppearancePane() {
+    const root = document.getElementById('tab-view-bubbles');
+    if (!root) return;
+    const paneId = (currentAppearanceTab === 'css') ? 'pane-css' : BASIC_PANE_IDS[currentPreviewMode];
+    root.querySelectorAll('.content-pane').forEach(p => {
+        p.classList.toggle('active', p.id === paneId);
+    });
+    root.querySelectorAll('.side-tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === currentAppearanceTab);
+    });
+}
+
+// 重画预览。setupBubblePresets 里原本自己闭包了一份，但「切预设」「换预览页」这些
+// 入口散在闭包内外，所以提到模块级来，让所有人调同一个。
+function refreshBubbleCssPreview() {
+    const box = document.getElementById('global-bubble-css-preview');
+    const cssInput = document.getElementById('global-bubble-custom-css');
+    if (!box || !cssInput) return;
+    updateBubbleCssPreview(box, cssInput.value, false, colorThemes['white_blue']);
+}
+
+// 改 currentPreviewMode 的地方一律走这里 —— 直接赋值会出现
+// 「预览翻到了底栏、下面的面板还停在气泡」。
+function setPreviewMode(idx) {
+    const n = previewModes.length;
+    currentPreviewMode = ((idx % n) + n) % n;
+    syncAppearancePane();
+    refreshBubbleCssPreview();
+}
+
 // 预览用的假 chatId。scopeBubbleCss 会把它拼进 class，所以只能用合法 class 字符。
 const PREVIEW_CHAT_ID = 'preview';
 
@@ -268,6 +306,14 @@ function buildPreviewShellHtml(timeFormat) {
         input.setAttribute('placeholder', '输入消息...');
     }
 
+    // 底栏两颗按钮同理：clone 取的是**当前活着的** DOM，正好在等 AI 回复时
+    // #get-reply-btn 是 disabled 的（chat_ai_service.js 生成期间置的），
+    // 而底栏的「颜色」生成的是 :not(:disabled) 规则 —— 不清掉这个属性，
+    // 用户会看到预览里按钮是灰的、调色没反应，而且现象随有没有在生成而漂。
+    clone.querySelectorAll('#send-message-btn, #get-reply-btn').forEach(btn => {
+        btn.removeAttribute('disabled');
+    });
+
     // 示例气泡塞进真实的 #message-area
     const area = clone.querySelector('#message-area');
     if (area) area.innerHTML = getDynamicBubblePreview(timeFormat);
@@ -473,33 +519,23 @@ function setupBubblePresets() {
 
     const nameInput = document.getElementById('global-bubble-preset-name');
     const cssInput = document.getElementById('global-bubble-custom-css');
-    const previewBox = document.getElementById('global-bubble-css-preview');
     const saveBtn = document.getElementById('global-bubble-save-btn');
     const delBtn = document.getElementById('global-bubble-delete-btn');
     const addBtn = document.getElementById('global-bubble-add-btn');
 
-    const defaultTheme = colorThemes['white_blue'];
-
-    const updatePreview = () => {
-        updateBubbleCssPreview(previewBox, cssInput.value, false, defaultTheme);
-    };
+    const updatePreview = () => refreshBubbleCssPreview();
     updatePreview();
 
     // ================== 分栏 Tab 切换逻辑 ==================
+    // 按钮只管「哪个分组」，具体亮哪块面板交给 syncAppearancePane ——
+    // 「基础」下面有三块（气泡/顶栏/底栏），选哪块取决于预览翻到了第几页。
     const tabContainer = document.getElementById('tab-view-bubbles');
-    if(tabContainer) {
-        const tabBtns = tabContainer.querySelectorAll('.side-tab-btn');
-        const tabPanes = tabContainer.querySelectorAll('.content-pane');
-        tabBtns.forEach(btn => {
+    if (tabContainer) {
+        tabContainer.querySelectorAll('.side-tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                if(btn.id === 'reset-basic-css-btn') return; 
-                e.preventDefault(); e.stopPropagation(); 
-                tabBtns.forEach(b => b.classList.remove('active'));
-                tabPanes.forEach(p => p.classList.remove('active'));
-                btn.classList.add('active');
-                const targetId = btn.getAttribute('data-pane'); 
-                const targetPane = document.getElementById(targetId);
-                if(targetPane) targetPane.classList.add('active');
+                e.preventDefault(); e.stopPropagation();
+                currentAppearanceTab = btn.dataset.tab || 'basic';
+                syncAppearancePane();
             });
         });
     }
@@ -512,8 +548,27 @@ function setupBubblePresets() {
     // timeFormat: 时间文字的模板，**不是 CSS**，由气泡工厂在渲染时按它拼字符串
     //   （解析器 formatMessageTimestamp，说明文案见本文件底部的 AppHelp.register）。
     // avatarRadius: 头像圆角，0 = 方角，19 = 正圆（头像 38px，19px 正好是 50%）。
+    // header / footer: 顶栏和底栏的设置，和气泡挤在**同一个** META 里 ——
+    //   它们本来就是一个预设的三个视图，分开存会出现「换预设只换了气泡」。
+    //   默认值一律照抄对应的静态 CSS，这样「没改过」就一个字节都不生成（见下面的 hasChanges）。
+    //   · header.namePos  'left' = chat_room.css 的 `#chat-room-header-default .title-container`
+    //     那套 static + flex-start + flex-grow:1，也就是**聊天室现在的样子**。
+    //     ★ 别照 components.css 写成 'center'：那条只管别的页面的顶栏，聊天室这边
+    //       早被 chat_room.css 顶掉了。写错的话「什么都没改」也会生成一堆 CSS，
+    //       而且会把默认的靠左悄悄变成居中。
+    //   · header.hideStatus 昵称下面那行小字（绿点 + 在线），即 #chat-room-subtitle
+    //   · footer.send/reply/input 分别是 #send-message-btn / #get-reply-btn / #message-input，
+    //     默认值来自 chat_room.css：两颗按钮 var(--primary-color)=#0099FF + radius 5 + border:none，
+    //     输入框 #ffffff + radius 5 + border:none。
     const defaultBasicState = {
         hideAvatar: false, timePos: 'none', timeFormat: 'HH:mm', avatarRadius: 19, customFont: '',
+        header: { namePos: 'left', hideStatus: false },
+        footer: {
+            hideSend: false,
+            send:  { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
+            reply: { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
+            input: { bg:'#FFFFFF', strokeW:0, strokeC:'#000000', radius:5 }
+        },
         styles: {
             normal_sent:   { bg:'#0099FF', fontSize:16, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             normal_received:   { bg:'#FFFFFF', fontSize:16, fontColor:'#333333', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
@@ -539,6 +594,15 @@ function setupBubblePresets() {
 
     let basicState = JSON.parse(JSON.stringify(defaultBasicState));
     let currentSelectType = 'normal_sent';
+    // 底栏那块面板上「修改对象」下拉选的是谁。三个对象共用同一组控件（和气泡那块同一套路）。
+    let currentFooterTarget = 'send';
+
+    // 底栏三个对象 → 真实 DOM 选择器。改 index.html 的底栏时这里要跟着动。
+    const FOOTER_SELECTORS = {
+        send:  '#send-message-btn',
+        reply: '#get-reply-btn',
+        input: '#message-input'
+    };
     
     // 把 .voice-bubble 并入 normal，让它们共享同一套样式！
     const classSelectorsMap = {
@@ -609,6 +673,92 @@ function setupBubblePresets() {
                 basicCss += `.message-bubble, .narration-bubble, .voice-bubble, .transfer-card, .quoted-message { font-family: 'CustomBubbleFont' !important; }\n`;
             }
             hasChanges = true;
+        }
+
+        // ============ 顶栏 ============
+        // 选择器统一钉在 #chat-room-header-default 上，不用裸 .app-header ——
+        // 聊天室里有**两个** .app-header，另一个是多选态的 #chat-room-header-select
+        // （只有「取消 / 选择消息 / 显示隐藏」三件套）。把昵称位置顺手改到它身上，
+        // 等于用户进多选时标题莫名其妙挪了个位置。
+        const hdr = basicState.header || defaultBasicState.header;
+        const hdrDef = defaultBasicState.header;
+        if (hdr.namePos !== hdrDef.namePos) {
+            // ★ 聊天室顶栏的默认**不是**居中。components.css 那套 absolute 居中被
+            //   chat_room.css 的 `#chat-room-header-default .title-container`
+            //   （static + flex-start + flex-grow:1）整个顶掉了 —— 所以默认档是「靠左」，
+            //   那一档一个字节都不生成。照 components.css 去写「复位到流里」只会是空操作。
+            // 实测（无头 Chrome 量 Range 的 getBoundingClientRect，470px 宽顶栏）：
+            //   默认/靠左  文字 42~76   中心 59   ← 顶栏中心是 235
+            //   居中       文字 218~252 中心 235  ← 和顶栏中心重合
+            //   靠右       文字 372~406          ← 紧贴按钮组左边缘 406
+            if (hdr.namePos === 'center') {
+                // 居中要把 absolute 那套请回来：容器本身是 flex-grow:1 占满
+                // 「返回键右边 ~ 按钮组左边」这一段，在里面 align-items:center 只能居中于
+                // 这一段（偏左约 22px，两侧按钮宽度不等），看着像没对齐。
+                basicCss += `#chat-room-header-default .title-container {`
+                    + ` position: absolute !important;`
+                    + ` left: 50% !important;`
+                    + ` transform: translateX(-50%) !important;`
+                    + ` align-items: center !important;`
+                    + ` text-align: center !important;`
+                    + ` flex-grow: 0 !important; }\n`;
+            } else if (hdr.namePos === 'right') {
+                // 容器已经是 flex-grow:1 了，只要把里面的内容推到容器右边缘即可，
+                // 不用动 position/margin —— 动了反而要再把 flex 那套重新拼回来。
+                basicCss += `#chat-room-header-default .title-container {`
+                    + ` align-items: flex-end !important;`
+                    + ` text-align: right !important; }\n`;
+            }
+            hasChanges = true;
+        }
+        if (hdr.hideStatus !== hdrDef.hideStatus) {
+            // ★ !important 是必须的：chat_room.js 进私聊时写的是 inline 的
+            //   subtitle.style.display='flex'，内联样式只有 !important 压得住。
+            //   群聊那边本来就被置成 none，这条叠上去无害。
+            if (hdr.hideStatus) basicCss += `#chat-room-subtitle { display: none !important; }\n`;
+            hasChanges = true;
+        }
+
+        // ============ 底栏 ============
+        const ftr = basicState.footer || defaultBasicState.footer;
+        const ftrDef = defaultBasicState.footer;
+        if (ftr.hideSend !== ftrDef.hideSend) {
+            // 藏了照样能发：回车走的是 chat_room.js 里 #message-input 的 keydown 分支，
+            // 和这颗按钮的 click/touchend 是三条各自独立的通道。
+            if (ftr.hideSend) basicCss += `#send-message-btn { display: none !important; }\n`;
+            hasChanges = true;
+        }
+        for (const key of Object.keys(FOOTER_SELECTORS)) {
+            const conf = ftr[key] || ftrDef[key];
+            const def = ftrDef[key];
+            const sel = FOOTER_SELECTORS[key];
+
+            // 底色单独一条、挂 :not(:disabled)。两颗按钮在「正在生成」期间是 disabled 的
+            // （chat_ai_service.js 给 #get-reply-btn 置的），chat_room.css 那条
+            // `.message-input-area .icon-btn:disabled { background-color:#cccccc }`
+            // 权重远低于这里 scope 过的选择器 —— 不加 :not(:disabled) 就等于
+            // 把「生成中变灰」这个唯一的进度反馈抹掉了。
+            if ((conf.bg || '').toUpperCase() !== def.bg.toUpperCase()) {
+                // .message-input-area .icon-btn 用的是 background 简写，这里只改 background-color；
+                // 简写剩下的部分（没有渐变/图片）不受影响。
+                basicCss += `${sel}:not(:disabled) { background-color: ${conf.bg} !important; }\n`;
+                hasChanges = true;
+            }
+
+            // 弧度和描边反过来，连 disabled 态一起改 —— 变灰只该换颜色，不该把形状也变回去。
+            let shapeCss = '';
+            if (conf.radius !== def.radius) {
+                shapeCss += ` border-radius: ${conf.radius}px !important;`;
+            }
+            if (conf.strokeW !== def.strokeW || (conf.strokeC || '').toUpperCase() !== def.strokeC.toUpperCase()) {
+                shapeCss += (conf.strokeW > 0)
+                    ? ` border: ${conf.strokeW}px solid ${conf.strokeC} !important;`
+                    : ` border: none !important;`;
+            }
+            if (shapeCss) {
+                basicCss += `${sel} {${shapeCss} }\n`;
+                hasChanges = true;
+            }
         }
 
         // 遍历所有气泡类型，仅当属性与默认值不同时才生成代码
@@ -851,6 +1001,19 @@ function setupBubblePresets() {
             const avatarOpt = posSelect.querySelector('option[value="avatar"]');
             if (avatarOpt) avatarOpt.disabled = basicState.hideAvatar;
         }
+
+        // 同理，发送按钮藏了就不该还能给它调色 —— 调了也看不见，只会让人以为没生效。
+        // 正停在这一项上的话把「修改对象」顶到 AI 回复按钮。
+        const ftrSelect = document.getElementById('setting-footer-target');
+        if (ftrSelect) {
+            const hideSend = !!(basicState.footer && basicState.footer.hideSend);
+            const sendOpt = ftrSelect.querySelector('option[value="send"]');
+            if (sendOpt) sendOpt.disabled = hideSend;
+            if (hideSend && currentFooterTarget === 'send') {
+                currentFooterTarget = 'reply';
+                ftrSelect.value = 'reply';
+            }
+        }
     }
 
     function updateUIFromState() {
@@ -888,6 +1051,34 @@ function setupBubblePresets() {
         document.querySelectorAll('.stroke-side-cb').forEach(cb => {
             cb.checked = sides.includes(cb.value);
         });
+
+        // ---- 顶栏那块面板 ----
+        const namePosEl = document.getElementById('setting-header-name-pos');
+        if (namePosEl) namePosEl.value = (basicState.header || defaultBasicState.header).namePos;
+        const hideStatusEl = document.getElementById('setting-header-hide-status');
+        if (hideStatusEl) hideStatusEl.checked = !!(basicState.header || {}).hideStatus;
+
+        // ---- 底栏那块面板 ----
+        const hideSendEl = document.getElementById('setting-footer-hide-send');
+        if (hideSendEl) hideSendEl.checked = !!(basicState.footer || {}).hideSend;
+        const ftrSelectEl = document.getElementById('setting-footer-target');
+        if (ftrSelectEl) ftrSelectEl.value = currentFooterTarget;
+        const ftrLabelEl = document.getElementById('current-footer-label');
+        if (ftrLabelEl && ftrSelectEl && ftrSelectEl.selectedIndex >= 0) {
+            ftrLabelEl.textContent = ftrSelectEl.options[ftrSelectEl.selectedIndex].text;
+        }
+        const ftrConf = (basicState.footer || {})[currentFooterTarget]
+            || defaultBasicState.footer[currentFooterTarget];
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        setVal('setting-footer-bg', ftrConf.bg);
+        setVal('setting-footer-bg-text', String(ftrConf.bg).toUpperCase());
+        setVal('setting-footer-stroke-c', ftrConf.strokeC);
+        setVal('setting-footer-stroke-c-text', String(ftrConf.strokeC).toUpperCase());
+        setVal('setting-footer-stroke-w', ftrConf.strokeW);
+        setTxt('val-footer-stroke-w', ftrConf.strokeW);
+        setVal('setting-footer-radius', ftrConf.radius);
+        setTxt('val-footer-radius', ftrConf.radius);
     }
 
 function syncBasicUiFromCss(css) {
@@ -934,6 +1125,23 @@ function syncBasicUiFromCss(css) {
                     if (parsed.customFont !== undefined) basicState.customFont = parsed.customFont;
                     if (parsed.marginY !== undefined) basicState.marginY = parsed.marginY;
                     if (parsed.marginX !== undefined) basicState.marginX = parsed.marginX;
+
+                    // 顶栏/底栏是后加的，比它早的预设里这两个键根本不存在 ——
+                    // 一律浅合并到默认值上，缺的字段就按默认走。
+                    if (parsed.header) {
+                        basicState.header = { ...defaultBasicState.header, ...parsed.header };
+                    }
+                    if (parsed.footer) {
+                        basicState.footer = { ...defaultBasicState.footer, ...parsed.footer };
+                        // footer 里还嵌着三个对象。上面那层浅合并会把 parsed 里存在的那个键
+                        // **整块**顶掉，所以每个对象得再单独合一次，底板必须取
+                        // defaultBasicState（basicState.footer[k] 此刻已经是 parsed 的版本了）。
+                        ['send', 'reply', 'input'].forEach(k => {
+                            if (parsed.footer[k]) {
+                                basicState.footer[k] = { ...defaultBasicState.footer[k], ...parsed.footer[k] };
+                            }
+                        });
+                    }
                     
                     if (parsed.styles) {
                         for (const key in parsed.styles) {
@@ -1123,8 +1331,9 @@ function syncBasicUiFromCss(css) {
         const sName = sideSelect.options[sideSelect.selectedIndex].text;
         document.getElementById('current-type-label').textContent = `${tName} - ${sName}`;
         updateUIFromState();
-        currentPreviewMode = 0;
-        updatePreview();
+        // 这两个下拉本来就只在气泡那块面板上，能点到它说明已经停在第 0 页了；
+        // 保留这句是为了「换气泡类型一定看得到气泡」，顺带把面板也校准回去。
+        setPreviewMode(0);
     }
     typeSelect.addEventListener('change', updateTypeLabel);
     sideSelect.addEventListener('change', updateTypeLabel);['setting-hide-avatar', 'setting-time-pos', 'setting-time-format', 'setting-custom-font'].forEach(id => {
@@ -1223,6 +1432,88 @@ function syncBasicUiFromCss(css) {
         });
     });
 
+    // ================== 顶栏 / 底栏的控件 ==================
+    // 两块面板的控件都只改 basicState 再 generateCssFromState()，
+    // 和气泡那块完全一个路子 —— 生成端是唯一出口，别在这里自己拼 CSS。
+    const bindHeaderInput = (id, apply) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', (e) => {
+            if (!basicState.header) basicState.header = { ...defaultBasicState.header };
+            apply(e.target);
+            generateCssFromState();
+        });
+    };
+    bindHeaderInput('setting-header-name-pos', t => { basicState.header.namePos = t.value; });
+    bindHeaderInput('setting-header-hide-status', t => { basicState.header.hideStatus = t.checked; });
+
+    const hideSendCb = document.getElementById('setting-footer-hide-send');
+    if (hideSendCb) {
+        hideSendCb.addEventListener('change', (e) => {
+            if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
+            basicState.footer.hideSend = e.target.checked;
+            // 藏发送键会把「修改对象」里那一项禁掉（可能顺带把当前选中项顶走），
+            // 所以得重新同步一遍控件，不然下面的色块还停在刚才那个对象上。
+            syncConditionalRows();
+            updateUIFromState();
+            generateCssFromState();
+        });
+    }
+
+    const footerTargetSel = document.getElementById('setting-footer-target');
+    if (footerTargetSel) {
+        footerTargetSel.addEventListener('change', (e) => {
+            currentFooterTarget = e.target.value;
+            updateUIFromState();   // 换对象只是换一组数值进控件，不产生新 CSS
+        });
+    }
+
+    // 四个控件 → 当前对象的四个字段。'text' 那两个是色值的手输框。
+    const footerInputsMap = {
+        'setting-footer-bg':         ['bg', 'color'],
+        'setting-footer-bg-text':    ['bg', 'text'],
+        'setting-footer-stroke-c':   ['strokeC', 'color'],
+        'setting-footer-stroke-c-text': ['strokeC', 'text'],
+        'setting-footer-stroke-w':   ['strokeW', 'number'],
+        'setting-footer-radius':     ['radius', 'number']
+    };
+    Object.keys(footerInputsMap).forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', (e) => {
+            const [key, kind] = footerInputsMap[id];
+            let val = e.target.value;
+            if (kind === 'number') {
+                val = parseFloat(val) || 0;
+                const disp = document.getElementById(id.replace('setting-footer-', 'val-footer-'));
+                if (disp) disp.textContent = val;
+            }
+            if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
+            if (!basicState.footer[currentFooterTarget]) {
+                basicState.footer[currentFooterTarget] = { ...defaultBasicState.footer[currentFooterTarget] };
+            }
+            basicState.footer[currentFooterTarget][key] = val;
+
+            // 取色器 ↔ 手输框互相回填。手输的只在凑够 6 位合法 HEX 时才回填取色器，
+            // 否则打字到一半（#0 / #00…）就会把取色器推成黑色。
+            if (id === 'setting-footer-bg') {
+                const t = document.getElementById('setting-footer-bg-text');
+                if (t) t.value = String(val).toUpperCase();
+            }
+            if (id === 'setting-footer-bg-text' && /^#[0-9A-F]{6}$/i.test(val)) {
+                document.getElementById('setting-footer-bg').value = val;
+            }
+            if (id === 'setting-footer-stroke-c') {
+                const t = document.getElementById('setting-footer-stroke-c-text');
+                if (t) t.value = String(val).toUpperCase();
+            }
+            if (id === 'setting-footer-stroke-c-text' && /^#[0-9A-F]{6}$/i.test(val)) {
+                document.getElementById('setting-footer-stroke-c').value = val;
+            }
+            generateCssFromState();
+        });
+    });
+
     const resetBasicBtn = document.getElementById('reset-basic-css-btn');
     if (resetBasicBtn) {
         resetBasicBtn.addEventListener('click',async () => {
@@ -1235,14 +1526,22 @@ function syncBasicUiFromCss(css) {
         });
     }
 
-    const prevBtn = document.getElementById('preview-prev-btn');
-    const nextBtn = document.getElementById('preview-next-btn');
-    if (prevBtn) prevBtn.addEventListener('click', () => {
-        currentPreviewMode = (currentPreviewMode - 1 + previewModes.length) % previewModes.length; updatePreview();
-    });
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-        currentPreviewMode = (currentPreviewMode + 1) % previewModes.length; updatePreview();
-    });
+    // 翻预览 = 翻下面的编辑栏目（气泡 / 顶栏 / 底栏），所以走 setPreviewMode 而不是直接赋值。
+    //
+    // ★ 必须先 cloneNode 去掉旧监听：setupBubblePresets 被调**两次**
+    //   （main.js 的 init 一次、chat_list.js 的 setupChatListScreen 一次），
+    //   不去重就是一次点击挂两个 +1，三页里点一下跳两页 —— 点 ▶ 看起来像在倒着翻。
+    //   别的控件多绑一遍只是把同一个值写两遍（浪费但无害），只有这两颗是累加型的，
+    //   所以单独处理它们。文件里的 addBtn/saveBtn/delBtn 用的也是这个套路。
+    const rebind = (id, handler) => {
+        const old = document.getElementById(id);
+        if (!old) return;
+        const fresh = old.cloneNode(true);
+        old.parentNode.replaceChild(fresh, old);
+        fresh.addEventListener('click', handler);
+    };
+    rebind('preview-prev-btn', () => setPreviewMode(currentPreviewMode - 1));
+    rebind('preview-next-btn', () => setPreviewMode(currentPreviewMode + 1));
 
     if(cssInput) {
         cssInput.addEventListener('input', () => {
@@ -1397,9 +1696,11 @@ function syncBasicUiFromCss(css) {
                 const labelEl = document.getElementById('current-type-label');
                 if(labelEl) labelEl.textContent = '普通气泡 - 我方';
                 updateUIFromState();
-                
-                currentPreviewMode = 0;
-                updatePreview();
+
+                // 换了预设就回到第一页：下面的面板跟着回到「气泡」，
+                // 否则上一次停在底栏、换完预设看到的还是底栏那组控件。
+                currentFooterTarget = 'send';
+                setPreviewMode(0);
                 if(window.showToast) showToast(`已加载预设: ${p.name}`);
                 modal.style.display = 'none'; modal.classList.remove('visible');
             };
@@ -1555,9 +1856,11 @@ function syncBasicUiFromCss(css) {
     if(initLabelEl) initLabelEl.textContent = '普通气泡 - 我方';
 
     updateUIFromState();
-    
-    currentPreviewMode = 0;
-    updatePreview();
+
+    // 初始态：预览停在第一页，下面的面板也就是「基础 → 气泡」。
+    currentAppearanceTab = 'basic';
+    currentFooterTarget = 'send';
+    setPreviewMode(0);
 }
 
 // 确保页面加载完成后执行绑定
