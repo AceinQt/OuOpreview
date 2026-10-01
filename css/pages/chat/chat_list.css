@@ -809,16 +809,20 @@ color: var(--primary-color);
     font-weight: bold;
 }
 
-#bubble-type-settings-box {
+/* 气泡那块的「当前正在修改」虚线框。底栏那块（#footer-target-settings-box）
+   是同一个东西 —— 一个下拉切对象 + 一组共用控件，所以共用一套样式。 */
+#bubble-type-settings-box,
+#footer-target-settings-box {
      display: flex;
      flex-direction: column;
      border: 1px dashed var(--bg-color);
-     border-radius: 16px; 
+     border-radius: 16px;
      padding: 15px;
-     gap: 15px;  
+     gap: 15px;
 }
 
-#bubble-type-settings-box hr {
+#bubble-type-settings-box hr,
+#footer-target-settings-box hr {
      width:100%;
      border:none; 
      border-top:1px solid #eee;
