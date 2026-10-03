@@ -64,8 +64,14 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 35%;
-    max-height: 250px;
+    /* ★ 高度交给内容，不再写 35% / max-height:250px。
+       改成「一行 4 个、一页 2 行」之后，两行图标 + 页码圆点大约要 235px，
+       而 35% 在矮屏上只有 230 不到，再被 layout.css 那条 padding-bottom:var(--safe-bottom)
+       （带 Home 横条的机型 ~34px）一减，第二行就会被切掉半截。
+       格子尺寸全是固定 px，auto 算出来的结果本身就稳定，不需要百分比。
+       max-height 只作为极端矮屏（横屏）的兜底。 */
+    height: auto;
+    max-height: 72%;
     background: rgba(243, 242, 247, 0.98);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
@@ -439,10 +445,86 @@
     text-align: center;
 }
 
+/* ---- "+"面板的横向翻页（QQ/微信那种：一行 4 个、一页 8 个，左右滑翻页）----
+   以前这里挂的是 .sticker-grid（grid-template-columns: repeat(auto-fill, minmax(70px,1fr))），
+   所以每行几个完全由面板宽度决定 —— 手机上 4 个、PC 上能排到 7、8 个，还会纵向溢出。
+   现在容器只负责横向滚动，分列交给 .expansion-page。
+
+   翻页用的是原生 scroll-snap 而不是手写 touchmove + transform：
+   惯性、回弹、trackpad 横滑、scrollTo 平滑动画全是浏览器白送的，
+   手写那套在 iOS 上还得自己处理边界回弹。代价是必须给 swipe_back.js 加 .no-swipe-back
+   豁免（见 index.html 上那个 class），否则右滑翻页会被当成「返回上一页」。 */
 #chat-expansion-grid {
-    padding: 20px 15px 15px;
-    align-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    /* 滑到第一页还继续右滑时，别把滚动链传给外层（iOS Safari 会当成系统返回手势） */
+    overscroll-behavior-x: contain;
+}
+
+/* reset.css 只给 html 关了 webkit 滚动条，这里得自己关，不然 PC 上面板底下横着一条 */
+#chat-expansion-grid::-webkit-scrollbar {
+    display: none;
+}
+
+.expansion-page {
+    /* 一页正好占满容器宽度 → 一次只看见一页 */
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    display: grid;
+    /* ★ 固定 4 列 + 两端对齐，和底栏 #sticker-bar 同一套分布方式
+       （那边是 padding: 0 10px 5px + justify-content: space-between）。
+       列宽用 max-content 而不是 1fr：1fr 会把每一列都撑成容器的 1/4、图标钉在各自格子的
+       正中间，屏幕一宽就变成「几个图标缩在中间、两边大片留白」。max-content 让列只占图标
+       自己那点宽度，多出来的空间由 space-between 均摊到列**之间**，所以首尾两个图标永远
+       贴着固定的 15px 内边距，中间的均匀铺开 —— 窄屏宽屏看着是同一种疏密关系。
+       列宽按整页最宽的那一列算，所以上下两行是对齐的，不会错位。 */
+    grid-template-columns: repeat(4, max-content);
+    grid-template-rows: repeat(2, auto);
+    justify-content: space-between;
+    align-content: start;
+    /* 这里的 column-gap 只是「挤到极限时的最小间距」—— space-between 分得出空间时用它的 */
+    gap: 14px 4px;
+    padding: 18px 15px 12px;
+}
+
+.expansion-dots {
+    flex-shrink: 0;
+    display: flex;
     justify-content: center;
+    align-items: center;
+    padding-bottom: 10px;
+}
+
+/* 只有一页时 JS 一个圆点都不渲染，这里顺手把那点高度也收掉 */
+.expansion-dots:empty {
+    display: none;
+}
+
+.expansion-dots .dot {
+    /* 圆点在 PC 上是要拿鼠标点的 —— 用透明边框把 6px 的点撑成 16px 热区，
+       再用负 margin 把多出来的尺寸从排版里扣回去，所以看上去还是「6px 的点、间隔 8px」。
+       box-sizing 必须显式改回 content-box：全局 reset 是 border-box，
+       那样 width:6px 会把边框算进去，可见的点只剩 0。 */
+    box-sizing: content-box;
+    width: 6px;
+    height: 6px;
+    border: 5px solid transparent;
+    margin: -5px -1px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.18);
+    background-clip: padding-box;
+    transition: background-color 0.2s, transform 0.2s;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.expansion-dots .dot.active {
+    background-color: rgba(0, 0, 0, 0.42);
+    transform: scale(1.2);
 }
 
 #world-book-selection-modal,
@@ -549,6 +631,9 @@
 .expansion-item-name {
     font-size: 13px;
     color: #666;
+    /* 固定 4 列后窄屏上一格只有 ~85px，4 个汉字 52px 装得下；
+       加 nowrap 是防止以后有人写 5 个字时悄悄折行、把第二行顶歪 */
+    white-space: nowrap;
 }
 
 /* --- 扩展面板按钮激活状态（描边效果） --- */

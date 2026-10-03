@@ -495,6 +495,89 @@
                         <label class="switch"><input type="checkbox" id="setting-header-hide-status"><span class="slider round"></span></label>
                     </div>
                     <div class="setting-hint">「状态」是昵称下面那行小字（绿点 + 在线/自定义状态）。群聊本来就不显示，这个开关只对私聊有效。</div>
+                    <div class="bubble-settings-item row">
+                        <label>收纳通话</label>
+                        <label class="switch"><input type="checkbox" id="setting-header-collapse-call"><span class="slider round"></span></label>
+                    </div>
+                    <div class="setting-hint">收起来之后，通话按钮从顶栏挪进"+"面板，排在「批量删除」前面那一格。群聊本来就没有通话，这个开关对群聊无效。</div>
+                    <hr>
+                    <div class="bubble-settings-item row">
+                        <label>背景颜色：</label>
+                        <input type="color" id="setting-header-bg">
+                        <input type="text" id="setting-header-bg-text" placeholder="#HEX">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>不透明度：<span class="val-display" id="val-header-opacity">0.85</span></label>
+                        <input type="range" class="bubble-slider" id="setting-header-opacity" step="0.05" min="0" max="1">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>模糊度：<span class="val-display" id="val-header-blur">8</span>px</label>
+                        <input type="range" class="bubble-slider" id="setting-header-blur" min="0" max="20" step="1">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>分割线粗细：<span class="val-display" id="val-header-div-w">0</span>px</label>
+                        <input type="range" class="bubble-slider" id="setting-header-div-w" min="0" max="6" step="1">
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>分割线颜色：</label>
+                        <input type="color" id="setting-header-div-c">
+                        <input type="text" id="setting-header-div-c-text" placeholder="#HEX">
+                    </div>
+                    <div class="setting-hint">顶栏下沿那条横线。出厂是没有的（粗细 0），拉起来才画。</div>
+                    <hr>
+                    <div class="bubble-settings-item row">
+                        <label>图标颜色：</label>
+                        <input type="color" id="setting-header-btn-c">
+                        <input type="text" id="setting-header-btn-c-text" placeholder="#HEX">
+                    </div>
+                    <div class="setting-hint">返回、通话、菜单这三个图标本身的颜色。下面的「底色」改的是托着图标的那块方块。</div>
+                    <hr>
+                    <div class="bubble-settings-item row">
+                        <label>修改对象：</label>
+                        <select id="setting-header-target">
+                            <option value="back">返回键</option>
+                            <option value="title">昵称栏</option>
+                            <option value="group">右侧按钮组</option>
+                        </select>
+                    </div>
+
+                    <div id="header-target-settings-box">
+                        <div class="bubble-settings-item"><label>当前正在修改：<span style="color:var(--primary-color);" id="current-header-label">返回键</span></label></div>
+                        <div class="setting-hint">三块出厂都是全透明的，所以「不透明度」就是色块的总开关 —— 停在 0 等于维持现状，拉起来才会出现块。底色、描边、内边距只要有一项不为零，这一块就会从「贴边的裸图标」规整成一个块（固定宽高和负外边距一起归零）。</div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>底色：</label>
+                            <input type="color" id="setting-hdrblk-bg">
+                            <input type="text" id="setting-hdrblk-bg-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>不透明度：<span class="val-display" id="val-hdrblk-opacity">0</span></label>
+                            <input type="range" class="bubble-slider" id="setting-hdrblk-opacity" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>内边距：<span class="val-display" id="val-hdrblk-pad">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-hdrblk-pad" min="0" max="20" step="1">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>边角弧度：<span class="val-display" id="val-hdrblk-radius">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-hdrblk-radius" min="0" max="30" step="1">
+                        </div>
+                        <hr>
+                        <div class="bubble-settings-item row">
+                            <label>描边颜色：</label>
+                            <input type="color" id="setting-hdrblk-stroke-c">
+                            <input type="text" id="setting-hdrblk-stroke-c-text" placeholder="#HEX">
+                        </div>
+                        <div class="bubble-settings-item col">
+                            <label>描边宽度：<span class="val-display" id="val-hdrblk-stroke-w">0</span>px</label>
+                            <input type="range" class="bubble-slider" id="setting-hdrblk-stroke-w" min="0" max="5" step="1">
+                        </div>
+                        <div class="bubble-settings-item col" id="hdrblk-width-row">
+                            <label>宽度占比：<span class="val-display" id="val-hdrblk-width">100</span>%</label>
+                            <input type="range" class="bubble-slider" id="setting-hdrblk-width" min="20" max="100" step="5">
+                        </div>
+                        <div class="setting-hint" id="hdrblk-width-hint">昵称栏默认把返回键和按钮组之间的空档全占了（100%），给它上底色就是长长一条。调到 80% 就只占其中八成，左右各留一道空隙。注意这跟上面的「昵称位置」是两件事：那个管文字在块里靠哪边，这个管块本身多宽。</div>
+                    </div>
                 </div>
 
                 <!-- 「基础」的第三块：底栏。三个对象（发送键 / AI 回复键 / 输入栏）
@@ -505,6 +588,36 @@
                         <label class="switch"><input type="checkbox" id="setting-footer-hide-send"><span class="slider round"></span></label>
                     </div>
                     <div class="setting-hint">藏起来之后用键盘自带的发送键（回车）照样能发出去。</div>
+                    <div class="bubble-settings-item row">
+                        <label>收纳工具栏</label>
+                        <label class="switch"><input type="checkbox" id="setting-footer-collapse-toolbar"><span class="slider round"></span></label>
+                    </div>
+                    <div class="setting-hint">收起来之后，输入框上面那排按钮整条收进"+"面板，"+"本身挪到输入框右边、发送键左边。</div>
+                    <hr>
+                    <div class="bubble-settings-item row">
+                        <label>背景颜色：</label>
+                        <input type="color" id="setting-footer-bar-bg">
+                        <input type="text" id="setting-footer-bar-bg-text" placeholder="#HEX">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>不透明度：<span class="val-display" id="val-footer-bar-opacity">0.85</span></label>
+                        <input type="range" class="bubble-slider" id="setting-footer-bar-opacity" step="0.05" min="0" max="1">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>模糊度：<span class="val-display" id="val-footer-bar-blur">8</span>px</label>
+                        <input type="range" class="bubble-slider" id="setting-footer-bar-blur" min="0" max="20" step="1">
+                    </div>
+                    <div class="bubble-settings-item col">
+                        <label>分割线粗细：<span class="val-display" id="val-footer-div-w">1</span>px</label>
+                        <input type="range" class="bubble-slider" id="setting-footer-div-w" min="0" max="6" step="1">
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>分割线颜色：</label>
+                        <input type="color" id="setting-footer-div-c">
+                        <input type="text" id="setting-footer-div-c-text" placeholder="#HEX">
+                    </div>
+                    <div class="setting-hint">底栏上沿那条横线。出厂是 1px 的淡白线（三成不透明度，几乎看不见）—— 这两个旋钮一旦动过，它就变成所选颜色的实线；想彻底去掉把粗细拉到 0。</div>
+                    <hr>
                     <div class="bubble-settings-item row">
                         <label>修改对象：</label>
                         <select id="setting-footer-target">
@@ -888,6 +1001,17 @@
                 </div>
                 <div class="message-input-area" id="message-input-default">
                     <input type="text" id="message-input" placeholder="输入消息...">
+                    <!-- 收纳工具栏时才出现的 "+"：外观→底栏→「收纳工具栏」打开后，#sticker-bar 整条收起来，
+                         由它顶替原来那颗 #placeholder-plus-btn。两颗按钮各自绑定、行为一致，
+                         不能只留一颗 —— CSS 搬不动跨容器的节点，而底栏布局是按预设存的、每个聊天可以不一样。
+                         ⚠️ 故意**不挂** .icon-btn：那个 class 会把它染成和「发送」「AI 回复」一样的蓝方块，
+                         一行三个蓝块太重，而且它没进底栏外观的「修改对象」下拉、用户改不了色。
+                         样式照抄它顶替的那颗工具栏按钮（透明底 + 灰图标），见 chat_room.css。 -->
+                    <button id="inline-plus-btn" title="更多">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                        </svg>
+                    </button>
                     <button id="send-message-btn" class="icon-btn send-btn">发送</button>
                     <button id="get-reply-btn" class="icon-btn">
                         <svg viewBox="0 0 24 24">
@@ -897,12 +1021,6 @@
                     </button>
                 </div>
                 <div id="sticker-bar">
-                    <button class="sticker-bar-btn" id="regenerate-btn" title="重回">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                d="M17.65,6.35C16.2,4.9,14.21,4,12,4A8,8,0,0,0,4,12A8,8,0,0,0,12,20C15.73,20,18.84,17.45,19.73,14H17.65C16.83,16.33,14.61,18,12,18A6,6,0,0,1,6,12A6,6,0,0,1,12,6C13.66,6,15.14,6.69,16.22,7.78L13,11H20V4L17.65,6.35Z" />
-                        </svg>
-                    </button>
                     <button class="sticker-bar-btn" id="voice-message-btn">
                         <svg viewBox="0 0 24 24">
                             <path
@@ -968,9 +1086,14 @@
             </div>
             <!-- NEW: Chat Expansion Panel -->
             <div id="chat-expansion-panel">
-                <div class="sticker-grid" id="chat-expansion-grid">
+                <!-- 横向翻页容器（一页 4 列 × 2 行）。页节点 .expansion-page 由
+                     layoutChatExpansionPages 按「此刻有几项是可见的」现算出来，这里只留空壳。
+                     .no-swipe-back：告诉 swipe_back.js 别把这里的右滑当成返回手势。 -->
+                <div id="chat-expansion-grid" class="no-swipe-back">
                     <!-- Items will be populated by JS -->
                 </div>
+                <!-- 页码圆点：只有一页时一个都不渲染，靠 :empty 自己藏起来 -->
+                <div id="chat-expansion-dots" class="expansion-dots"></div>
             </div>
 <!-- ================== Private Chat Settings (侧边栏) ================== -->
 <div id="chat-settings-sidebar" class="settings-sidebar redesigned-sidebar">

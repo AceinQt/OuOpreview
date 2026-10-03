@@ -1604,6 +1604,90 @@
     /* 紧缩行高，避免行高干扰 */
 }
 
+/* ======================= 顶栏/底栏的「收纳」态 =======================
+ *
+ * 两个开关（外观→顶栏→收纳通话 / 外观→底栏→收纳工具栏）**不生成 CSS**，
+ * 而是和 timeFormat 一样存在预设的 META 注释里，由 chat_settings.js 的
+ * updateCustomBubbleStyle 读出来，在 #chat-room-screen 上挂下面这两个 class。
+ *
+ * 为什么不像顶栏底栏的别的设置那样直接生成 scoped CSS：
+ * 收纳要动的是「通话按钮在不在顶栏」「工具栏整条在不在」这类**结构**，
+ * 而结构上的例外（群聊没有通话）得由别的规则压回去。生成出来的 scoped 选择器是
+ * `#chat-room-screen.chat-active-xx.chat-active-xx …`（1 id + 3 class），
+ * 权重比任何一条手写规则都高，群聊那条压不住它 —— 症状是群聊里"+"面板冒出一个
+ * 点了没反应的通话。改成 class 之后两边都是普通规则，关系写死在这个文件里。
+ *
+ * 另一半同样重要：被收纳的东西**一直在 DOM 里**，只是 display:none。
+ * "+"面板是全局单例（启动时 setupChatExpansionPanel 构建一次、点击走事件委托），
+ * 而收纳开关是按预设存的、每个聊天可以不一样 —— 按会话增删节点就得把委托一起重来。
+ * 和「消息时间三个槽位」一个套路：全画出来，CSS 只放开该放的那个。
+ */
+
+/* ---- 顶栏：收纳通话 ---- */
+#chat-room-screen.bar-collapse-call #video-call-btn {
+    /* openChatRoom 给它写的是 inline 的 display:flex，只有 !important 压得住 */
+    display: none !important;
+}
+
+/* ---- 底栏：收纳工具栏 ---- */
+/* 工具栏整条收起来，由输入框右边那颗 #inline-plus-btn 顶上 */
+#chat-room-screen.bar-collapse-toolbar #sticker-bar {
+    display: none;
+}
+
+/* 平时藏着的那颗 "+"。样式照抄它顶替的 .sticker-bar-btn（透明底 + 灰图标），
+   不要蹭 .message-input-area .icon-btn 的蓝底，理由见 index.html 那段注释。 */
+#inline-plus-btn {
+    display: none;
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+#chat-room-screen.bar-collapse-toolbar #inline-plus-btn {
+    display: flex;
+}
+
+#inline-plus-btn svg {
+    width: 27px;
+    height: 27px;
+    fill: #888;
+}
+
+/* 底栏矮了一截（少了工具栏那 ~42px），消息区给底栏留的位置要跟着收，
+   否则最后一条消息下面会多出一块空白。100px 那个数见 layout.css。 */
+#chat-room-screen.bar-collapse-toolbar .message-area {
+    padding-bottom: calc(58px + var(--safe-bottom));
+}
+
+/* ---- "+"面板里的收纳位 ---- */
+/* 平时不显示；对应的开关打开才放出来。.expansion-item 本身是 display:flex。 */
+.expansion-item.stow-toolbar,
+.expansion-item.stow-call {
+    display: none;
+}
+
+#chat-room-screen.bar-collapse-toolbar .expansion-item.stow-toolbar {
+    display: flex;
+}
+
+#chat-room-screen.bar-collapse-call .expansion-item.stow-call {
+    display: flex;
+}
+
+/* 群聊没有通话（顶栏那颗也是藏着的），收纳位必须跟着藏。
+   权重和上面那条一样，靠 !important 分胜负 —— 两条都是本文件里的手写规则，
+   关系是确定的，不随加载顺序漂。 */
+#chat-room-screen.is-group-chat .expansion-item.stow-call {
+    display: none !important;
+}
+
 #multi-select-bar {
     position: absolute;
     bottom: 0;
