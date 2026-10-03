@@ -672,6 +672,17 @@ function updateCustomBubbleStyle(chatId, css, enabled) {
         ? getMessageTimeFormatFromCss(css)
         : '';
 
+    // 顶栏「收纳通话」/ 底栏「收纳工具栏」同理：它们存在 META 里、生成不出 CSS，
+    // 由这里翻译成 #chat-room-screen 上的两个 class（藏/放写死在 chat_room.css）。
+    // 同样**无条件**写一次 —— 下面 !finalCss 那个 return 之前就得覆盖到，
+    // 否则从一个收起来的聊天切到没设过的聊天，上一个的收纳态会跟着过去。
+    if (typeof applyBarCollapseClasses === 'function' && typeof getBarCollapseFromCss === 'function') {
+        applyBarCollapseClasses(
+            document.getElementById('chat-room-screen'),
+            (enabled && css) ? getBarCollapseFromCss(css) : null
+        );
+    }
+
     if (!finalCss) {
         if (styleElement) styleElement.remove();
         return;

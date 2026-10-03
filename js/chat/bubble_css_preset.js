@@ -144,6 +144,42 @@ function getMessageTimeFormatFromCss(css) {
     }
 }
 
+// 从一段预设 CSS 的 META 注释里取出两个「收纳」开关。
+// 和 timeFormat 同一个处境：它们生成不出 CSS —— 要动的是「通话按钮在不在顶栏」
+// 「工具栏整条在不在」这类结构，而结构上的例外（群聊没有通话）得由别的规则压回去，
+// 生成出来的 scoped 选择器是 `#chat-room-screen.chat-active-xx.chat-active-xx …`
+// （1 id + 3 class），权重比任何一条手写规则都高，压不住。所以改成在
+// #chat-room-screen 上挂 class，真正的藏/放写死在 css/pages/chat/chat_room.css
+// 那一段「顶栏/底栏的收纳态」里。
+//
+// 实际聊天室走 chat_settings.js 的 updateCustomBubbleStyle（所有换预设/进聊天室的
+// 唯一汇合点），预览走 buildPreviewShellHtml，两边都调这一个函数 —— 和 timeFormat
+// 一样，免得"预览里收起来了、聊天室里没有"。
+function getBarCollapseFromCss(css) {
+    const off = { call: false, toolbar: false };
+    if (!css) return off;
+    const m = String(css).match(/\/\* META:(.+?) \*\//);
+    if (!m) return off;
+    try {
+        const parsed = JSON.parse(m[1]);
+        return {
+            call: !!(parsed.header && parsed.header.collapseCall),
+            toolbar: !!(parsed.footer && parsed.footer.collapseToolbar)
+        };
+    } catch (e) {
+        return off;
+    }
+}
+
+// 把两个收纳 class 同步到一个元素上（真实的 #chat-room-screen，或预览里 clone 的那份）。
+// ★ 必须**两个都写**（该关的显式移除）：从"收纳"的预设切到"不收纳"的预设时，
+//   只加不减会让上一个预设的 class 永远留在屏幕上。
+function applyBarCollapseClasses(el, flags) {
+    if (!el) return;
+    el.classList.toggle('bar-collapse-call', !!(flags && flags.call));
+    el.classList.toggle('bar-collapse-toolbar', !!(flags && flags.toolbar));
+}
+
 // 全景气泡预览生成器：将所有的气泡都放在一个窗口里
 function getDynamicBubblePreview(timeFormat) {
     // 【教学指南：如何自己修改这里的预览气泡？】
@@ -263,7 +299,8 @@ function getDynamicBubblePreview(timeFormat) {
 // 关键点是：不重写结构，只做「隐藏浮层 + 填示例内容」这两件事。
 // 这样以后改 index.html 的顶栏/底栏，预览自动跟着变，不会再漂移。
 // timeFormat 是一路透传给示例气泡的时间模板，来源是正在编辑的那段 CSS 的 META。
-function buildPreviewShellHtml(timeFormat) {
+// collapseFlags 同理，是那段 CSS 里的两个收纳开关。
+function buildPreviewShellHtml(timeFormat, collapseFlags) {
     const real = document.getElementById('chat-room-screen');
     if (!real) return '';
 
@@ -271,6 +308,13 @@ function buildPreviewShellHtml(timeFormat) {
     // scopeBubbleCss 生成的选择器是 #chat-room-screen.chat-active-preview.chat-active-preview，
     // 这里必须挂上同名 class，否则预览里什么都不生效。
     clone.classList.add('screen', 'active', `chat-active-${PREVIEW_CHAT_ID}`);
+    // ★ clone 来源是**正开着的那个聊天**的屏幕，身上带着它自己的收纳 class。
+    //   必须按正在编辑的这段 CSS 重新写一遍，否则预览显示的是"当前聊天收没收纳"，
+    //   而不是"这段 CSS 存下去会长什么样" —— 顶栏的通话键、底栏的整条工具栏都会骗人。
+    if (typeof applyBarCollapseClasses === 'function') {
+        applyBarCollapseClasses(clone, collapseFlags);
+    }
+
     // preview-root 是取景框用的钩子（见 updateBubbleCssPreview 里那段布局 CSS）
     clone.classList.add('preview-root');
     // 动画会让 iframe 每次重画都闪一下
@@ -403,8 +447,12 @@ function updateBubbleCssPreview(previewContainer, css, useDefault, theme) {
         : '';
 
     // 时间格式取自**同一段** rawUserCss 的 META，而不是编辑器里的 basicState ——
-    // 预览的口径始终是"这段 CSS 存下去会长什么样"，和位置/颜色那些保持一致
-    const shellHtml = buildPreviewShellHtml(getMessageTimeFormatFromCss(rawUserCss));
+    // 预览的口径始终是"这段 CSS 存下去会长什么样"，和位置/颜色那些保持一致。
+    // 两个收纳开关走同一条路（它们也生成不出 CSS，只能从 META 捞）。
+    const shellHtml = buildPreviewShellHtml(
+        getMessageTimeFormatFromCss(rawUserCss),
+        getBarCollapseFromCss(rawUserCss)
+    );
     const focusCss = PREVIEW_FOCUS_CSS[mode.focus] || '';
 
     doc.write(`
@@ -557,14 +605,61 @@ function setupBubblePresets() {
     //       早被 chat_room.css 顶掉了。写错的话「什么都没改」也会生成一堆 CSS，
     //       而且会把默认的靠左悄悄变成居中。
     //   · header.hideStatus 昵称下面那行小字（绿点 + 在线），即 #chat-room-subtitle
+    //   · header/footer 的 bg+opacity+blur 是「栏本体」的底：两条栏在 chat_room.css 里
+    //     恰好是同一组值 —— `#chat-room-header-default` 和 `.chat-input-wrapper` 都写着
+    //     `background-color: rgba(243,242,247,0.85)` + `backdrop-filter: blur(8px)`。
+    //     ★ 顶栏别照 components.css 的 `.app-header`（rgba(255,255,255,.5) + blur 5）抄，
+    //       那条被 chat_room.css 顶掉了，抄错就是「没改过也生成 CSS」。
+    //   · header.btnC 是顶栏那几个**图标**本身的颜色，默认 var(--btn-color) = #2F3034
+    //     （variables.css）。它和下面三块的 bg 是两码事：btnC 管 svg，bg 管托着 svg 的那块。
+    //   · header.back / header.title / header.group 是顶栏的**三块元素**：
+    //     返回键 `.back-btn` / 昵称+状态 `.title-container` / 右侧按钮组 `.action-btn-group`。
+    //     ★ 以前这三颗按钮共用**一组** strokeC/strokeW/radius，而且画在**每颗按钮**身上
+    //       （`.back-btn, .action-btn-group .action-btn`），所以通话和菜单会各得一个框。
+    //       用户要的是"底透明、要素成块"，于是改成按块走：按钮组整体一个框，不是两个。
+    //       老预设里那三个平铺字段的迁移在 syncBasicUiFromCss 里。
+    //     ★ 三块出厂都是**全透明**的，所以默认 opacity 取 0（bg 填什么都看不见，
+    //       填 #FFFFFF 只是给取色器一个初值）；radius/strokeW/pad 的默认也都是 0 ——
+    //       静态 CSS 里 `.back-btn` / `.title-container` / `.action-btn-group`
+    //       三者都没写 border-radius 也没写 border（radius:8 是写在**里面**那颗
+    //       `.action-btn` 上的，不是组上）。全 0 = 没改过就一个字节都不生成。
+    //     ★ title.widthPct：昵称栏在 chat_room.css 里是 `flex-grow:1`，占满「返回键右边 ~
+    //       按钮组左边」的整段空档（也就是 100%），一上底色就是横贯顶栏的一长条。
+    //       这个百分比就是"占那段空档的几成"，默认 100（照抄静态 CSS，不改一字节不生成）。
+    //       余下的 (100-P)% 由 `.app-header` 的 `justify-content:space-between` 均分到两侧，
+    //       所以块看着是在中间、左右各留一道空隙。
+    //       ★ 它和 namePos 是**两件事**：namePos 管"文字在块里靠哪边"，widthPct 管"块多宽"。
+    //         曾经这里是个布尔 `fit`（贴合文字 = flex-grow:0），用户反馈"一开就变居中、
+    //         不开又离左右太近"，没有中间档 —— 所以换成百分比。老预设里的 fit 不迁移
+    //         （贴合文字没有对应的百分比），直接丢掉。
+    //   · header.divW/divC 和 footer.divW/divC 是两条栏的**分割线**：顶栏画在下沿
+    //     （border-bottom），底栏画在上沿（border-top）。默认照抄静态 CSS —— 顶栏
+    //     `#chat-room-header-default` 明写着 `border-bottom: none`，所以 divW 默认 0；
+    //     底栏 `.chat-input-wrapper` 是 `1px solid rgba(255,255,255,0.3)`，所以 divW 默认 1。
+    //     ★ 底栏那条出厂线带着 0.3 的 alpha，而取色器给不出 alpha。所以 divC 默认记作
+    //       #FFFFFF，用户一旦动了这两个旋钮，生成的就是**实心**线 —— 不动则一个字节不生成，
+    //       维持出厂的半透明。这点在面板的 setting-hint 里对用户讲明了。
+    //   · header.collapseCall / footer.collapseToolbar 是两个「收纳」开关，
+    //     **生成不出 CSS**，只负责让 hasChanges 为真把 META 留住；真正干活的是
+    //     getBarCollapseFromCss → #chat-room-screen 上的 class（见本文件上方那个函数）。
     //   · footer.send/reply/input 分别是 #send-message-btn / #get-reply-btn / #message-input，
     //     默认值来自 chat_room.css：两颗按钮 var(--primary-color)=#0099FF + radius 5 + border:none，
     //     输入框 #ffffff + radius 5 + border:none。
     const defaultBasicState = {
         hideAvatar: false, timePos: 'none', timeFormat: 'HH:mm', avatarRadius: 19, customFont: '',
-        header: { namePos: 'left', hideStatus: false },
+        header: {
+            namePos: 'left', hideStatus: false, collapseCall: false,
+            bg: '#F3F2F7', opacity: 0.85, blur: 8,
+            divW: 0, divC: '#000000',
+            btnC: '#2F3034',
+            back:  { bg:'#FFFFFF', opacity:0, pad:0, radius:0, strokeW:0, strokeC:'#000000' },
+            title: { bg:'#FFFFFF', opacity:0, pad:0, radius:0, strokeW:0, strokeC:'#000000', widthPct:100 },
+            group: { bg:'#FFFFFF', opacity:0, pad:0, radius:0, strokeW:0, strokeC:'#000000' }
+        },
         footer: {
-            hideSend: false,
+            hideSend: false, collapseToolbar: false,
+            bg: '#F3F2F7', opacity: 0.85, blur: 8,
+            divW: 1, divC: '#FFFFFF',
             send:  { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
             reply: { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
             input: { bg:'#FFFFFF', strokeW:0, strokeC:'#000000', radius:5 }
@@ -596,12 +691,53 @@ function setupBubblePresets() {
     let currentSelectType = 'normal_sent';
     // 底栏那块面板上「修改对象」下拉选的是谁。三个对象共用同一组控件（和气泡那块同一套路）。
     let currentFooterTarget = 'send';
+    // 顶栏同理：返回键 / 昵称栏 / 右侧按钮组。
+    let currentHeaderTarget = 'back';
 
     // 底栏三个对象 → 真实 DOM 选择器。改 index.html 的底栏时这里要跟着动。
     const FOOTER_SELECTORS = {
         send:  '#send-message-btn',
         reply: '#get-reply-btn',
         input: '#message-input'
+    };
+
+    // 「栏本体」的底色 —— 改背景/透明度/模糊时要刷的选择器。
+    // ★ 两条栏各自都有一个**多选态的替身**，必须一起改：
+    //   顶栏进多选会换成 #chat-room-header-select（取消/选择消息/显示隐藏），
+    //   底栏进多选会被 #multi-select-bar 盖住（删除已选/转发）。
+    //   只改常态那条的话，用户把栏调成深色后一进多选就闪回浅灰，看着像 bug。
+    //   （昵称位置、按钮样式那些**不能**这么干：多选态顶栏里是两颗文字按钮，
+    //     把 40px 宽度和弧度套上去会把"显示隐藏"四个字挤出来 —— 见 chat_room.css 那条注释。）
+    const HEADER_BAR_SELECTOR = '#chat-room-header-default, #chat-room-header-select';
+    const FOOTER_BAR_SELECTOR = '.chat-input-wrapper, #multi-select-bar';
+
+    // 顶栏那几个图标：返回 / 通话 / 菜单。这条只管**图标本身**的颜色（btnC）。
+    // 图标里 fill 走 currentColor（跟着 color），stroke 却被 chat_room.css 硬写成
+    // var(--btn-color) —— 只改 color 的话描线不跟着变，半边新半边旧，所以两条都得发。
+    const HEADER_BTN_SELECTOR =
+        '#chat-room-header-default .back-btn, #chat-room-header-default .action-btn-group .action-btn';
+
+    // 顶栏三块元素 → 真实 DOM 选择器。改 index.html 的顶栏时这里要跟着动。
+    // ★ 一律钉在 #chat-room-header-default 上，不碰多选态那个 #chat-room-header-select：
+    //   那边是两颗**文字**按钮（取消 / 显示隐藏），把块样式套上去会把字挤出来。
+    const HEADER_BLOCK_SELECTORS = {
+        back:  '#chat-room-header-default .back-btn',
+        title: '#chat-room-header-default .title-container',
+        group: '#chat-room-header-default .action-btn-group'
+    };
+
+    // 三块元素在静态 CSS 里都带着「为裸图标准备」的几何：
+    //   .back-btn           40×40 固定 + margin-left:-8px（把图标顶到屏幕最左边）
+    //   .action-btn-group   width:54px 固定（正好等于 24+6+24，一点余量都没有）
+    // 这些值一旦被当成**色块**看就全是毛病：负外边距让左边那块比右边多探出 8px，
+    // 固定宽高遇上 padding 会反过来把里面的 svg 压小（reset.css 给 * 置了 border-box）。
+    // 所以一旦这块真的长出了底色/描边/内边距（见下面的 boxed），就把这些几何归零，
+    // 让块自己按内容撑开。★ 只在 boxed 时发：光改个弧度（透明底下根本看不见）
+    // 就把按钮挪 8px，用户会以为自己碰坏了什么。
+    const HEADER_BLOCK_NORMALIZE = {
+        back:  ' width: auto !important; height: auto !important; margin-left: 0 !important;',
+        group: ' width: auto !important;',
+        title: ''
     };
     
     // 把 .voice-bubble 并入 normal，让它们共享同一套样式！
@@ -718,10 +854,118 @@ function setupBubblePresets() {
             if (hdr.hideStatus) basicCss += `#chat-room-subtitle { display: none !important; }\n`;
             hasChanges = true;
         }
+        if (hdr.collapseCall !== hdrDef.collapseCall) {
+            // 这一项**生成不出 CSS**。真正干活的是 #chat-room-screen 上的
+            // bar-collapse-call（getBarCollapseFromCss → applyBarCollapseClasses，
+            // 藏/放的规则在 chat_room.css）。这里只负责让 hasChanges 为真，
+            // 把存着这个开关的 META 注释留住 —— 不然下面「没改动就整块删掉」的逻辑
+            // 会连 META 一起端走，用户拨的开关存不下来。和 timeFormat 同一个处境。
+            hasChanges = true;
+        }
+
+        // 栏本体的底：底色和不透明度合成一条 rgba，模糊单独一条。
+        // 顶栏底栏逻辑一模一样，抽成一个闭包，省得两边各写一遍再漂。
+        const barSurfaceCss = (conf, def, sel) => {
+            let out = '';
+            if ((conf.bg || '').toUpperCase() !== def.bg.toUpperCase() || conf.opacity !== def.opacity) {
+                out += `${sel} { background-color: ${hexToRgba(conf.bg, conf.opacity)} !important; }\n`;
+                hasChanges = true;
+            }
+            if (conf.blur !== def.blur) {
+                // 0 发 none，不发 blur(0px)：后者一样会让浏览器去抠一张背景快照，
+                // 还会给 position:fixed 的后代造出一个新的包含块 —— 白花钱又改语义。
+                const v = conf.blur > 0 ? `blur(${conf.blur}px)` : 'none';
+                out += `${sel} { backdrop-filter: ${v} !important; -webkit-backdrop-filter: ${v} !important; }\n`;
+                hasChanges = true;
+            }
+            return out;
+        };
+        basicCss += barSurfaceCss(hdr, hdrDef, HEADER_BAR_SELECTOR);
+
+        // 两条栏的分割线。顶栏画下沿、底栏画上沿，别的完全一样，所以也抽一个闭包。
+        // 0 发 none（而不是 0px solid）：语义更直白，也省得和别处的 border 简写打架。
+        const barDividerCss = (conf, def, sel, side) => {
+            if (conf.divW === def.divW
+                && (conf.divC || '').toUpperCase() === def.divC.toUpperCase()) return '';
+            hasChanges = true;
+            return (conf.divW > 0)
+                ? `${sel} { border-${side}: ${conf.divW}px solid ${conf.divC} !important; }\n`
+                : `${sel} { border-${side}: none !important; }\n`;
+        };
+        basicCss += barDividerCss(hdr, hdrDef, HEADER_BAR_SELECTOR, 'bottom');
+
+        // 顶栏那几个图标的颜色。这一条只管 svg，不管托着它的块（块在下面那段）。
+        if ((hdr.btnC || '').toUpperCase() !== hdrDef.btnC.toUpperCase()) {
+            basicCss += `${HEADER_BTN_SELECTOR} { color: ${hdr.btnC} !important; }\n`;
+            // ★ 第二条不能省：返回键的 svg 是 stroke="currentColor"（跟着 color 走），
+            //   但通话/菜单那两颗的描线被 chat_room.css 的
+            //   `#chat-room-header-default .action-btn-group .action-btn svg { stroke: var(--btn-color) }`
+            //   硬写死了，只发 color 的话是"图标填充变了、描线还是老颜色"的半吊子。
+            basicCss += `#chat-room-header-default .action-btn-group .action-btn svg { stroke: ${hdr.btnC} !important; }\n`;
+            hasChanges = true;
+        }
+
+        // 顶栏三块元素（返回键 / 昵称栏 / 右侧按钮组）各自一套底色+描边+弧度+内边距。
+        // 和底栏那三个对象同一个路子，区别是这边多一层「块化归零」（HEADER_BLOCK_NORMALIZE）。
+        for (const key of Object.keys(HEADER_BLOCK_SELECTORS)) {
+            const conf = hdr[key] || hdrDef[key];
+            const def = hdrDef[key];
+            const sel = HEADER_BLOCK_SELECTORS[key];
+
+            let blockCss = '';
+            if ((conf.bg || '').toUpperCase() !== def.bg.toUpperCase() || conf.opacity !== def.opacity) {
+                // 出厂 opacity 是 0，所以这条在用户拉起不透明度之前发出来也是全透明的，
+                // 和"没改"看着一样 —— 面板的 hint 里把这事讲明了（不透明度就是总开关）。
+                blockCss += ` background-color: ${hexToRgba(conf.bg, conf.opacity)} !important;`;
+            }
+            if (conf.radius !== def.radius) {
+                blockCss += ` border-radius: ${conf.radius}px !important;`;
+            }
+            if (conf.strokeW !== def.strokeW || (conf.strokeC || '').toUpperCase() !== def.strokeC.toUpperCase()) {
+                blockCss += (conf.strokeW > 0)
+                    ? ` border: ${conf.strokeW}px solid ${conf.strokeC} !important;`
+                    : ` border: none !important;`;
+            }
+            if (conf.pad !== def.pad) {
+                blockCss += ` padding: ${conf.pad}px !important;`;
+            }
+            // 昵称栏专属：块占「返回键右边 ~ 按钮组左边」那段空档的几成。
+            // ★ flex-basis 必须压成 0：留着 auto 的话基准是文字自身宽度、grow 分的是
+            //   "文字之外剩下的"，百分比就不成百分比了（短昵称和长昵称算出的块宽不一样）。
+            // ★ 居中档不发这条：那一档走的是 absolute（见上面 namePos 那段），
+            //   flex-grow 对 absolute 的元素没有意义，发出来是条死规则。面板上那一行
+            //   也会在居中档收起来（syncConditionalRows）。
+            if (key === 'title' && hdr.namePos !== 'center' && conf.widthPct !== def.widthPct) {
+                blockCss += ` flex-basis: 0 !important; flex-grow: ${conf.widthPct / 100} !important;`;
+            }
+            if (!blockCss) continue;
+
+            // 真的长出块了才归零那套"为裸图标准备"的几何，理由见 HEADER_BLOCK_NORMALIZE。
+            const boxed = conf.opacity > def.opacity || conf.strokeW > 0 || conf.pad > 0;
+            const norm = boxed ? (HEADER_BLOCK_NORMALIZE[key] || '') : '';
+            basicCss += `${sel} {${norm}${blockCss} }\n`;
+
+            // 按钮组成块之后，把里面那颗按钮摆成正方形。
+            // ★ 它在 chat_room.css 里是 24×30 的**长方形**，所以「收纳通话」只剩一颗按钮时，
+            //   组的盒子是 (24+2p)×(30+2p)，弧度拉满也只能是个胶囊，拼不出正圆 ——
+            //   用户就是撞上了这个。取两边的大值 30 摆成 30×30：收纳后组是正方形（弧度到顶
+            //   即正圆），两颗都在时是规整的胶囊。取大值而不是取小值，是为了让热区变大不变小。
+            if (key === 'group' && boxed) {
+                basicCss += `#chat-room-header-default .action-btn-group .action-btn`
+                    + ` { width: 30px !important; height: 30px !important; }\n`;
+            }
+            hasChanges = true;
+        }
 
         // ============ 底栏 ============
         const ftr = basicState.footer || defaultBasicState.footer;
         const ftrDef = defaultBasicState.footer;
+        basicCss += barSurfaceCss(ftr, ftrDef, FOOTER_BAR_SELECTOR);
+        basicCss += barDividerCss(ftr, ftrDef, FOOTER_BAR_SELECTOR, 'top');
+        if (ftr.collapseToolbar !== ftrDef.collapseToolbar) {
+            // 同 collapseCall：生成不出 CSS，只把 META 留住，干活的是 bar-collapse-toolbar。
+            hasChanges = true;
+        }
         if (ftr.hideSend !== ftrDef.hideSend) {
             // 藏了照样能发：回车走的是 chat_room.js 里 #message-input 的 keydown 分支，
             // 和这颗按钮的 click/touchend 是三条各自独立的通道。
@@ -1014,6 +1258,17 @@ function setupBubblePresets() {
                 ftrSelect.value = 'reply';
             }
         }
+
+        // 「宽度占比」只对昵称栏有意义（返回键和按钮组本来就是按内容宽的）——
+        // 停在别的对象上就整行收掉，连同下面那句说明。
+        // ★ 居中档也要收起来：那一档走的是 absolute（块贴着文字居中），
+        //   flex-grow 对 absolute 的元素没有意义，生成端同样不会发那条规则。
+        const hdrNow = basicState.header || defaultBasicState.header;
+        const showWidth = currentHeaderTarget === 'title' && hdrNow.namePos !== 'center';
+        const widthRow = document.getElementById('hdrblk-width-row');
+        if (widthRow) widthRow.style.display = showWidth ? '' : 'none';
+        const widthHint = document.getElementById('hdrblk-width-hint');
+        if (widthHint) widthHint.style.display = showWidth ? '' : 'none';
     }
 
     function updateUIFromState() {
@@ -1053,14 +1308,72 @@ function setupBubblePresets() {
         });
 
         // ---- 顶栏那块面板 ----
+        // ★ 这两个小工具必须定义在顶栏这一段**之前**：它们是 const，
+        //   在声明之前用会撞上暂时性死区直接抛 ReferenceError，而这个函数
+        //   每次切预设/切对象都要跑，一抛就是整页控件全不同步。
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+        const hdrConf = basicState.header || defaultBasicState.header;
         const namePosEl = document.getElementById('setting-header-name-pos');
-        if (namePosEl) namePosEl.value = (basicState.header || defaultBasicState.header).namePos;
+        if (namePosEl) namePosEl.value = hdrConf.namePos;
         const hideStatusEl = document.getElementById('setting-header-hide-status');
-        if (hideStatusEl) hideStatusEl.checked = !!(basicState.header || {}).hideStatus;
+        if (hideStatusEl) hideStatusEl.checked = !!hdrConf.hideStatus;
+        const collapseCallEl = document.getElementById('setting-header-collapse-call');
+        if (collapseCallEl) collapseCallEl.checked = !!hdrConf.collapseCall;
+        setVal('setting-header-bg', hdrConf.bg);
+        setVal('setting-header-bg-text', String(hdrConf.bg).toUpperCase());
+        setVal('setting-header-opacity', hdrConf.opacity);
+        setTxt('val-header-opacity', hdrConf.opacity);
+        setVal('setting-header-blur', hdrConf.blur);
+        setTxt('val-header-blur', hdrConf.blur);
+        setVal('setting-header-div-w', hdrConf.divW);
+        setTxt('val-header-div-w', hdrConf.divW);
+        setVal('setting-header-div-c', hdrConf.divC);
+        setVal('setting-header-div-c-text', String(hdrConf.divC).toUpperCase());
+        setVal('setting-header-btn-c', hdrConf.btnC);
+        setVal('setting-header-btn-c-text', String(hdrConf.btnC).toUpperCase());
+
+        // 顶栏三块元素共用下面这一组控件，靠「修改对象」下拉切换（同底栏那套路）。
+        const hdrSelectEl = document.getElementById('setting-header-target');
+        if (hdrSelectEl) hdrSelectEl.value = currentHeaderTarget;
+        const hdrLabelEl = document.getElementById('current-header-label');
+        if (hdrLabelEl && hdrSelectEl && hdrSelectEl.selectedIndex >= 0) {
+            hdrLabelEl.textContent = hdrSelectEl.options[hdrSelectEl.selectedIndex].text;
+        }
+        const blkConf = hdrConf[currentHeaderTarget] || defaultBasicState.header[currentHeaderTarget];
+        setVal('setting-hdrblk-bg', blkConf.bg);
+        setVal('setting-hdrblk-bg-text', String(blkConf.bg).toUpperCase());
+        setVal('setting-hdrblk-opacity', blkConf.opacity);
+        setTxt('val-hdrblk-opacity', blkConf.opacity);
+        setVal('setting-hdrblk-pad', blkConf.pad);
+        setTxt('val-hdrblk-pad', blkConf.pad);
+        setVal('setting-hdrblk-radius', blkConf.radius);
+        setTxt('val-hdrblk-radius', blkConf.radius);
+        setVal('setting-hdrblk-stroke-c', blkConf.strokeC);
+        setVal('setting-hdrblk-stroke-c-text', String(blkConf.strokeC).toUpperCase());
+        setVal('setting-hdrblk-stroke-w', blkConf.strokeW);
+        setTxt('val-hdrblk-stroke-w', blkConf.strokeW);
+        // 宽度占比只有昵称栏这一块有（别的两块读不到就按默认 100 回显，那一行反正是收着的）
+        setVal('setting-hdrblk-width', blkConf.widthPct !== undefined ? blkConf.widthPct : 100);
+        setTxt('val-hdrblk-width', blkConf.widthPct !== undefined ? blkConf.widthPct : 100);
 
         // ---- 底栏那块面板 ----
+        const ftrBar = basicState.footer || defaultBasicState.footer;
         const hideSendEl = document.getElementById('setting-footer-hide-send');
-        if (hideSendEl) hideSendEl.checked = !!(basicState.footer || {}).hideSend;
+        if (hideSendEl) hideSendEl.checked = !!ftrBar.hideSend;
+        const collapseToolbarEl = document.getElementById('setting-footer-collapse-toolbar');
+        if (collapseToolbarEl) collapseToolbarEl.checked = !!ftrBar.collapseToolbar;
+        setVal('setting-footer-bar-bg', ftrBar.bg);
+        setVal('setting-footer-bar-bg-text', String(ftrBar.bg).toUpperCase());
+        setVal('setting-footer-bar-opacity', ftrBar.opacity);
+        setTxt('val-footer-bar-opacity', ftrBar.opacity);
+        setVal('setting-footer-bar-blur', ftrBar.blur);
+        setTxt('val-footer-bar-blur', ftrBar.blur);
+        setVal('setting-footer-div-w', ftrBar.divW);
+        setTxt('val-footer-div-w', ftrBar.divW);
+        setVal('setting-footer-div-c', ftrBar.divC);
+        setVal('setting-footer-div-c-text', String(ftrBar.divC).toUpperCase());
         const ftrSelectEl = document.getElementById('setting-footer-target');
         if (ftrSelectEl) ftrSelectEl.value = currentFooterTarget;
         const ftrLabelEl = document.getElementById('current-footer-label');
@@ -1069,8 +1382,6 @@ function setupBubblePresets() {
         }
         const ftrConf = (basicState.footer || {})[currentFooterTarget]
             || defaultBasicState.footer[currentFooterTarget];
-        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         setVal('setting-footer-bg', ftrConf.bg);
         setVal('setting-footer-bg-text', String(ftrConf.bg).toUpperCase());
         setVal('setting-footer-stroke-c', ftrConf.strokeC);
@@ -1130,6 +1441,46 @@ function syncBasicUiFromCss(css) {
                     // 一律浅合并到默认值上，缺的字段就按默认走。
                     if (parsed.header) {
                         basicState.header = { ...defaultBasicState.header, ...parsed.header };
+                        // header 底下也嵌着三个对象（返回键 / 昵称栏 / 按钮组），同 footer：
+                        // 外层那次浅合并会把 parsed 里存在的那个键**整块**顶掉，所以每个
+                        // 再单独合一次，底板必须取 defaultBasicState。
+                        ['back', 'title', 'group'].forEach(k => {
+                            if (parsed.header[k]) {
+                                basicState.header[k] = { ...defaultBasicState.header[k], ...parsed.header[k] };
+                            }
+                        });
+                        // 兼容迁移：顶栏按钮曾经只有**一组**平铺的 radius/strokeW/strokeC，
+                        // 而且画在**每颗按钮**身上（返回 + 通话 + 菜单各得一个框）。
+                        // 现在按块走，所以把老值搬到返回键和按钮组上
+                        // （昵称栏那时候压根没有样式可言，不搬）。
+                        // ★ 只搬**真被用户改过**的：老默认是 radius 8 / strokeW 0 / strokeC #000000，
+                        //   原样搬过去会让"从没动过顶栏"的老预设凭空生成 border-radius:8px。
+                        // ★ 判定为改过就三项一起搬：radius 8 是配着描边看的，
+                        //   只搬描边会把圆角框变成直角框。
+                        const legacyHdr = parsed.header;
+                        const legacyTouched =
+                            (legacyHdr.radius !== undefined && legacyHdr.radius !== 8)
+                            || (legacyHdr.strokeW !== undefined && legacyHdr.strokeW !== 0)
+                            || (legacyHdr.strokeC !== undefined
+                                && String(legacyHdr.strokeC).toUpperCase() !== '#000000');
+                        if (legacyTouched) {
+                            ['back', 'group'].forEach(k => {
+                                if (parsed.header[k]) return;   // 已经是新结构了，别回头覆盖
+                                const blk = basicState.header[k];
+                                if (legacyHdr.radius !== undefined) blk.radius = legacyHdr.radius;
+                                if (legacyHdr.strokeW !== undefined) blk.strokeW = legacyHdr.strokeW;
+                                if (legacyHdr.strokeC !== undefined) blk.strokeC = legacyHdr.strokeC;
+                            });
+                        }
+                        // 平铺的老字段不留在 state 里 —— 留着会被下一次保存原样写回 META，
+                        // 下次加载又触发一遍上面这段迁移（而那时三块可能已经被用户改过了）。
+                        delete basicState.header.radius;
+                        delete basicState.header.strokeW;
+                        delete basicState.header.strokeC;
+                        // 昵称栏的「贴合文字」(fit, 布尔) 已被「宽度占比」(widthPct) 顶替。
+                        // 不迁移 —— "贴着文字"没有对应的百分比，硬折算成某个数反而更难解释；
+                        // 丢掉等于退回 100%（占满空档），用户照自己的眼睛重新拨一个数就行。
+                        if (basicState.header.title) delete basicState.header.title.fit;
                     }
                     if (parsed.footer) {
                         basicState.footer = { ...defaultBasicState.footer, ...parsed.footer };
@@ -1441,14 +1792,145 @@ function syncBasicUiFromCss(css) {
         el.addEventListener('change', (e) => {
             if (!basicState.header) basicState.header = { ...defaultBasicState.header };
             apply(e.target);
+            // 「昵称位置」切到/离开居中档时，下面那条「宽度占比」要跟着收起/露出
+            // （居中走 absolute，flex-grow 对它没意义）。顺手都过一遍，便宜。
+            syncConditionalRows();
             generateCssFromState();
         });
     };
     bindHeaderInput('setting-header-name-pos', t => { basicState.header.namePos = t.value; });
     bindHeaderInput('setting-header-hide-status', t => { basicState.header.hideStatus = t.checked; });
+    bindHeaderInput('setting-header-collapse-call', t => { basicState.header.collapseCall = t.checked; });
 
-    const hideSendCb = document.getElementById('setting-footer-hide-send');
-    if (hideSendCb) {
+    const collapseToolbarCb = document.getElementById('setting-footer-collapse-toolbar');
+    if (collapseToolbarCb) {
+        collapseToolbarCb.addEventListener('change', (e) => {
+            if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
+            basicState.footer.collapseToolbar = e.target.checked;
+            generateCssFromState();
+        });
+    }
+
+    // 顶栏/底栏「栏本体 + 顶栏按钮」那几组控件。和下面 footerInputsMap 同一个路子，
+    // 区别只在写进 basicState.header / basicState.footer 的**顶层**
+    // （footerInputsMap 写的是 footer 底下 send/reply/input 三个对象之一）。
+    // peer 一栏：'number' 填数值回显的 span id，色值两项互填对方的 id。
+    const BAR_INPUTS = [
+        ['setting-header-bg',            'header', 'bg',      'color',  'setting-header-bg-text'],
+        ['setting-header-bg-text',       'header', 'bg',      'text',   'setting-header-bg'],
+        ['setting-header-opacity',       'header', 'opacity', 'number', 'val-header-opacity'],
+        ['setting-header-blur',          'header', 'blur',    'number', 'val-header-blur'],
+        ['setting-header-btn-c',         'header', 'btnC',    'color',  'setting-header-btn-c-text'],
+        ['setting-header-btn-c-text',    'header', 'btnC',    'text',   'setting-header-btn-c'],
+        ['setting-header-div-w',         'header', 'divW',    'number', 'val-header-div-w'],
+        ['setting-header-div-c',         'header', 'divC',    'color',  'setting-header-div-c-text'],
+        ['setting-header-div-c-text',    'header', 'divC',    'text',   'setting-header-div-c'],
+        ['setting-footer-bar-bg',        'footer', 'bg',      'color',  'setting-footer-bar-bg-text'],
+        ['setting-footer-bar-bg-text',   'footer', 'bg',      'text',   'setting-footer-bar-bg'],
+        ['setting-footer-bar-opacity',   'footer', 'opacity', 'number', 'val-footer-bar-opacity'],
+        ['setting-footer-bar-blur',      'footer', 'blur',    'number', 'val-footer-bar-blur'],
+        ['setting-footer-div-w',         'footer', 'divW',    'number', 'val-footer-div-w'],
+        ['setting-footer-div-c',         'footer', 'divC',    'color',  'setting-footer-div-c-text'],
+        ['setting-footer-div-c-text',    'footer', 'divC',    'text',   'setting-footer-div-c']
+    ];
+    BAR_INPUTS.forEach(([id, section, key, kind, peerId]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', (e) => {
+            let val = e.target.value;
+            if (kind === 'number') {
+                val = parseFloat(val) || 0;
+                const disp = document.getElementById(peerId);
+                if (disp) disp.textContent = val;
+            }
+            if (!basicState[section]) {
+                basicState[section] = JSON.parse(JSON.stringify(defaultBasicState[section]));
+            }
+            basicState[section][key] = val;
+
+            // 取色器 ↔ 手输框互相回填。手输的只在凑够 6 位合法 HEX 时才回填取色器，
+            // 否则打字到一半（#0 / #00…）就会把取色器推成黑色。
+            if (kind === 'color') {
+                const t = document.getElementById(peerId);
+                if (t) t.value = String(val).toUpperCase();
+            }
+            if (kind === 'text' && /^#[0-9A-F]{6}$/i.test(val)) {
+                const c = document.getElementById(peerId);
+                if (c) c.value = val;
+            }
+            generateCssFromState();
+        });
+    });
+
+    // ---- 顶栏三块元素：「修改对象」下拉 + 共用的那一组控件 ----
+    // 和下面底栏的 footerInputsMap 同一个路子，区别只在写进的是 basicState.header
+    // 底下 back/title/group 三个对象之一。
+    //
+    // 往当前对象上写一个字段。老预设里 header 可能整块缺失、或缺这三个子对象，
+    // 所以每次都以默认值为底板补齐再写（和底栏那边同一套防御）。
+    const writeHeaderBlock = (key, val) => {
+        if (!basicState.header) {
+            basicState.header = JSON.parse(JSON.stringify(defaultBasicState.header));
+        }
+        if (!basicState.header[currentHeaderTarget]) {
+            basicState.header[currentHeaderTarget] =
+                { ...defaultBasicState.header[currentHeaderTarget] };
+        }
+        basicState.header[currentHeaderTarget][key] = val;
+    };
+
+    const headerTargetSel = document.getElementById('setting-header-target');
+    if (headerTargetSel) {
+        headerTargetSel.addEventListener('change', (e) => {
+            currentHeaderTarget = e.target.value;
+            // 换对象只是换一组数值进控件，不产生新 CSS。但「贴合文字」那行只属于昵称栏，
+            // 得跟着藏/放 —— 所以这里要多走一趟 syncConditionalRows。
+            syncConditionalRows();
+            updateUIFromState();
+        });
+    }
+
+    // 控件 id → [字段, 类型, 伙伴 id]。'number' 的伙伴是数值回显的 span，
+    // 色值两项互填对方的 id（取色器 ↔ 手输框）。
+    const HDR_BLOCK_INPUTS = {
+        'setting-hdrblk-bg':            ['bg',      'color',  'setting-hdrblk-bg-text'],
+        'setting-hdrblk-bg-text':       ['bg',      'text',   'setting-hdrblk-bg'],
+        'setting-hdrblk-opacity':       ['opacity', 'number', 'val-hdrblk-opacity'],
+        'setting-hdrblk-pad':           ['pad',     'number', 'val-hdrblk-pad'],
+        'setting-hdrblk-radius':        ['radius',  'number', 'val-hdrblk-radius'],
+        'setting-hdrblk-stroke-c':      ['strokeC', 'color',  'setting-hdrblk-stroke-c-text'],
+        'setting-hdrblk-stroke-c-text': ['strokeC', 'text',   'setting-hdrblk-stroke-c'],
+        'setting-hdrblk-stroke-w':      ['strokeW', 'number', 'val-hdrblk-stroke-w'],
+        'setting-hdrblk-width':         ['widthPct', 'number', 'val-hdrblk-width']
+    };
+    Object.keys(HDR_BLOCK_INPUTS).forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', (e) => {
+            const [key, kind, peerId] = HDR_BLOCK_INPUTS[id];
+            let val = e.target.value;
+            if (kind === 'number') {
+                val = parseFloat(val) || 0;
+                const disp = document.getElementById(peerId);
+                if (disp) disp.textContent = val;
+            }
+            writeHeaderBlock(key, val);
+
+            // 取色器 ↔ 手输框互相回填。手输的只在凑够 6 位合法 HEX 时才回填取色器，
+            // 否则打字到一半（#0 / #00…）就会把取色器推成黑色。
+            if (kind === 'color') {
+                const t = document.getElementById(peerId);
+                if (t) t.value = String(val).toUpperCase();
+            }
+            if (kind === 'text' && /^#[0-9A-F]{6}$/i.test(val)) {
+                const c = document.getElementById(peerId);
+                if (c) c.value = val;
+            }
+            generateCssFromState();
+        });
+    });
+
+    const hideSendCb = document.getElementById('setting-footer-hide-send');    if (hideSendCb) {
         hideSendCb.addEventListener('change', (e) => {
             if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
             basicState.footer.hideSend = e.target.checked;
