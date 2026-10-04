@@ -102,9 +102,13 @@
     padding-bottom: var(--safe-bottom);
 }
 
-/* 聊天消息滚动区 */
+/* 聊天消息滚动区：要同时躲开「底栏 + 安全区 + 开着的"+"面板」三层。
+   三层都压进 --chat-foot-total 了（定义在 chat_room.css 开头的 #chat-room-screen），
+   所以这里一个数字都不写死 —— 以前是三条权重打平的规则各写一份
+   （100px / 收纳档 58px / 两者再叠面板高），靠源码顺序分胜负。
+   同一个变量也是 "正在输入" 提示的落点依据，两边再也不会各算一套。 */
 #chat-room-screen .message-area {
-    padding-bottom: calc(100px + var(--safe-bottom)) ;
+    padding-bottom: var(--chat-foot-total);
 }
 
 /* 聊天室内的底部弹出面板 (表情包面板)

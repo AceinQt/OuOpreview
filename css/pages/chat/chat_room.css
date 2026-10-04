@@ -13,6 +13,25 @@
      */
     --bar-icon-color: #555;
     --bar-icon-stroke: 2;
+
+    /* ===== 底栏占掉多少高度：消息区让位、"正在输入"的落点，全按这里算 =====
+     * --chat-foot-h     : 底栏自身的基础高度。100px = 输入栏 + 工具栏；
+     *                     收纳工具栏后少了那 ~42px，由下面 .bar-collapse-toolbar 改成 58px。
+     * --chat-foot-total : 再叠上另外两层 —— iOS 底部安全区（底栏自己 padding 过一次，
+     *                     躲底栏的人得跟着躲）、以及 "+"面板开着时顶高的那一截
+     *                     （--exp-panel-h 由 setChatExpansionPanelOpen 现量现写，
+     *                     关着时这条 var 取 0px 兜底，等于不存在）。
+     *
+     * ⚠️ 要躲底栏的地方**一律引这个变量，不许再写一遍数字**。
+     *   以前「消息区的 padding」和「正在输入的 margin」各写死一份：拨上收纳开关
+     *   只有前者跟着收，后者停在 105px 不动，提示语和输入框之间就空出一截
+     *   （用户原话：离输入框空了一块）；后者还整条漏了安全区，iPhone 上提示语
+     *   有 ~34px 被底栏压在底下。消息区那份更夸张，一度是三条权重打平的规则
+     *   （100px / 58px / 两者再加面板）靠源码顺序分胜负。
+     *   custom property 是惰性求值的：--chat-foot-h 一变，引过它的地方全部跟着重算。
+     */
+    --chat-foot-h: 100px;
+    --chat-foot-total: calc(var(--chat-foot-h) + var(--safe-bottom) + var(--exp-panel-h, 0px));
 }
 
 /* 1. 只有当屏幕被激活时(.active)，才强制设为 block 并开启相对定位 */
@@ -1431,8 +1450,22 @@
     background-color: #d1d1d1;
 }
 
-/* 2. 正在输入提示：修复位置和上推效果 */
-/* 2. 正在输入提示：修复位置和间距 */
+/* 2. 正在输入提示：落点跟着底栏高度走 */
+/* ★ 它是 .message-area 的**兄弟**（同在 .content 这个 flex 列里），不是列表里的一条。
+ *   所以位置靠上下两条负/正 margin 摆出来，两条都必须按「底栏实高」算 ——
+ *   --chat-foot-total 见本文件开头 #chat-room-screen 那段（底栏基础高 + 安全区 + 开着的面板）。
+ *
+ *   两条 margin 的几何（F = --chat-foot-total，提示语自身连 padding 共 40px 高）：
+ *     margin-bottom = F + 5px   → 提示语底边落在底栏上方 5px，正好不被压住
+ *     margin-top    = 5px - F   → 和上一条气泡之间也留 5px
+ *   相加恒等于 50px，所以不管底栏多高、面板开没开，它吃掉的 flex 空间都是这 50px ——
+ *   列表被"挤"上去的量是固定的，开关面板时不会看见气泡额外跳一下。
+ *
+ *   ⚠️ 两条是一套，别只改一条：margin-bottom 单独改大就只是整体上移，和气泡的间距照旧；
+ *   以前两条都写死（-95px / 105px，刚好配 F=100 那一档），收纳工具栏后底栏矮成 58px，
+ *   margin-bottom 不动 → 提示语悬在半空离输入框空一截；而 margin-top 不动则是
+ *   「F - 95 = -37px」，提示语直接跟最后一条气泡重叠 37px，又被 .message-area
+ *   的 z-index:20 盖在底下 —— 看着就是"正在输入"整条消失了。 */
 .typing-indicator {
     /* --- 基础外观 --- */
     color: #aaa;
@@ -1446,21 +1479,11 @@
     position: relative;
     /* 保持相对定位，占据文档流 */
 
-    /* --- 关键修复 1：拉近距离 --- */
-    /* 
-               #message-area 底部有 105px 的 padding。
-               设置 -85px 的上边距，把提示语往上拉 85px。
-               这样视觉间距就只剩下 105 - 85 = 20px，刚好合适。
-            */
-    margin-top: -95px;
+    /* 往上拉进 .message-area 的底部留白里，和最后一条气泡隔 5px */
+    margin-top: calc(5px - var(--chat-foot-total));
 
-    /* --- 关键修复 2：撑开底部 --- */
-    /* 
-               底部保留 105px 空间，确保提示语显示在输入框(约100px高)的上方，
-               而不是被输入框挡住。
-               这也让它占据了物理空间，从而产生“挤压/上推”气泡的动画效果。
-            */
-    margin-bottom: 105px;
+    /* 往下撑开「底栏实高 + 5px」，把自己托在底栏上方（也顺带产生挤压/上推的动感） */
+    margin-bottom: calc(var(--chat-foot-total) + 5px);
 
     /* --- 层级提升 --- */
     z-index: 10;
@@ -1532,8 +1555,8 @@
 
 /* "+"面板开着的时候两颗加号转成 "×"。
    素材是「圆圈 + 十字」，转 45° 正好变成「圆圈 + 叉」，不用备第二张图。
-   class 由 setChatExpansionPanelOpen 统一挂 —— 面板有 5 个开关入口，
-   谁漏一处就会出现「面板关了，加号还是个叉」。 */
+   class 由 setChatExpansionPanelOpen 统一挂 —— 面板有 6 个开关入口，
+   谁漏一处就会出现「面板关了，加号还是个叉」（实机就是从"点空白处"那条路撞上的）。 */
 #placeholder-plus-btn svg,
 #inline-plus-btn svg {
     transition: transform 0.25s ease;
@@ -1560,6 +1583,12 @@
     /* 变灰 */
 }
 
+/* ★ 底栏这一整块（输入栏 + 工具栏 + "+"面板）的底色、毛玻璃、下沿圆角**只在这里画一次**。
+   面板是它的子节点、背景留成 transparent（见 chat_modal.css），所以这层透上去就是面板的底色 ——
+   两边各画一份的后果是 0.85 叠 0.85、实际不透明度 0.9775，接缝处横着一道色差。
+   下沿圆角同理留在父节点：曾经把它挪去面板上，理由是「面板有自己的不透明底色，
+   父节点的圆角裁不住子节点的方角」，面板改透明后这个理由就不成立了，挪过去反而变成
+   「面板关着时整条底栏没有圆角」。 */
 .chat-input-wrapper {
     flex-shrink: 0;
     position: absolute;
@@ -1570,6 +1599,8 @@
     background-color: rgba(243, 242, 247, 0.85);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    border-bottom-left-radius: var(--phone-corner-radius);
+    border-bottom-right-radius: var(--phone-corner-radius);
 
     /* 稍微加一点顶部边框线，增加质感（可选） */
     border-top: 1px solid rgba(255, 255, 255, 0.3);
@@ -1694,29 +1725,12 @@
 
 /* 图标尺寸/配色/转 × 都和工具栏那颗共用一套规则，见上面 .sticker-bar-btn svg 那几条 */
 
-/* 底栏矮了一截（少了工具栏那 ~42px），消息区给底栏留的位置要跟着收，
-   否则最后一条消息下面会多出一块空白。100px 那个数见 layout.css。 */
-#chat-room-screen.bar-collapse-toolbar .message-area {
-    padding-bottom: calc(58px + var(--safe-bottom));
-}
-
-/* ---- "+"面板顶起底栏时，消息区要多让出面板那一截 ----
- * 面板现在是在文档流里把「输入栏 + 工具栏」整条往上顶（见 chat_modal.css 开头那段），
- * 底栏一下高出 ~235px，最后几条消息就被压在底栏后面了。
- * --exp-panel-h 由 setChatExpansionPanelOpen 量出面板实高后写在 #chat-room-screen 上
- * （高度随收纳开关浮动 —— 一页 8 个还是 1 行几个，算出来不一样，写死必然对不上）。
- * 多出来的这段 padding 同时也是 JS 把列表往下滚同样距离的前提：
- * 没有它，贴底的时候 scrollTop 已经到顶格，再加也滚不动。
- *
- * ⚠️ 两条都要写：单独那条和 .bar-collapse-toolbar 那条权重一样（1 id + 2 class），
- * 只靠排在后面取胜；两个 class 同时在身上时得靠三 class 那条（1 id + 3 class）兜住，
- * 否则收纳着工具栏开面板，底部会按 100px 那档多留 42px 空白。 */
-#chat-room-screen.exp-panel-open .message-area {
-    padding-bottom: calc(100px + var(--safe-bottom) + var(--exp-panel-h, 0px));
-}
-
-#chat-room-screen.exp-panel-open.bar-collapse-toolbar .message-area {
-    padding-bottom: calc(58px + var(--safe-bottom) + var(--exp-panel-h, 0px));
+/* 底栏矮了一截（少了工具栏那 ~42px）。改这**一个变量**就行：消息区的底部留白、
+   "正在输入"的落点都是引 --chat-foot-total 算出来的，会一起跟着收。
+   以前这里是直接改 .message-area 的 padding-bottom，于是「开着面板」那档又得另写两条
+   权重打平的规则来组合（100/58 × 面板高），靠源码顺序分胜负；而"正在输入"压根没人管它。 */
+#chat-room-screen.bar-collapse-toolbar {
+    --chat-foot-h: 58px;
 }
 
 /* ---- "+"面板里的收纳位 ---- */
