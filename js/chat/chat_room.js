@@ -405,6 +405,8 @@ function setupChatRoom() {
     //    ★ 有**两颗**加号：工具栏上那颗 #placeholder-plus-btn，和收纳工具栏后顶替它、
     //      住在输入框右边的 #inline-plus-btn。同一时刻只有一颗可见（CSS 决定），
     //      但行为必须一模一样，所以共用这个 handler 而不是各写一份。
+    //    开关面板本身的四件事（重排页 / 加号转 × / 消息区让位 / 跟着滚）都在
+    //    setChatExpansionPanelOpen 里，这里只管「开之前要先收拾什么」。
     const togglePlusPanel = () => {
         if (stickerModal.classList.contains('visible')) {
             stickerModal.classList.remove('visible');
@@ -413,14 +415,7 @@ function setupChatRoom() {
         // 面板是单例复用的，开之前必须按当前会话重新点灯
         syncChatExpansionActiveState();
 
-        const opening = !chatExpansionPanel.classList.contains('visible');
-        // ★ 分页必须在加 .visible **之前**：收纳开关是按预设存的、群聊还会压掉通话位，
-        //   所以「可见项有几个」每次开面板都可能不一样，页的边界得重算。
-        //   排在显示之前是为了不让用户看见「先排好 1 页、再跳成 2 页」那一帧。
-        if (opening) layoutChatExpansionPages();
-        chatExpansionPanel.classList.toggle('visible');
-        // 回到第一页要等面板真的显示出来 —— display:none 时 scrollLeft 写不进去
-        if (opening) resetChatExpansionPage();
+        setChatExpansionPanelOpen(!chatExpansionPanel.classList.contains('visible'));
     };
     placeholderPlusBtn.addEventListener('click', togglePlusPanel);
     document.getElementById('inline-plus-btn')?.addEventListener('click', togglePlusPanel);
@@ -879,6 +874,55 @@ function resetChatExpansionPage() {
 }
 
 /**
+ * 开 / 关 "+"面板。**所有**入口都必须走这里，别自己去 classList.toggle('visible') ——
+ * 开一次面板要连着做四件事，散在各处写必然漂（面板有 5 个关闭点：点加号、开表情面板、
+ * 点面板里的项、离开聊天室、重新生成前）：
+ *
+ *   ① 重排页 —— 收纳开关是按预设存的，换个聊天「可见项有几个」就变了，页边界得现算。
+ *   ② 两颗加号转成 ×（加 .plus-active）。漏一处的症状是「面板关了，加号还是个叉」。
+ *   ③ 量出面板实高写进 --exp-panel-h，让消息区让出同样一段（见 chat_room.css）。
+ *      必须现量不能写死：一页 8 个和末页 1 行，高度差着 ~90px。
+ *   ④ 把列表往下滚同样的距离 —— 面板现在是把底栏**顶上去**，不顶的话原来贴着输入栏的
+ *      那几条消息会被升高后的底栏盖住。③ 的 padding 是这一步的前提：贴底时 scrollTop
+ *      已经到顶格，没有多出来的 padding 根本滚不动。
+ */
+function setChatExpansionPanelOpen(open) {
+    const panel = document.getElementById('chat-expansion-panel');
+    if (!panel) return;
+    // 幂等：关着的时候再关一次，不能把消息列表又往回滚一截
+    if (panel.classList.contains('visible') === !!open) return;
+
+    const screen = document.getElementById('chat-room-screen');
+    const messageArea = document.getElementById('message-area');
+
+    if (open) {
+        // ★ 排版必须在加 .visible **之前**，否则用户会看见「先排好 1 页、再跳成 2 页」那一帧
+        layoutChatExpansionPages();
+        panel.classList.add('visible');
+        // 高度要等真的显示出来才量得到（display:none 时 offsetHeight 恒为 0）。
+        // slideUp 动画走的是 transform，不改布局，这里量到的就是最终高度。
+        const h = panel.offsetHeight;
+        screen?.style.setProperty('--exp-panel-h', `${h}px`);
+        screen?.classList.add('exp-panel-open');
+        // 回第一页同样要等显示 —— display:none 时 scrollLeft 写不进去
+        resetChatExpansionPage();
+        if (messageArea) messageArea.scrollTop += h;
+    } else {
+        // 关的时候面板还在，高度照样量得到，不用把 h 存下来
+        const h = panel.offsetHeight;
+        // ⚠️ 顺序：先退滚动，再收 padding。反过来的话浏览器会先把 scrollTop 按变短了的
+        //    内容夹一次，再减就多退了一截，看上去是「一关面板列表往回跳半屏」。
+        if (messageArea) messageArea.scrollTop -= h;
+        screen?.classList.remove('exp-panel-open');
+        screen?.style.removeProperty('--exp-panel-h');
+        panel.classList.remove('visible');
+    }
+
+    document.getElementById('placeholder-plus-btn')?.classList.toggle('plus-active', !!open);
+    document.getElementById('inline-plus-btn')?.classList.toggle('plus-active', !!open);
+}
+
+/**
  * 关闭聊天室里所有"浮在页面上"的临时 UI：底部 + 面板、表情面板、设置侧边栏、
  * 通话记录侧栏、通话记录折叠浮动按钮。离开聊天室时由 _screenLeaveHooks 自动调用。
  *
@@ -887,7 +931,7 @@ function resetChatExpansionPage() {
  */
 function closeChatRoomPanels() {
     // 这两个是裸 .visible 的普通 div，switchScreen 的遮罩清理覆盖不到，必须手动关
-    document.getElementById('chat-expansion-panel')?.classList.remove('visible');
+    setChatExpansionPanelOpen(false);
     document.getElementById('sticker-modal')?.classList.remove('visible');
     if (typeof exitStickerManageMode === 'function') exitStickerManageMode();
 
@@ -2166,8 +2210,8 @@ function formatSmartTime(timestamp) {
                     {
                         id: 'regenerate',
                         name: '重新生成',
-                        icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M17.65,6.35C16.2,4.9,14.21,4,12,4A8,8,0,0,0,4,12A8,8,0,0,0,12,20C15.73,20,18.84,17.45,19.73,14H17.65C16.83,16.33,14.61,18,12,18A6,6,0,0,1,6,12A6,6,0,0,1,12,6C13.66,6,15.14,6.69,16.22,7.78L13,11H20V4L17.65,6.35Z"/>
+                        icon: `<svg viewBox="0 0 24 24" class="ic-line" xmlns="http://www.w3.org/2000/svg">
+<path d="M21 3V8M21 8H16M21 8L18 5.29168C16.4077 3.86656 14.3051 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.2832 21 19.8675 18.008 20.777 14"/>
 </svg>`
                     },
                     {
@@ -2202,28 +2246,40 @@ function formatSmartTime(timestamp) {
                     // 和「消息时间三个槽位」同一个套路：全画出来，CSS 只放开该放的那个。
                     // 这 5 项自己不干活，点了就去 click 底栏上那颗真按钮（EXPANSION_RELAY_BTNS），
                     // 省得把弹窗/文件选择那套逻辑再抄一份。
+                    // ⚠️ 图标必须和底栏那颗**同一张**（见 index.html 的 #sticker-bar）：
+                    //    它们是同一个功能的两个入口，开着收纳开关时底栏那颗根本不露脸，
+                    //    一旦两边各画一张，用户拨一下开关就会觉得功能都换了。
+                    //    .ic-line 的含义同底栏：svg 里只留几何，颜色/线宽交给
+                    //    chat_modal.css 的 .expansion-item-icon svg.ic-line。
                     {
                         id: 'relay-sticker',
                         name: '发送表情',
                         stow: 'toolbar',
                         icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+<path d="M14.9348 13.1725C15.3654 13.3446 15.5817 13.8402 15.3237 14.2255C15.0294 14.665 14.6493 15.0442 14.2032 15.3386C13.522 15.7881 12.7196 16.0185 11.9037 15.9988C11.0878 15.9792 10.2975 15.7104 9.6387 15.2287C9.20726 14.9131 8.8458 14.5161 8.573 14.0629C8.33384 13.6656 8.57376 13.181 9.01216 13.0299C9.45056 12.8788 9.91919 13.1274 10.2157 13.4839C10.3367 13.6294 10.4756 13.7603 10.63 13.8732C11.0122 14.1527 11.4708 14.3087 11.9441 14.3201C12.4175 14.3315 12.883 14.1978 13.2782 13.937C13.4379 13.8316 13.583 13.7076 13.7108 13.5681C14.0241 13.2262 14.5042 13.0005 14.9348 13.1725Z"/>
+<path d="M10 9C10 8.44772 9.55228 8 9 8C8.44772 8 8 8.44772 8 9V10C8 10.5523 8.44772 11 9 11C9.55228 11 10 10.5523 10 10V9Z"/>
+<path d="M16 9C16 8.44772 15.5523 8 15 8C14.4477 8 14 8.44772 14 9V10C14 10.5523 14.4477 11 15 11C15.5523 11 16 10.5523 16 10V9Z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4Z"/>
 </svg>`
                     },
                     {
                         id: 'relay-wallet',
                         name: '发送转账',
                         stow: 'toolbar',
-                        icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M20,4H4C2.9,4,2,4.9,2,6v12c0,1.1,0.9,2,2,2h16c1.1,0,2-0.9,2-2V6C22,4.9,21.1,4,20,4z M20,8l-8,5L4,8V6l8,5l8-5V8z"/>
+                        icon: `<svg viewBox="0 0 24 24" class="ic-line" xmlns="http://www.w3.org/2000/svg">
+<path d="M13 9H7"/>
+<path d="M22 10.9699V13.03C22 13.58 21.56 14.0299 21 14.0499H19.0399C17.9599 14.0499 16.97 13.2599 16.88 12.1799C16.82 11.5499 17.0599 10.9599 17.4799 10.5499C17.8499 10.1699 18.36 9.94995 18.92 9.94995H21C21.56 9.96995 22 10.4199 22 10.9699Z"/>
+<path d="M17.48 10.55C17.06 10.96 16.82 11.55 16.88 12.18C16.97 13.26 17.96 14.05 19.04 14.05H21V15.5C21 18.5 19 20.5 16 20.5H7C4 20.5 2 18.5 2 15.5V8.5C2 5.78 3.64 3.88 6.19 3.56C6.45 3.52 6.72 3.5 7 3.5H16C16.26 3.5 16.51 3.50999 16.75 3.54999C19.33 3.84999 21 5.76 21 8.5V9.95001H18.92C18.36 9.95001 17.85 10.17 17.48 10.55Z"/>
 </svg>`
                     },
                     {
                         id: 'relay-voice',
                         name: '发送语音',
                         stow: 'toolbar',
-                        icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                        icon: `<svg viewBox="0 0 24 24" class="ic-line" xmlns="http://www.w3.org/2000/svg">
+<rect x="8" y="2" width="8" height="13" rx="4"/>
+<path d="M20,10v1a8,8,0,0,1-8,8h0a8,8,0,0,1-8-8V10"/>
+<line x1="12" y1="19" x2="12" y2="22"/>
 </svg>`
                     },
                     {
@@ -2232,7 +2288,8 @@ function formatSmartTime(timestamp) {
                         name: '发送图片',
                         stow: 'toolbar',
                         icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M20,4H4C2.9,4,2,4.9,2,6v12c0,1.1,0.9,2,2,2h16c1.1,0,2-0.9,2-2V6C22,4.9,21.1,4,20,4z M20,18H4v-4.57l5.36-4.91l4.06,3.72l3.43-3.09L20,12.27V18z"/>
+<path d="M8.5 10C9.32843 10 10 9.32843 10 8.5C10 7.67157 9.32843 7 8.5 7C7.67157 7 7 7.67157 7 8.5C7 9.32843 7.67157 10 8.5 10Z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M11.0055 2H12.9945C14.3805 1.99999 15.4828 1.99999 16.3716 2.0738C17.2819 2.14939 18.0575 2.30755 18.7658 2.67552C19.8617 3.24477 20.7552 4.1383 21.3245 5.23415C21.6925 5.94253 21.8506 6.71811 21.9262 7.62839C22 8.5172 22 9.61946 22 11.0054V12.9945C22 13.6854 22 14.306 21.9909 14.8646C22.0049 14.9677 22.0028 15.0726 21.9846 15.175C21.9741 15.6124 21.9563 16.0097 21.9262 16.3716C21.8506 17.2819 21.6925 18.0575 21.3245 18.7658C20.7552 19.8617 19.8617 20.7552 18.7658 21.3245C18.0575 21.6925 17.2819 21.8506 16.3716 21.9262C15.4828 22 14.3805 22 12.9946 22H11.0055C9.61955 22 8.5172 22 7.62839 21.9262C6.71811 21.8506 5.94253 21.6925 5.23415 21.3245C4.43876 20.9113 3.74996 20.3273 3.21437 19.6191C3.20423 19.6062 3.19444 19.5932 3.185 19.5799C2.99455 19.3238 2.82401 19.0517 2.67552 18.7658C2.30755 18.0575 2.14939 17.2819 2.0738 16.3716C1.99999 15.4828 1.99999 14.3805 2 12.9945V11.0055C1.99999 9.61949 1.99999 8.51721 2.0738 7.62839C2.14939 6.71811 2.30755 5.94253 2.67552 5.23415C3.24477 4.1383 4.1383 3.24477 5.23415 2.67552C5.94253 2.30755 6.71811 2.14939 7.62839 2.0738C8.51721 1.99999 9.61949 1.99999 11.0055 2ZM20 11.05V12.5118L18.613 11.065C17.8228 10.2407 16.504 10.2442 15.7182 11.0727L11.0512 15.9929L9.51537 14.1359C8.69326 13.1419 7.15907 13.1746 6.38008 14.2028L4.19042 17.0928C4.13682 16.8463 4.09606 16.5568 4.06694 16.2061C4.0008 15.4097 4 14.3905 4 12.95V11.05C4 9.60949 4.0008 8.59025 4.06694 7.79391C4.13208 7.00955 4.25538 6.53142 4.45035 6.1561C4.82985 5.42553 5.42553 4.82985 6.1561 4.45035C6.53142 4.25538 7.00955 4.13208 7.79391 4.06694C8.59025 4.0008 9.60949 4 11.05 4H12.95C14.3905 4 15.4097 4.0008 16.2061 4.06694C16.9905 4.13208 17.4686 4.25538 17.8439 4.45035C18.5745 4.82985 19.1702 5.42553 19.5497 6.1561C19.7446 6.53142 19.8679 7.00955 19.9331 7.79391C19.9992 8.59025 20 9.60949 20 11.05ZM6.1561 19.5497C5.84198 19.3865 5.55279 19.1833 5.295 18.9467L7.97419 15.4106L9.51005 17.2676C10.2749 18.1924 11.6764 18.24 12.5023 17.3693L17.1693 12.449L19.9782 15.3792C19.9683 15.6812 19.9539 15.9547 19.9331 16.2061C19.8679 16.9905 19.7446 17.4686 19.5497 17.8439C19.1702 18.5745 18.5745 19.1702 17.8439 19.5497C17.4686 19.7446 16.9905 19.8679 16.2061 19.9331C15.4097 19.9992 14.3905 20 12.95 20H11.05C9.60949 20 8.59025 19.9992 7.79391 19.9331C7.00955 19.8679 6.53142 19.7446 6.1561 19.5497Z"/>
 </svg>`
                     },
                     {
@@ -2241,7 +2298,7 @@ function formatSmartTime(timestamp) {
                         name: '文字图片',
                         stow: 'toolbar',
                         icon: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M6.39252 3.83025C7.04361 2.75654 8.20958 2 9.54508 2H14.4549C15.7904 2 16.9564 2.75654 17.6075 3.83025C17.8059 4.15753 18.0281 4.50118 18.257 4.81533C18.3665 4.96564 18.5804 5.08571 18.8771 5.08571H18.9998C21.209 5.08571 23 6.87668 23 9.08571V17C23 19.2091 21.2091 21 19 21H5C2.79086 21 1 19.2091 1 17V9.08572C1 6.87668 2.79052 5.08571 4.99976 5.08571H5.12238C5.41912 5.08571 5.63348 4.96564 5.74301 4.81533C5.97193 4.50118 6.19407 4.15753 6.39252 3.83025ZM9.54508 4C8.98673 4 8.43356 4.32159 8.10267 4.86727C7.88516 5.22596 7.63139 5.61989 7.35939 5.99317C6.81056 6.74635 5.94404 7.08571 5.12286 7.08571H5.00024C3.89578 7.08571 3 7.98104 3 9.08572V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9.08571C21 7.98104 20.1047 7.08571 19.0002 7.08571H18.8776C18.0564 7.08571 17.1894 6.74635 16.6406 5.99317C16.3686 5.61989 16.1148 5.22596 15.8973 4.86727C15.5664 4.32159 15.0133 4 14.4549 4H9.54508ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9ZM7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12Z"/>
 </svg>`
                     },
                     {
@@ -2376,14 +2433,14 @@ function formatSmartTime(timestamp) {
                     // .click() 不会有任何反应，得先把"为什么没反应"说出来。
                     if (EXPANSION_RELAY_BTNS[action]) {
                         document.getElementById(EXPANSION_RELAY_BTNS[action])?.click();
-                        document.getElementById('chat-expansion-panel').classList.remove('visible');
+                        setChatExpansionPanelOpen(false);
                         return;
                     }
 
 switch (action) {
     case 'regenerate':
         // 面板关在前面：handleRegenerate 会弹二次确认，面板盖在弹窗上面很难看
-        document.getElementById('chat-expansion-panel').classList.remove('visible');
+        setChatExpansionPanelOpen(false);
         if (typeof handleRegenerate === 'function') handleRegenerate();
         return;
     case 'memory-journal':
@@ -2464,6 +2521,6 @@ switch (action) {
                             
                     }
                     // Hide panel after action
-                    document.getElementById('chat-expansion-panel').classList.remove('visible');
+                    setChatExpansionPanelOpen(false);
                 });
             }
