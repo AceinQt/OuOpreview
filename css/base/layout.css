@@ -107,9 +107,11 @@
     padding-bottom: calc(100px + var(--safe-bottom)) ;
 }
 
-/* 聊天室内的底部弹出面板 (表情包面板、扩展面板等) */
-#sticker-modal,
-#chat-expansion-panel {
+/* 聊天室内的底部弹出面板 (表情包面板)
+   ⚠️ #chat-expansion-panel 不在这里：它已经不是浮层，而是 .chat-input-wrapper 的
+   最后一个子节点（见 chat_modal.css 开头那段），安全区由上面那条 wrapper 的 padding
+   统一让出；再写一份就是双份留白，面板底下会凭空多出 ~34px。 */
+#sticker-modal {
     padding-bottom: var(--safe-bottom);
 }
 

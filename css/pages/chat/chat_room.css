@@ -2,6 +2,17 @@
     background-color: #EEEDF2;
     background-size: cover;
     background-position: center;
+
+    /* ===== 底栏图标的两个旋钮（想调外观改这里，别去动 index.html 里的 svg）=====
+     * --bar-icon-color  : 工具栏 6 颗按钮 + 输入栏那颗 "+" 的颜色（面型靠 fill、线型靠 stroke）
+     * --bar-icon-stroke : **只对线型图标有效**的线宽，单位是 viewBox 单位（24 格）。
+     *                     素材里面型图标那圈"环"宽度统一是 2/24，所以这里也定 2 ——
+     *                     两种图标摆一排，粗细对上了才像同一套。想整体更细改 1.5、更粗改 2.5。
+     *                     面型图标（表情/图片/相机/加号）的粗细是画死在路径里的，调不了，
+     *                     真要变只能换素材。
+     */
+    --bar-icon-color: #888;
+    --bar-icon-stroke: 2;
 }
 
 /* 1. 只有当屏幕被激活时(.active)，才强制设为 block 并开启相对定位 */
@@ -1498,10 +1509,39 @@
     cursor: pointer;
 }
 
-.sticker-bar-btn svg {
+/* 底栏图标分两族，共用 --bar-icon-color（声明在本文件开头的 #chat-room-screen 上）：
+ * · 面型（.ic-line 以外的）：粗细画死在路径里，这里只上色；
+ * · 线型（.ic-line）：svg 里只留几何，颜色 + 线宽全由 CSS 给，所以一个变量就能整体调粗细。
+ * 两颗加号（工具栏的 #placeholder-plus-btn 和输入栏的 #inline-plus-btn）长相必须一致，
+ * 所以 #inline-plus-btn 的选择器一路跟着写，别只改一边。 */
+.sticker-bar-btn svg,
+#inline-plus-btn svg {
     width: 27px;
     height: 27px;
-    fill: #888;
+    fill: var(--bar-icon-color);
+}
+
+.sticker-bar-btn svg.ic-line,
+#inline-plus-btn svg.ic-line {
+    fill: none;
+    stroke: var(--bar-icon-color);
+    stroke-width: var(--bar-icon-stroke);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* "+"面板开着的时候两颗加号转成 "×"。
+   素材是「圆圈 + 十字」，转 45° 正好变成「圆圈 + 叉」，不用备第二张图。
+   class 由 setChatExpansionPanelOpen 统一挂 —— 面板有 5 个开关入口，
+   谁漏一处就会出现「面板关了，加号还是个叉」。 */
+#placeholder-plus-btn svg,
+#inline-plus-btn svg {
+    transition: transform 0.25s ease;
+}
+
+#placeholder-plus-btn.plus-active svg,
+#inline-plus-btn.plus-active svg {
+    transform: rotate(45deg);
 }
 
 /* --- 3. 按钮禁用状态样式 --- */
@@ -1530,8 +1570,6 @@
     background-color: rgba(243, 242, 247, 0.85);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border-bottom-left-radius: var(--phone-corner-radius);
-    border-bottom-right-radius: var(--phone-corner-radius);
 
     /* 稍微加一点顶部边框线，增加质感（可选） */
     border-top: 1px solid rgba(255, 255, 255, 0.3);
@@ -1654,16 +1692,31 @@
     display: flex;
 }
 
-#inline-plus-btn svg {
-    width: 27px;
-    height: 27px;
-    fill: #888;
-}
+/* 图标尺寸/配色/转 × 都和工具栏那颗共用一套规则，见上面 .sticker-bar-btn svg 那几条 */
 
 /* 底栏矮了一截（少了工具栏那 ~42px），消息区给底栏留的位置要跟着收，
    否则最后一条消息下面会多出一块空白。100px 那个数见 layout.css。 */
 #chat-room-screen.bar-collapse-toolbar .message-area {
     padding-bottom: calc(58px + var(--safe-bottom));
+}
+
+/* ---- "+"面板顶起底栏时，消息区要多让出面板那一截 ----
+ * 面板现在是在文档流里把「输入栏 + 工具栏」整条往上顶（见 chat_modal.css 开头那段），
+ * 底栏一下高出 ~235px，最后几条消息就被压在底栏后面了。
+ * --exp-panel-h 由 setChatExpansionPanelOpen 量出面板实高后写在 #chat-room-screen 上
+ * （高度随收纳开关浮动 —— 一页 8 个还是 1 行几个，算出来不一样，写死必然对不上）。
+ * 多出来的这段 padding 同时也是 JS 把列表往下滚同样距离的前提：
+ * 没有它，贴底的时候 scrollTop 已经到顶格，再加也滚不动。
+ *
+ * ⚠️ 两条都要写：单独那条和 .bar-collapse-toolbar 那条权重一样（1 id + 2 class），
+ * 只靠排在后面取胜；两个 class 同时在身上时得靠三 class 那条（1 id + 3 class）兜住，
+ * 否则收纳着工具栏开面板，底部会按 100px 那档多留 42px 空白。 */
+#chat-room-screen.exp-panel-open .message-area {
+    padding-bottom: calc(100px + var(--safe-bottom) + var(--exp-panel-h, 0px));
+}
+
+#chat-room-screen.exp-panel-open.bar-collapse-toolbar .message-area {
+    padding-bottom: calc(58px + var(--safe-bottom) + var(--exp-panel-h, 0px));
 }
 
 /* ---- "+"面板里的收纳位 ---- */
