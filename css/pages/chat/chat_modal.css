@@ -80,7 +80,6 @@
        50dvh 对齐 .phone-screen 的 max-height:100dvh；真被夹到了就纵向滚，不切行。 */
     height: auto;
     max-height: 50dvh;
-    padding: 0 10px;
     overflow-y: auto;
     background: rgba(243, 242, 247, 0.85);
     backdrop-filter: blur(8px);
@@ -501,7 +500,7 @@
     align-content: start;
     /* 这里的 column-gap 只是「挤到极限时的最小间距」—— space-between 分得出空间时用它的 */
     gap: 14px 4px;
-    padding: 18px 15px 12px;
+    padding: 18px 25px 12px;
 }
 
 .expansion-dots {
