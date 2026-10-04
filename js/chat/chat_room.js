@@ -419,6 +419,14 @@ function setupChatRoom() {
     };
     placeholderPlusBtn.addEventListener('click', togglePlusPanel);
     document.getElementById('inline-plus-btn')?.addEventListener('click', togglePlusPanel);
+
+    // 点输入框 = 要打字，面板得让位给输入法（QQ/微信都是这个行为）。
+    // 面板高度(~235px)和安卓输入法高度差不多纯属巧合 —— 它是内容撑出来的（两行图标 + 圆点），
+    // 不是照着键盘量的，所以别想着「让面板原地变成键盘」把底栏钉住：那得盯
+    // visualViewport 的 resize 自己算键盘高度，是另一摊事。现在就是单纯收起来。
+    // 用 focus 而不是 click：移动端点输入框先 focus 再 click，而且别处 .focus() 唤起键盘的
+    // 路径（chat_actions.js 点「回复」那下）同样该收面板。
+    messageInput.addEventListener('focus', () => setChatExpansionPanelOpen(false));
     
     // ★ sendMessage 是 fire-and-forget（三处调用点都不 await），异常默认只会变成
     //   静默的 unhandled rejection —— 曾经因此让"消息没落库"的 ReferenceError 毫无征兆。
@@ -572,8 +580,11 @@ function setupChatRoom() {
             stickerModal.classList.remove('visible');
             return;
         }
+        // ⚠️ 必须走 setChatExpansionPanelOpen：这里曾经是裸 classList.remove('visible')，
+        //    症状是「点空白关掉面板后，加号还卡在 ×、消息区还按面板在的尺寸留白」——
+        //    面板自己是消失了，另外三件事（加号转回 +、收回 --exp-panel-h、退滚动）全没做。
         if (chatExpansionPanel.classList.contains('visible')) {
-            chatExpansionPanel.classList.remove('visible');
+            setChatExpansionPanelOpen(false);
             return;
         }
 
@@ -875,13 +886,17 @@ function resetChatExpansionPage() {
 
 /**
  * 开 / 关 "+"面板。**所有**入口都必须走这里，别自己去 classList.toggle('visible') ——
- * 开一次面板要连着做四件事，散在各处写必然漂（面板有 5 个关闭点：点加号、开表情面板、
- * 点面板里的项、离开聊天室、重新生成前）：
+ * 开一次面板要连着做四件事，散在各处写必然漂（面板有 6 个关闭点：点加号、点消息区空白、
+ * 点输入框、开表情面板、点面板里的项、离开聊天室/进多选）：
  *
  *   ① 重排页 —— 收纳开关是按预设存的，换个聊天「可见项有几个」就变了，页边界得现算。
  *   ② 两颗加号转成 ×（加 .plus-active）。漏一处的症状是「面板关了，加号还是个叉」。
- *   ③ 量出面板实高写进 --exp-panel-h，让消息区让出同样一段（见 chat_room.css）。
+ *   ③ 量出面板实高写进 --exp-panel-h —— 消息区的底部留白和"正在输入"的落点都是按
+ *      --chat-foot-total 算的，它把这个值叠进去（见 chat_room.css 开头那段）。
  *      必须现量不能写死：一页 8 个和末页 1 行，高度差着 ~90px。
+ *      ⚠️ 这条 custom property 就是「面板开着」的**唯一**状态载体，不要再另挂一个
+ *      表示同一件事的 class：两份状态就有对不上的那天，而 CSS 这边
+ *      var(--exp-panel-h, 0px) 的兜底已经等价于「没开」。
  *   ④ 把列表往下滚同样的距离 —— 面板现在是把底栏**顶上去**，不顶的话原来贴着输入栏的
  *      那几条消息会被升高后的底栏盖住。③ 的 padding 是这一步的前提：贴底时 scrollTop
  *      已经到顶格，没有多出来的 padding 根本滚不动。
@@ -903,7 +918,6 @@ function setChatExpansionPanelOpen(open) {
         // slideUp 动画走的是 transform，不改布局，这里量到的就是最终高度。
         const h = panel.offsetHeight;
         screen?.style.setProperty('--exp-panel-h', `${h}px`);
-        screen?.classList.add('exp-panel-open');
         // 回第一页同样要等显示 —— display:none 时 scrollLeft 写不进去
         resetChatExpansionPage();
         if (messageArea) messageArea.scrollTop += h;
@@ -913,7 +927,6 @@ function setChatExpansionPanelOpen(open) {
         // ⚠️ 顺序：先退滚动，再收 padding。反过来的话浏览器会先把 scrollTop 按变短了的
         //    内容夹一次，再减就多退了一截，看上去是「一关面板列表往回跳半屏」。
         if (messageArea) messageArea.scrollTop -= h;
-        screen?.classList.remove('exp-panel-open');
         screen?.style.removeProperty('--exp-panel-h');
         panel.classList.remove('visible');
     }
