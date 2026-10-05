@@ -157,6 +157,26 @@
     background: rgba(0, 153, 255, 0.05);
 }
 
+/* ⚠️ 这页所有 .icon-btn 里的 svg 都必须显式写宽高（"+"、保存、导出、导入、管理）。
+   它们在 html 里只带 viewBox，不写 width/height —— 按规范宽高就是隐含的 100%，
+   而 .icon-btn 是 flex 容器、主轴尺寸对 svg 来说是不定的：iOS 的 WebKit 这时算出 0×0，
+   整排图标在 iPhone 上凭空消失；Chrome 会拿容器实际尺寸去解析那个 100%，所以安卓和
+   桌面完全看不出问题（这事就是这么被漏过去的，报上来时只有某台 iOS 复现）。
+   尺寸照抄 api.css 的 .api-icon-btn svg（18px）—— 那 5 颗同族图标一直没坏就因为写了。
+   flex-shrink 一起锁上，免得挤在一行时被压扁。 */
+#tab-view-bubbles .appearance-tab-active .add-btn svg,
+#tab-view-bubbles .appearance-actions .icon-btn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* "+" 那颗的壳只有 24px（工具组那 4 颗是 32px），18 塞进去几乎顶边，单独收小一号 */
+#tab-view-bubbles .appearance-tab-active .add-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
 /* 未选中的那半边（工具按钮组），和灰底融合 */
 #tab-view-bubbles .appearance-tab-inactive {
     flex-grow: 1;
