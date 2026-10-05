@@ -507,7 +507,7 @@
     align-content: start;
     /* 这里的 column-gap 只是「挤到极限时的最小间距」—— space-between 分得出空间时用它的 */
     gap: 14px 4px;
-    padding: 18px 25px 12px;
+    padding: 12px 25px 18px;
 }
 
 .expansion-dots {

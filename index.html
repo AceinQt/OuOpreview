@@ -370,6 +370,14 @@
                     </button>
                 </div>
                 <div id="pane-basic" class="content-pane active">
+                    <div class="settings-group-title">
+                        <span>• 头像与时间</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'bubbleAvatarTime')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>隐藏头像</label>
                         <label class="switch"><input type="checkbox" id="setting-hide-avatar"><span class="slider round"></span></label>
@@ -388,7 +396,9 @@
                             <option value="tail">气泡后</option>
                         </select>
                     </div>
-                    <!-- 时间格式：选了「不显示」以外的位置才出现，由 JS 整行收放 -->
+                    <!-- 时间格式：选了「不显示」以外的位置才出现，由 JS 整行收放。
+                         说明挂在这一行自己的问号上（内容是一张格式字母表，只跟这个输入框
+                         有关），不往上面的小标题里并。 -->
                     <div class="bubble-settings-item row" id="time-format-row">
                         <label>时间格式
                             <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'timeFormat')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -399,9 +409,25 @@
                         </label>
                         <input type="text" id="setting-time-format" placeholder="例如: HH:mm">
                     </div>
+                    <div class="settings-group-title">
+                        <span>• 文字</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'bubbleFont')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>字体：</label>
                         <input type="text" id="setting-custom-font" placeholder="例如: https://.../font.ttf">
+                    </div>
+                    <div class="settings-group-title">
+                        <span>• 气泡</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'bubbleTypes')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
                     </div>
                     <div class="bubble-settings-item row">
                         <label>气泡类型：</label>
@@ -480,8 +506,20 @@
                     </div>
                 </div>
 
-                <!-- 「基础」的第二块：顶栏。预览翻到「顶部栏」视图时顶替上面那块。 -->
+                <!-- 「基础」的第二块：顶栏。预览翻到「顶部栏」视图时顶替上面那块。
+                     ★ 说明一律不铺在页面上，收进小标题右边的问号 —— 文案注册在
+                     bubble_css_preset.js 的 AppHelp.register('bubble', …)，弹窗机制在
+                     js/core/utils.js 的 AppHelp。以前这里是 5 条摊开的 .setting-hint，
+                     加起来比设置项本身还高，一屏装不下两个开关。 -->
                 <div id="pane-basic-header" class="content-pane">
+                    <div class="settings-group-title">
+                        <span>• 布局</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'headerLayout')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>昵称位置：</label>
                         <select id="setting-header-name-pos">
@@ -494,13 +532,18 @@
                         <label>隐藏状态</label>
                         <label class="switch"><input type="checkbox" id="setting-header-hide-status"><span class="slider round"></span></label>
                     </div>
-                    <div class="setting-hint">「状态」是昵称下面那行小字（绿点 + 在线/自定义状态）。群聊本来就不显示，这个开关只对私聊有效。</div>
                     <div class="bubble-settings-item row">
                         <label>收纳通话</label>
                         <label class="switch"><input type="checkbox" id="setting-header-collapse-call"><span class="slider round"></span></label>
                     </div>
-                    <div class="setting-hint">收起来之后，通话按钮从顶栏挪进"+"面板，排在「批量删除」前面那一格。群聊本来就没有通话，这个开关对群聊无效。</div>
-                    <hr>
+                    <div class="settings-group-title">
+                        <span>• 背景与分割线</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'headerBg')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>背景颜色：</label>
                         <input type="color" id="setting-header-bg">
@@ -523,15 +566,19 @@
                         <input type="color" id="setting-header-div-c">
                         <input type="text" id="setting-header-div-c-text" placeholder="#HEX">
                     </div>
-                    <div class="setting-hint">顶栏下沿那条横线。出厂是没有的（粗细 0），拉起来才画。</div>
-                    <hr>
+                    <div class="settings-group-title">
+                        <span>• 图标与部件</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'headerBlocks')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>图标颜色：</label>
                         <input type="color" id="setting-header-btn-c">
                         <input type="text" id="setting-header-btn-c-text" placeholder="#HEX">
                     </div>
-                    <div class="setting-hint">返回、通话、菜单这三个图标本身的颜色。下面的「底色」改的是托着图标的那块方块。</div>
-                    <hr>
                     <div class="bubble-settings-item row">
                         <label>修改对象：</label>
                         <select id="setting-header-target">
@@ -543,7 +590,6 @@
 
                     <div id="header-target-settings-box">
                         <div class="bubble-settings-item"><label>当前正在修改：<span style="color:var(--primary-color);" id="current-header-label">返回键</span></label></div>
-                        <div class="setting-hint">三块出厂都是全透明的，所以「不透明度」就是色块的总开关 —— 停在 0 等于维持现状，拉起来才会出现块。底色、描边、内边距只要有一项不为零，这一块就会从「贴边的裸图标」规整成一个块（固定宽高和负外边距一起归零）。</div>
                         <hr>
                         <div class="bubble-settings-item row">
                             <label>底色：</label>
@@ -572,28 +618,51 @@
                             <label>描边宽度：<span class="val-display" id="val-hdrblk-stroke-w">0</span>px</label>
                             <input type="range" class="bubble-slider" id="setting-hdrblk-stroke-w" min="0" max="5" step="1">
                         </div>
+                        <!-- 「宽度占比」只对昵称栏有意义，整行由 syncConditionalRows 收放。
+                             它的说明挂在这一行自己的问号上、不挂到小标题 —— 行收起来时
+                             说明跟着一起走，不用再单独管一个 hint 元素的显隐
+                             （同「时间格式」那行的套路）。 -->
                         <div class="bubble-settings-item col" id="hdrblk-width-row">
-                            <label>宽度占比：<span class="val-display" id="val-hdrblk-width">100</span>%</label>
+                            <label>宽度占比：<span class="val-display" id="val-hdrblk-width">100</span>%
+                                <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'headerWidth')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                </svg>
+                            </label>
                             <input type="range" class="bubble-slider" id="setting-hdrblk-width" min="20" max="100" step="5">
                         </div>
-                        <div class="setting-hint" id="hdrblk-width-hint">昵称栏默认把返回键和按钮组之间的空档全占了（100%），给它上底色就是长长一条。调到 80% 就只占其中八成，左右各留一道空隙。注意这跟上面的「昵称位置」是两件事：那个管文字在块里靠哪边，这个管块本身多宽。</div>
                     </div>
                 </div>
 
                 <!-- 「基础」的第三块：底栏。三个对象（发送键 / AI 回复键 / 输入栏）
-                     共用下面同一组控件，靠「修改对象」下拉切换，和气泡那块一个套路。 -->
+                     共用下面同一组控件，靠「修改对象」下拉切换，和气泡那块一个套路。
+                     说明同样收进小标题右边的问号（见上面那块的注释）。 -->
                 <div id="pane-basic-footer" class="content-pane">
+                    <div class="settings-group-title">
+                        <span>• 布局</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerLayout')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>隐藏发送按钮</label>
                         <label class="switch"><input type="checkbox" id="setting-footer-hide-send"><span class="slider round"></span></label>
                     </div>
-                    <div class="setting-hint">藏起来之后用键盘自带的发送键（回车）照样能发出去。</div>
                     <div class="bubble-settings-item row">
                         <label>收纳工具栏</label>
                         <label class="switch"><input type="checkbox" id="setting-footer-collapse-toolbar"><span class="slider round"></span></label>
                     </div>
-                    <div class="setting-hint">收起来之后，输入框上面那排按钮整条收进"+"面板，"+"本身挪到输入框右边、发送键左边。</div>
-                    <hr>
+                    <div class="settings-group-title">
+                        <span>• 背景与分割线</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerBg')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>背景颜色：</label>
                         <input type="color" id="setting-footer-bar-bg">
@@ -616,8 +685,14 @@
                         <input type="color" id="setting-footer-div-c">
                         <input type="text" id="setting-footer-div-c-text" placeholder="#HEX">
                     </div>
-                    <div class="setting-hint">底栏上沿那条横线。出厂是 1px 的淡白线（三成不透明度，几乎看不见）—— 这两个旋钮一旦动过，它就变成所选颜色的实线；想彻底去掉把粗细拉到 0。</div>
-                    <hr>
+                    <div class="settings-group-title">
+                        <span>• 部件</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerBlocks')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <div class="bubble-settings-item row">
                         <label>修改对象：</label>
                         <select id="setting-footer-target">
