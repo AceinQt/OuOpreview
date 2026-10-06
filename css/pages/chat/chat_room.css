@@ -1610,11 +1610,25 @@
 .message-input-area {
     display: flex;
     align-items: center;
-    padding: 6px 10px;    
+    padding: 6px 10px;
     background: transparent;
     flex-shrink: 0;
     gap: 10px;
     overflow: hidden;
+}
+
+/* 输入框 + 「AI 回复」键的包装层。`display: contents` 不生成盒子 —— 里面那两个元素
+   照旧是 .message-input-area 的直接 flex 项（宽度/间距/对齐全和没这层时一样）。
+   它存在的唯一理由是「收纳 AI 回复」那一档要把按钮 absolute 到输入框**内部**，
+   那时候它才翻成真实的 position:relative 盒子（见本文件下方「收纳态」那段）。 */
+.message-input-box {
+    display: contents;
+}
+
+/* 上面那层让 DOM 顺序变成「输入框 → AI 回复 → + → 发送」，这条把 AI 回复搬回最右边。
+   ⚠️ 别删：删了它平时就排在输入框右边、发送键**左边**了。 */
+.message-input-area #get-reply-btn {
+    order: 1;
 }
 
 .message-input-area input {
@@ -1675,9 +1689,9 @@
 
 /* ======================= 顶栏/底栏的「收纳」态 =======================
  *
- * 两个开关（外观→顶栏→收纳通话 / 外观→底栏→收纳工具栏）**不生成 CSS**，
+ * 三个开关（外观→顶栏→收纳通话 / 外观→底栏→收纳工具栏 / 收纳 AI 回复）**不生成 CSS**，
  * 而是和 timeFormat 一样存在预设的 META 注释里，由 chat_settings.js 的
- * updateCustomBubbleStyle 读出来，在 #chat-room-screen 上挂下面这两个 class。
+ * updateCustomBubbleStyle 读出来，在 #chat-room-screen 上挂下面这几个 class。
  *
  * 为什么不像顶栏底栏的别的设置那样直接生成 scoped CSS：
  * 收纳要动的是「通话按钮在不在顶栏」「工具栏整条在不在」这类**结构**，
@@ -1731,6 +1745,63 @@
    权重打平的规则来组合（100/58 × 面板高），靠源码顺序分胜负；而"正在输入"压根没人管它。 */
 #chat-room-screen.bar-collapse-toolbar {
     --chat-foot-h: 58px;
+}
+
+/* ---- 底栏：收纳 AI 回复 ---- */
+/* 这一档和上面两个「收纳」不一样：按钮**不是收进"+"面板**，而是从输入框外面搬到
+   输入框**内部**右侧，并且只在输入框有焦点时才露出来（用户原话：这个按钮肯定要有）。
+   搬动靠 .message-input-box 从 display:contents 翻成一个真实的定位祖先 ——
+   节点始终是同一颗 #get-reply-btn（它有 disabled 态、又进了外观页「修改对象」下拉，
+   所以不能像 #inline-plus-btn 那样另画一颗，理由见 index.html 那段注释）。 */
+#chat-room-screen.bar-collapse-reply .message-input-box {
+    display: flex;
+    align-items: center;
+    position: relative;
+    /* 原先是输入框自己当 .message-input-area 的 flex 项（flex-grow:1），
+       现在换成这层去占那份宽度，里面的输入框再把它撑满。
+       min-width:0 照抄输入框那条：不写的话长文本会把这层顶宽、挤走发送键。 */
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* 给按钮腾出位置。★ 常态就留着，不是「按钮露出来时才留」——
+   跟着焦点改 padding 会让已经打好的字横着跳一下。 */
+#chat-room-screen.bar-collapse-reply #message-input {
+    padding-right: 40px;
+}
+
+#chat-room-screen.bar-collapse-reply #get-reply-btn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    /* 比在外面时（40×40）小一圈：输入框连 padding 共约 39px 高，30 正好上下各留 4px */
+    width: 30px;
+    height: 30px;
+    opacity: 0;
+    /* ★ 藏起来时必须连点击一起关掉：留着的话输入框右端被一颗看不见的按钮盖住，
+       用户想点进输入框打字，点到的是「AI 回复」—— 当场白花一次 API。
+       关掉之后那一下会穿透到输入框上（聚焦 → 按钮跟着浮出来，正好落在手指底下）。 */
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+#chat-room-screen.bar-collapse-reply #get-reply-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* 露出来的两种情形：
+     · 输入框有焦点 —— 用户要的就是这个
+     · 正在生成 —— disabled 变灰是唯一的进度反馈，这会儿躲起来就等于没有反馈
+   ★ :focus-within 挂在**包装层**上而不是输入框自己身上：焦点万一真落到按钮上
+     （桌面端点击就会），挂输入框的写法会在 mousedown 那一刻把按钮藏掉、click 打空。
+     另一道保险在 chat_room.js —— 那边 mousedown 直接 preventDefault，
+     焦点压根不离开输入框（iOS 上顺带保住键盘不收）。 */
+#chat-room-screen.bar-collapse-reply .message-input-box:focus-within #get-reply-btn,
+#chat-room-screen.bar-collapse-reply #get-reply-btn:disabled {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* ---- "+"面板里的收纳位 ---- */

@@ -655,6 +655,10 @@
                         <label>收纳工具栏</label>
                         <label class="switch"><input type="checkbox" id="setting-footer-collapse-toolbar"><span class="slider round"></span></label>
                     </div>
+                    <div class="bubble-settings-item row">
+                        <label>收纳 AI 回复</label>
+                        <label class="switch"><input type="checkbox" id="setting-footer-collapse-reply"><span class="slider round"></span></label>
+                    </div>
                     <div class="settings-group-title">
                         <span>• 背景与分割线</span>
                         <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerBg')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1085,7 +1089,27 @@
                     <button id="cancel-reply-btn">×</button>
                 </div>
                 <div class="message-input-area" id="message-input-default">
-                    <input type="text" id="message-input" placeholder="输入消息...">
+                    <!-- 输入框和「AI 回复」键包在同一层里，只为了「收纳 AI 回复」那一档：
+                         按钮要 absolute 到**输入框内部**右侧，而 absolute 得有个定位祖先，
+                         <input> 自己装不了子元素，所以得有这么一层。
+                         ⚠️ 平时这层是 `display: contents`（chat_room.css）—— 不生成盒子，
+                         里面两个元素照旧是 .message-input-area 的直接 flex 项，
+                         布局和没这层时一模一样。代价是 DOM 顺序变成
+                         「输入框 → AI 回复 → + → 发送」，所以 #get-reply-btn 带了一条
+                         `order: 1` 把自己放回最右边，删了它平时就跑到发送键左边去了。
+                         ⚠️ 为什么不像下面 #inline-plus-btn 那样另画一颗：这颗按钮**有状态**
+                         （等 AI 回话时 disabled 变灰，是唯一的进度反馈），还进了外观页底栏的
+                         「修改对象」下拉（用户能单独调它的色/弧度/描边）。画两颗就是两套 CSS
+                         加两处置灰，必漂；加号那颗能画两份是因为它没状态也不进那个下拉。 -->
+                    <div class="message-input-box">
+                        <input type="text" id="message-input" placeholder="输入消息...">
+                        <button id="get-reply-btn" class="icon-btn">
+                            <svg viewBox="0 0 24 24">
+                                <path
+                                    d="M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 1,1 20,12A8,8 0 0,1 12,20M16.24,7.76C15.07,6.58 13.53,6 12,6V12L7.76,16.24C10.1,18.58 13.9,18.58 16.24,16.24C18.58,13.9 18.58,10.1 16.24,7.76Z" />
+                            </svg>
+                        </button>
+                    </div>
                     <!-- 收纳工具栏时才出现的 "+"：外观→底栏→「收纳工具栏」打开后，#sticker-bar 整条收起来，
                          由它顶替原来那颗 #placeholder-plus-btn。两颗按钮各自绑定、行为一致，
                          不能只留一颗 —— CSS 搬不动跨容器的节点，而底栏布局是按预设存的、每个聊天可以不一样。
@@ -1103,12 +1127,6 @@
                         </svg>
                     </button>
                     <button id="send-message-btn" class="icon-btn send-btn">发送</button>
-                    <button id="get-reply-btn" class="icon-btn">
-                        <svg viewBox="0 0 24 24">
-                            <path
-                                d="M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 1,1 20,12A8,8 0 0,1 12,20M16.24,7.76C15.07,6.58 13.53,6 12,6V12L7.76,16.24C10.1,18.58 13.9,18.58 16.24,16.24C18.58,13.9 18.58,10.1 16.24,7.76Z" />
-                        </svg>
-                    </button>
                 </div>
                 <!-- 工具栏图标。两族共存，靠 .ic-line 区分，配色/线宽全在 chat_room.css
                      开头那两个变量上（--bar-icon-color / --bar-icon-stroke）：
