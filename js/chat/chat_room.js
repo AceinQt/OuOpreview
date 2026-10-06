@@ -464,6 +464,17 @@ function setupChatRoom() {
             _safeSendMessage();
         }
     });
+    // 「收纳 AI 回复」那一档（外观→底栏）：按钮住在输入框**内部**右侧，靠包装层的
+    // :focus-within 只在输入框有焦点时浮出来。于是点它的那一下有个陷阱 ——
+    // mousedown 的默认行为会把焦点从输入框挪走（iOS 上顺带收键盘），:focus-within
+    // 当场变假、按钮被 opacity:0 + pointer-events:none 藏掉，后面的 click 就打空了
+    // （症状是"点了没反应"，而且只在收纳态下复现）。preventDefault 让焦点压根不动。
+    // ★ 只在收纳态下拦：常态那颗在输入框外面，点它顺手收起键盘是原本的行为，别改。
+    getReplyBtn.addEventListener('mousedown', (e) => {
+        if (document.getElementById('chat-room-screen')?.classList.contains('bar-collapse-reply')) {
+            e.preventDefault();
+        }
+    });
     getReplyBtn.addEventListener('click', async () => {
         if (isGenerating) return;
 

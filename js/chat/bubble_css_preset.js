@@ -144,7 +144,7 @@ function getMessageTimeFormatFromCss(css) {
     }
 }
 
-// 从一段预设 CSS 的 META 注释里取出两个「收纳」开关。
+// 从一段预设 CSS 的 META 注释里取出三个「收纳」开关（第三个是「AI 回复键搬进输入框」）。
 // 和 timeFormat 同一个处境：它们生成不出 CSS —— 要动的是「通话按钮在不在顶栏」
 // 「工具栏整条在不在」这类结构，而结构上的例外（群聊没有通话）得由别的规则压回去，
 // 生成出来的 scoped 选择器是 `#chat-room-screen.chat-active-xx.chat-active-xx …`
@@ -156,7 +156,7 @@ function getMessageTimeFormatFromCss(css) {
 // 唯一汇合点），预览走 buildPreviewShellHtml，两边都调这一个函数 —— 和 timeFormat
 // 一样，免得"预览里收起来了、聊天室里没有"。
 function getBarCollapseFromCss(css) {
-    const off = { call: false, toolbar: false };
+    const off = { call: false, toolbar: false, reply: false };
     if (!css) return off;
     const m = String(css).match(/\/\* META:(.+?) \*\//);
     if (!m) return off;
@@ -164,7 +164,8 @@ function getBarCollapseFromCss(css) {
         const parsed = JSON.parse(m[1]);
         return {
             call: !!(parsed.header && parsed.header.collapseCall),
-            toolbar: !!(parsed.footer && parsed.footer.collapseToolbar)
+            toolbar: !!(parsed.footer && parsed.footer.collapseToolbar),
+            reply: !!(parsed.footer && parsed.footer.collapseReply)
         };
     } catch (e) {
         return off;
@@ -172,12 +173,13 @@ function getBarCollapseFromCss(css) {
 }
 
 // 把两个收纳 class 同步到一个元素上（真实的 #chat-room-screen，或预览里 clone 的那份）。
-// ★ 必须**两个都写**（该关的显式移除）：从"收纳"的预设切到"不收纳"的预设时，
+// ★ 必须**每个都写**（该关的显式移除）：从"收纳"的预设切到"不收纳"的预设时，
 //   只加不减会让上一个预设的 class 永远留在屏幕上。
 function applyBarCollapseClasses(el, flags) {
     if (!el) return;
     el.classList.toggle('bar-collapse-call', !!(flags && flags.call));
     el.classList.toggle('bar-collapse-toolbar', !!(flags && flags.toolbar));
+    el.classList.toggle('bar-collapse-reply', !!(flags && flags.reply));
 }
 
 // 全景气泡预览生成器：将所有的气泡都放在一个窗口里
@@ -398,6 +400,13 @@ const PREVIEW_FOCUS_CSS = {
         #chat-room-screen.preview-root .app-header { display: none !important; }
         #chat-room-screen.preview-root .message-area { opacity: 0.35; }
         #chat-room-screen.preview-root .chat-input-wrapper { z-index: 60; }
+        /* 「收纳 AI 回复」那一档：真机上那颗按钮只在输入框有焦点时才浮出来，
+           而预览是张静态图（iframe 里连 click 都被 preventDefault 吃掉了）——
+           不特殊照顾的话，用户一拨开关只看见按钮消失，看不见它搬去了哪。
+           取景框里一律按"已聚焦"画。 */
+        #chat-room-screen.preview-root.bar-collapse-reply #get-reply-btn {
+            opacity: 1 !important;
+        }
     `
 };
 
@@ -658,7 +667,7 @@ function setupBubblePresets() {
             group: { bg:'#FFFFFF', opacity:0, pad:0, radius:0, strokeW:0, strokeC:'#000000' }
         },
         footer: {
-            hideSend: false, collapseToolbar: false,
+            hideSend: false, collapseToolbar: false, collapseReply: false,
             bg: '#F3F2F7', opacity: 0.85, blur: 8,
             divW: 1, divC: '#FFFFFF',
             send:  { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
@@ -965,6 +974,11 @@ function setupBubblePresets() {
         basicCss += barDividerCss(ftr, ftrDef, FOOTER_BAR_SELECTOR, 'top');
         if (ftr.collapseToolbar !== ftrDef.collapseToolbar) {
             // 同 collapseCall：生成不出 CSS，只把 META 留住，干活的是 bar-collapse-toolbar。
+            hasChanges = true;
+        }
+        if (ftr.collapseReply !== ftrDef.collapseReply) {
+            // 同上，干活的是 bar-collapse-reply（把 #get-reply-btn 搬进输入框内部右侧，
+            // 只在输入框有焦点时露出来）。几何写死在 chat_room.css 的收纳段。
             hasChanges = true;
         }
         if (ftr.hideSend !== ftrDef.hideSend) {
@@ -1366,6 +1380,8 @@ function setupBubblePresets() {
         if (hideSendEl) hideSendEl.checked = !!ftrBar.hideSend;
         const collapseToolbarEl = document.getElementById('setting-footer-collapse-toolbar');
         if (collapseToolbarEl) collapseToolbarEl.checked = !!ftrBar.collapseToolbar;
+        const collapseReplyEl = document.getElementById('setting-footer-collapse-reply');
+        if (collapseReplyEl) collapseReplyEl.checked = !!ftrBar.collapseReply;
         setVal('setting-footer-bar-bg', ftrBar.bg);
         setVal('setting-footer-bar-bg-text', String(ftrBar.bg).toUpperCase());
         setVal('setting-footer-bar-opacity', ftrBar.opacity);
@@ -1809,6 +1825,15 @@ function syncBasicUiFromCss(css) {
         collapseToolbarCb.addEventListener('change', (e) => {
             if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
             basicState.footer.collapseToolbar = e.target.checked;
+            generateCssFromState();
+        });
+    }
+
+    const collapseReplyCb = document.getElementById('setting-footer-collapse-reply');
+    if (collapseReplyCb) {
+        collapseReplyCb.addEventListener('change', (e) => {
+            if (!basicState.footer) basicState.footer = JSON.parse(JSON.stringify(defaultBasicState.footer));
+            basicState.footer.collapseReply = e.target.checked;
             generateCssFromState();
         });
     }
@@ -2461,7 +2486,12 @@ if (typeof AppHelp !== 'undefined' && typeof AppHelp.register === 'function') {
                 + '藏了之后「修改对象」里的「发送按钮」会一并变灰（调了也看不见）。\n\n'
                 + '【收纳工具栏】\n'
                 + '收起来之后，输入框上面那排按钮整条收进"+"面板，\n'
-                + '"+"本身挪到输入框右边、发送键左边。'
+                + '"+"本身挪到输入框右边、发送键左边。\n\n'
+                + '【收纳 AI 回复】\n'
+                + '把「AI 回复」那颗圆按钮从输入框外面搬进输入框**里面**的右侧，\n'
+                + '点一下输入框它才浮出来 —— 不打字的时候底栏就只剩输入框和发送键。\n'
+                + '它不像另外两个「收纳」那样收进"+"面板：按钮还在原地，只是换了个住处，\n'
+                + '所以等 AI 回话时它照样会变灰（那几秒不收，免得没有进度反馈）。'
         },
         footerBg: {
             title: '底栏背景与分割线',
