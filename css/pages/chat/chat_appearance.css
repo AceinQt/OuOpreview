@@ -401,6 +401,52 @@
     background: #fff;
 }
 
+/* --- 「高级」Tab 下半截：自动生成区块的只读折叠框 -----------------
+   这一栏以前只有一个 textarea，自动生成的 CSS 直接追加在用户手写内容后面 ——
+   用户改自己那几行时很容易连带改到它，删掉又等于没了参考。现在拆成
+   「我的 CSS」(上，可编辑) +「自动生成的样式」(下，只读、默认折叠)，
+   拆分/拼回在 bubble_css_preset.js 的 splitBubbleCss / joinBubbleCss。
+   ⚠️ 折叠壳用的是 components.css 里全项目共用的 .collapsible-section，
+   它靠 max-height 0 ↔ 100000px 做动画。所以这里必须给它 flex-shrink: 0 ——
+   它和上面那个 flex-grow:1 的 textarea 是同一个 flex 列的兄弟，不钉住的话
+   展开时会被 textarea 挤扁，看着像「点了没反应」。 */
+#bubble-generated-css-section {
+    flex-shrink: 0;
+    margin-bottom: 0;
+}
+
+/* 行数提示（「12 行」/「暂无…」）跟在标题后面，弱化一点 */
+#bubble-generated-css-hint {
+    margin-left: 6px;
+    font-weight: normal;
+    opacity: 0.65;
+}
+
+.readonly-css-box {
+    margin: 0;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px dashed var(--bg-color);
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #666;
+    /* 生成的选择器很长，不换行就只能横着拖 */
+    white-space: pre-wrap;
+    word-break: break-all;
+    /* 内容多的时候自己滚，别去撑整个面板 ——
+       #bottom-content-card 是 overflow:hidden，撑爆了就彻底看不见 */
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.readonly-css-box:empty::before {
+    content: '基础设置全是默认值，所以没有生成任何 CSS。';
+    color: #aaa;
+    font-style: italic;
+}
+
 /* --- 单个设置项 ---------------------------------------------- */
 
 #tab-view-bubbles label { font-size: 15px; color: #333; }

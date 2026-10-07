@@ -436,6 +436,10 @@
                             <option value="narration">旁白气泡</option>
                             <option value="transfer">转账气泡</option>
                             <option value="quote">引用气泡</option>
+                            <option value="msgtime">消息时间</option>
+                            <option value="timediv">时间分割线</option>
+                            <option value="systip">系统提示</option>
+                            <option value="groupname">群昵称</option>
                         </select>
                         <select id="setting-bubble-side">
                             <option value="sent">我方</option>
@@ -690,6 +694,23 @@
                         <input type="text" id="setting-footer-div-c-text" placeholder="#HEX">
                     </div>
                     <div class="settings-group-title">
+                        <span>• 工具栏图标</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerIcon')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
+                    <div class="bubble-settings-item row">
+                        <label>图标颜色：</label>
+                        <input type="color" id="setting-footer-btn-c">
+                        <input type="text" id="setting-footer-btn-c-text" placeholder="#HEX">
+                    </div>
+                    <!-- 这里曾经还有一个「线条粗细」滑块（发 --bar-icon-stroke）。删了：
+                         工具栏 6 颗里只有语音和钱包是线型（.ic-line），另外 4 颗是面型、
+                         粗细画死在路径里调不动 —— 于是那个滑块只会把 2 颗调粗、6 颗粗细不一致，
+                         越调越难看。想整体换粗细只能换素材，不是加个旋钮能解决的。 -->
+                    <div class="settings-group-title">
                         <span>• 部件</span>
                         <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'footerBlocks')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -714,6 +735,11 @@
                             <input type="color" id="setting-footer-bg">
                             <input type="text" id="setting-footer-bg-text" placeholder="#HEX">
                         </div>
+                        <div class="bubble-settings-item row">
+                            <label>文字颜色：</label>
+                            <input type="color" id="setting-footer-color">
+                            <input type="text" id="setting-footer-color-text" placeholder="#HEX">
+                        </div>
                         <hr>
                         <div class="bubble-settings-item row">
                             <label>描边颜色：</label>
@@ -732,8 +758,28 @@
                 </div>
 
                 <!-- 栏目二：自定义 CSS -->
+                <!-- 两个框：上面可编辑、只装用户手写的；下面只读、装自动生成的区块（默认折叠）。
+                     拆开的原因见 bubble_css_preset.js 顶部那段注释 —— 合在一个 textarea 里时
+                     用户改自己那几行很容易连带改到生成区块。落盘仍然是一个字段。 -->
                 <div id="pane-css" class="content-pane">
+                    <div class="settings-group-title">
+                        <span>• 我的 CSS</span>
+                        <svg class="settings-group-info-icon" onclick="showHelp('bubble', 'customCss')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
                     <textarea id="global-bubble-custom-css" placeholder="在此输入高级 CSS 代码..."></textarea>
+                    <div class="collapsible-section" id="bubble-generated-css-section">
+                        <div class="collapsible-header">
+                            <span>自动生成的样式（只读）<span class="val-display" id="bubble-generated-css-hint">暂无</span></span>
+                            <span class="collapsible-arrow">▼</span>
+                        </div>
+                        <div class="collapsible-content">
+                            <pre id="bubble-generated-css" class="readonly-css-box"></pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
