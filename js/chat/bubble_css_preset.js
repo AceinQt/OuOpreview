@@ -59,13 +59,76 @@ function syncAppearancePane() {
     });
 }
 
+// ============ 「高级」Tab 那两个框 ============
+// 以前是**一个** textarea，自动生成的区块直接追加在用户手写内容的后面。问题是
+// 用户想改自己那几行时，很容易连带把生成区块也改了（标记里写着"请勿在此区块内手写"
+// 也挡不住手滑），而删掉它又等于没了参考。现在拆成两个：
+//   · #global-bubble-custom-css  可编辑，**只装用户手写的那半边**
+//   · #bubble-generated-css      只读，装自动生成的区块，默认折叠起来
+// ★ 落盘仍然是**一个字段**（preset.css），格式一字不改 —— 用户那半边在前、
+//   生成块追加在后。所以老预设、导出的 json、备份全部照旧能用，
+//   scopeBubbleCss 和 chat.customBubbleCss 那条链路一无所知。
+// ★ 要完整串的地方（存盘 / 预览 / 反解 META）一律走 composeBubbleCss()，
+//   别直接读那个 textarea —— 读到的只有一半，预览会突然变回默认样式。
+const START_MARKER = "/* --- 自动生成：基础外观开始 (请勿在此区块内手写) --- */";
+const END_MARKER = "/* --- 自动生成：基础外观结束 --- */";
+
+function _genBlockRegex() {
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`${esc(START_MARKER)}[\\s\\S]*?${esc(END_MARKER)}\\n?`);
+}
+
+// 把一段完整 CSS 拆成「用户手写」和「自动生成区块」两半
+function splitBubbleCss(css) {
+    const full = css || '';
+    const m = full.match(_genBlockRegex());
+    if (!m) return { user: full.trim(), gen: '' };
+    return { user: full.replace(_genBlockRegex(), '').trim(), gen: m[0].trim() };
+}
+
+// 两半拼回完整串。顺序和分隔必须和拆分前一致（用户那半在前、生成块在后），
+// 否则同一个预设存一次就变一次样。
+// ★ 和拆分前有一处行为差异：生成块以前是**原地**替换的，所以用户如果在它后面
+//   又写了几行，那几行会留在生成块之后；现在生成块一律落到末尾。这是故意的
+//   （位置统一了才好折叠），而且和标记里那句"请勿在此区块内手写"的约定一致。
+function joinBubbleCss(user, gen) {
+    const u = (user || '').trim();
+    const g = (gen || '').trim();
+    if (!g) return u ? u + '\n' : '';
+    return (u ? u + '\n\n' : '') + g + '\n';
+}
+
+function _userCssEl() { return document.getElementById('global-bubble-custom-css'); }
+function _genCssEl() { return document.getElementById('bubble-generated-css'); }
+
+// 当前编辑器里那份完整 CSS（两个框拼起来）
+function composeBubbleCss() {
+    const u = _userCssEl();
+    const g = _genCssEl();
+    return joinBubbleCss(u ? u.value : '', g ? g.textContent : '');
+}
+
+// 把一段完整 CSS 摊到两个框里。顺手更新折叠区的标题（让用户知道里面有没有东西）。
+function spreadBubbleCss(css) {
+    const { user, gen } = splitBubbleCss(css);
+    const u = _userCssEl();
+    const g = _genCssEl();
+    if (u) u.value = user;
+    if (g) g.textContent = gen;
+    const hint = document.getElementById('bubble-generated-css-hint');
+    if (hint) {
+        const lines = gen ? gen.split('\n').length : 0;
+        hint.textContent = gen ? `${lines} 行` : '暂无（没改过基础设置）';
+    }
+}
+
 // 重画预览。setupBubblePresets 里原本自己闭包了一份，但「切预设」「换预览页」这些
 // 入口散在闭包内外，所以提到模块级来，让所有人调同一个。
 function refreshBubbleCssPreview() {
     const box = document.getElementById('global-bubble-css-preview');
-    const cssInput = document.getElementById('global-bubble-custom-css');
-    if (!box || !cssInput) return;
-    updateBubbleCssPreview(box, cssInput.value, false, colorThemes['white_blue']);
+    if (!box || !_userCssEl()) return;
+    // ★ 必须喂**完整**串：只喂用户那半边的话，基础设置调出来的东西预览里全看不见
+    updateBubbleCssPreview(box, composeBubbleCss(), false, colorThemes['white_blue']);
 }
 
 // 改 currentPreviewMode 的地方一律走这里 —— 直接赋值会出现
@@ -196,10 +259,19 @@ function getDynamicBubblePreview(timeFormat) {
         ? formatMessageTimestamp(new Date(2026, 8, 27, 13, 5, 9).getTime(), timeFormat)
         : '13:05';
 
+    // 时间分割线上的文字走的是另一套（formatSmartTime，「昨天 / 星期几 / 月日」那种），
+    // **不跟** timeFormat 走 —— 所以这里写死一个样例，别拿 sampleTime 顶替，
+    // 否则用户会以为改时间格式能改到分割线。
+    const sampleDivider = '昨天 22:30';
+
     // getRow 里的三个时间槽位必须和 chat_bubble_factory.js 真实那份结构一致
     // （头像列里一个、meta 行里一个、气泡后一个），否则「消息时间」的位置在预览里
     // 拨了没反应 —— 生成的规则正是冲着这三个 class 去的，缺哪个哪个位置就是空的。
-    const getRow = (isSent, innerHtml) => `
+    // metaExtra：往 meta 行里额外塞东西（群聊的身份徽章 + 群昵称）。给了它就**不能**再挂
+    // `meta-time-only` —— 那个 class 的语义是"这行除了时间空无一物，整行收掉"
+    // （chat_room.css 里它就是 display:none），挂上去群昵称会跟着一起消失。
+    // 真实的气泡工厂也是这么分的：群聊走 roleBadge+groupNickname，私聊才加 meta-time-only。
+    const getRow = (isSent, innerHtml, metaExtra) => `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
             <div class="message-bubble-row" ${isSent ? 'style="flex-direction: row-reverse;"' : ''}>
                 <div class="message-avatar-col">
@@ -207,7 +279,7 @@ function getDynamicBubblePreview(timeFormat) {
                     <span class="message-time-avatar">${sampleTime}</span>
                 </div>
                 <div class="message-content-col" ${isSent ? 'style="align-items: flex-end;"' : ''}>
-                    <div class="message-meta-info meta-time-only"><span class="message-time">${sampleTime}</span></div>
+                    <div class="message-meta-info${metaExtra ? '' : ' meta-time-only'}">${metaExtra || ''}<span class="message-time">${sampleTime}</span></div>
                     ${innerHtml}
                 </div>
                 <span class="message-time-tail">${sampleTime}</span>
@@ -217,9 +289,34 @@ function getDynamicBubblePreview(timeFormat) {
 
     let html = "";
 
+    // 0. 不属于任何气泡的那几类小字。摆在最前面是因为真实聊天里它们也多在一段的开头，
+    //    而且这三样全是居中的独立一行，夹在气泡中间会把全家福切得很碎。
+    //    结构照抄 chat_bubble_factory.js：
+    //      时间分割线  → .message-wrapper.time-divider-wrapper > .chat-time-divider
+    //      系统提示    → .message-wrapper.system-notification > .system-notification-bubble
+    //      撤回提示    → 同上，但 class 是 .withdrawn-message（和系统提示同一组设置，
+    //                    出厂长得一模一样，所以两个都画出来让用户看清改的是哪些）
+    html += `
+        <div class="message-wrapper time-divider-wrapper">
+            <div class="chat-time-divider">${sampleDivider}</div>
+        </div>
+        <div class="message-wrapper system-notification">
+            <div class="system-notification-bubble">这是系统提示（入群、改群名这类）</div>
+        </div>
+        <div class="message-wrapper system-notification">
+            <div class="withdrawn-message">撤回提示也归「系统提示」这一组</div>
+        </div>
+    `;
+
     // 1. 普通气泡
     html += getRow(false, `<div class="message-bubble received">这是一条对方发来的普通消息。</div>`);
     html += getRow(true, `<div class="message-bubble sent">这是我方回复的普通消息。</div>`);
+
+    // 1b. 群聊里的那一行：身份徽章 + 群昵称。私聊没有这一行（见 getRow 的 metaExtra 注释），
+    //     所以单独画一条，否则选了「群昵称」在预览里根本找不到东西在变。
+    html += getRow(false,
+        `<div class="message-bubble received">群聊里气泡上方会多一行昵称。</div>`,
+        `<span class="role-badge member">群成员</span><span class="group-nickname">群里的某人</span>`);
 
 // 2. 旁白气泡 (固定居中，不需要调 getRow，独立结构)
 //    分「对方」(AI 写的，:not(.narration-mine)) 和「我方」(用户在"+"面板发的剧情旁白，
@@ -655,6 +752,25 @@ function setupBubblePresets() {
     //   · footer.send/reply/input 分别是 #send-message-btn / #get-reply-btn / #message-input，
     //     默认值来自 chat_room.css：两颗按钮 var(--primary-color)=#0099FF + radius 5 + border:none，
     //     输入框 #ffffff + radius 5 + border:none。
+    //   · footer.btnC 是**工具栏那排图标**的颜色。和顶栏那个要列一长串选择器的
+    //     header.btnC 实现完全不同：`chat_room.css` 开头（`#chat-room-screen` 那个块）
+    //     早就把它抽成了 CSS 变量 `--bar-icon-color`，面型图标靠它上 `fill`、
+    //     线型（`.ic-line`）靠它上 `stroke`，所以这里只要把变量重新声明一遍，
+    //     就一次覆盖工具栏 6 颗 + 输入栏那颗 "+"，不用点名 —— 这也是加这项特别便宜的原因。
+    //     默认值照抄那边的 #555。
+    //     ★ 旁边那个 `--bar-icon-stroke`（线宽）**故意没有做成旋钮**：工具栏 6 颗里
+    //       只有语音和钱包是线型，另外 4 颗是面型、粗细画死在路径里调不动。
+    //       做成旋钮的结果是「2 颗变粗、6 颗粗细不一致」，越调越难看（用户实测后要求删掉）。
+    //       想整体换粗细只能换素材。**别再把它加回来。**
+    //     ★ 别把 #get-reply-btn 算进来：那颗是实心蓝底按钮，图标走 `fill: currentColor`，
+    //       归下面 reply.color 管。
+    //   · footer.send/reply/input 的 color 是**文字/图标色**，默认照抄静态 CSS：
+    //     两颗按钮来自 `.message-input-area .icon-btn { color: white }`（发送键是"发送"二字，
+    //     AI 回复那颗是 svg 走 currentColor，所以同一个 color 两边都管得到）；
+    //     输入框没写过 color、继承 variables.css 的 --text-color: #444，故记作 #444444。
+    //     ★ 输入框这一项**连 ::placeholder 一起发**（同色 + opacity 0.55）——
+    //       用户把输入框调成深色时，浏览器默认那个灰 placeholder 会当场看不见，
+    //       而这正是加这组旋钮要解决的问题，只改 color 等于只修了一半。
     const defaultBasicState = {
         hideAvatar: false, timePos: 'none', timeFormat: 'HH:mm', avatarRadius: 19, customFont: '',
         header: {
@@ -670,9 +786,10 @@ function setupBubblePresets() {
             hideSend: false, collapseToolbar: false, collapseReply: false,
             bg: '#F3F2F7', opacity: 0.85, blur: 8,
             divW: 1, divC: '#FFFFFF',
-            send:  { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
-            reply: { bg:'#0099FF', strokeW:0, strokeC:'#000000', radius:5 },
-            input: { bg:'#FFFFFF', strokeW:0, strokeC:'#000000', radius:5 }
+            btnC: '#555555',
+            send:  { bg:'#0099FF', color:'#FFFFFF', strokeW:0, strokeC:'#000000', radius:5 },
+            reply: { bg:'#0099FF', color:'#FFFFFF', strokeW:0, strokeC:'#000000', radius:5 },
+            input: { bg:'#FFFFFF', color:'#444444', strokeW:0, strokeC:'#000000', radius:5 }
         },
         styles: {
             normal_sent:   { bg:'#0099FF', fontSize:16, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
@@ -693,7 +810,21 @@ function setupBubblePresets() {
             transfer_received: { bg:'#FF9900', fontSize:14, fontColor:'#FFFFFF', opacity:1, blur:0, strokeW:0, strokeC:'#000000', radius:8, strokeSides:[] },
             
             quote_sent:    { bg:'#FFFFFF', fontSize:13, fontColor:'#FFFFFF', opacity:0.1, blur:0, strokeW:3, strokeC:'#FFFFFF', radius:8, strokeSides: ['left'] },
-            quote_received:    { bg:'#000000', fontSize:13, fontColor:'#555555', opacity:0.04, blur:0, strokeW:3, strokeC:'#0099FF', radius:8, strokeSides:['left'] }
+            quote_received:    { bg:'#000000', fontSize:13, fontColor:'#555555', opacity:0.04, blur:0, strokeW:3, strokeC:'#0099FF', radius:8, strokeSides:['left'] },
+
+            // ===== 下面四类**不是气泡**，是聊天里那些零散的小字 =====
+            // 它们在 chat_room.css 里各自写死一个灰，换成深色背景后就全看不见了
+            // （用户原话：「换了深色背景就看不清」）。以前外观系统完全没管到这几类。
+            // ★ 这四类**没有我方/对方之分**（见 NEUTRAL_TYPES），所以键名不带 _sent/_received
+            //   后缀，选中它们时「我方/对方」那个下拉会禁掉。
+            // ★ 默认值一律照抄静态 CSS，否则"什么都没改"也会生成 CSS。其中三类
+            //   **从来没写过 background**，所以底色默认记作不透明度 0（取色器要个初值，
+            //   填 #FFFFFF 只是占位）—— 要是给个看得见的默认值，一打开面板就凭空多出一块底。
+            //   radius 同理：没写过 border-radius 的就是 0，别图好看填个 4。
+            msgtime:   { bg:'#FFFFFF', fontSize:10, fontColor:'#AAAAAA', opacity:0,   blur:0, strokeW:0, strokeC:'#000000', radius:0,  strokeSides:[] },
+            timediv:   { bg:'#FFFFFF', fontSize:12, fontColor:'#999999', opacity:0,   blur:0, strokeW:0, strokeC:'#000000', radius:6,  strokeSides:[] },
+            systip:    { bg:'#C8C8C8', fontSize:12, fontColor:'#666666', opacity:0.5, blur:0, strokeW:0, strokeC:'#000000', radius:12, strokeSides:[] },
+            groupname: { bg:'#FFFFFF', fontSize:13, fontColor:'#888888', opacity:0,   blur:0, strokeW:0, strokeC:'#000000', radius:0,  strokeSides:[] }
         }
     };
 
@@ -752,14 +883,42 @@ function setupBubblePresets() {
     
     // 把 .voice-bubble 并入 normal，让它们共享同一套样式！
     const classSelectorsMap = {
-        'normal': '.message-bubble, .voice-bubble', 
-        'narration': '.narration-bubble', 
-        'transfer': '.transfer-card', 
-        'quote': '.quoted-message'
+        'normal': '.message-bubble, .voice-bubble',
+        'narration': '.narration-bubble',
+        'transfer': '.transfer-card',
+        'quote': '.quoted-message',
+
+        // 下面四类不是气泡，是聊天里那些零散小字（默认全是写死的灰，深色背景下看不见）。
+        // ★ msgtime 的三个 class 是**同一个时间**的三个槽位（气泡上方 / 头像下方 / 气泡后），
+        //   每条消息三个都画出来、由 timePos 放开其中一个，所以三个必须一起染色 ——
+        //   只染一个的话，用户换个时间位置颜色就白调了。
+        // ★ systip 把「系统提示」和「撤回提示」并成一组：这两个 class 在 chat_room.css 里
+        //   的 color / background / font-size / radius / padding 逐字节相同，出厂就是一个样子，
+        //   分成两项只是让用户多调一遍。
+        //   ⚠ chat_room.css 末尾（折叠通话那段）给这两个 class 和 .chat-time-divider
+        //   在 `.expanded-call-session-container` 里另染了一遍灰蓝 #7A869A，用来和通话外的
+        //   消息做区分。这里生成的规则带 !important 又被 scope 抬到 1 id + 2 class，
+        //   会把那份区分盖掉 —— **这是故意的**：用户把整体调成深色时，通话里那几行
+        //   要是还钉在浅色主题的灰蓝上，才是真的看不清。别为了"保住区分"去加排除。
+        'msgtime': '.message-time, .message-time-avatar, .message-time-tail',
+        'timediv': '.chat-time-divider',
+        'systip': '.system-notification-bubble, .withdrawn-message',
+        'groupname': '.group-nickname'
     };
 
-    const START_MARKER = "/* --- 自动生成：基础外观开始 (请勿在此区块内手写) --- */";
-    const END_MARKER = "/* --- 自动生成：基础外观结束 --- */";
+    // 这几类没有「我方 / 对方」之分，选中时把那个下拉禁掉，键名也不带 _sent/_received 后缀。
+    // （时间分割线和系统提示本来就是居中的独立一行；时间戳和群昵称两侧共用一条静态规则，
+    //   拆成两套只是让用户多调一遍。）
+    const NEUTRAL_TYPES = new Set(['msgtime', 'timediv', 'systip', 'groupname']);
+
+    // msgtime 和 groupname 出厂是**裸文字** —— 既没有 background 也没有 padding，
+    // 一上底色就紧贴着字，难看。照 HEADER_BLOCK_NORMALIZE 的路子：只在"真长出块"
+    // （底色能看见、或者描了边）时才补一点内边距，光改个字色不会动几何。
+    // 另两类（timediv / systip）静态 CSS 里本来就有 padding，不用管。
+    const BARE_TEXT_PAD = { msgtime: '2px 6px', groupname: '1px 6px' };
+
+    // START_MARKER / END_MARKER 已提到模块级（和 splitBubbleCss / joinBubbleCss 放一起），
+    // 因为拆两个框之后「哪段是生成的」这件事在闭包外面也要用。
 
     function hexToRgba(hex, alpha) {
         if (!hex) return 'transparent';
@@ -770,7 +929,14 @@ function setupBubblePresets() {
     }
 
     function generateCssFromState() {
-        let basicCss = `${START_MARKER}\n/* META:${JSON.stringify(basicState)} */\n`;
+        // ★ META 那条注释**放在块尾**（见下面 END_MARKER 那行），不放块首 ——
+        //   它是面板状态的序列化，有一两千字符长，而这个块现在是摊在「自动生成的样式」
+        //   那个只读框里给用户当参考用的（照着里面的选择器抄，是查"某个东西叫什么 class"
+        //   最快的办法）。META 摆第一行会把真正有用的规则整个顶出可视区。
+        //   三个读 META 的地方（getMessageTimeFormatFromCss / getBarCollapseFromCss /
+        //   syncBasicUiFromCss）都是 `match(/\/\* META:(.+?) \*\//)`，**与位置无关**，
+        //   所以搬家是安全的；但 START_MARKER 必须仍是块的第一行，splitBubbleCss 靠它定界。
+        let basicCss = `${START_MARKER}\n`;
         let hasChanges = false; // 核心标记：记录是否真的修改了基础样式
         
         // 判断全局设置是否修改
@@ -987,6 +1153,19 @@ function setupBubblePresets() {
             if (ftr.hideSend) basicCss += `#send-message-btn { display: none !important; }\n`;
             hasChanges = true;
         }
+        // 工具栏那排图标的颜色。只要重声明 chat_room.css 开头那个 `--bar-icon-color`，
+        // 6 颗工具栏按钮 + 输入栏那颗 "+" 一次全覆盖，不用逐个点名（顶栏的 btnC 做不到
+        // 这点，所以那边是一长串选择器）。
+        // ★ **不要**顺手把 `--bar-icon-stroke`（线宽）也做成旋钮：6 颗里只有语音和钱包
+        //   是线型，另外 4 颗面型的粗细画死在路径里 —— 调了就是 2 颗变粗、整排粗细不一致。
+        //   曾经做过，用户实测后要求删掉。
+        // ★ 选择器写 `#chat-room-screen`，scopeBubbleCss 会把它**整体替换**成
+        //   `#chat-room-screen.chat-active-xx.chat-active-xx`（不是加前缀，见 bubble_css_scope.js
+        //   的 scopeSelector），所以变量正好落在声明它的那个元素上、后代全能读到。
+        if ((ftr.btnC || '').toUpperCase() !== ftrDef.btnC.toUpperCase()) {
+            basicCss += `#chat-room-screen { --bar-icon-color: ${ftr.btnC} !important; }\n`;
+            hasChanges = true;
+        }
         for (const key of Object.keys(FOOTER_SELECTORS)) {
             const conf = ftr[key] || ftrDef[key];
             const def = ftrDef[key];
@@ -1001,6 +1180,23 @@ function setupBubblePresets() {
                 // .message-input-area .icon-btn 用的是 background 简写，这里只改 background-color；
                 // 简写剩下的部分（没有渐变/图片）不受影响。
                 basicCss += `${sel}:not(:disabled) { background-color: ${conf.bg} !important; }\n`;
+                hasChanges = true;
+            }
+
+            // 文字/图标色。三个对象各有各的落点：
+            //   send  → "发送"二字
+            //   reply → 那颗 svg（chat_room.css 给它 `fill: currentColor`，所以改 color 就够）
+            //   input → 用户打进去的字
+            // ★ 不挂 :not(:disabled)：底色那条挂是为了保住「生成中变灰」这个进度反馈，
+            //   而变灰只换底色不换字色 —— 字色跟着一起灰掉反而会让按钮上的字消失。
+            if ((conf.color || '').toUpperCase() !== (def.color || '').toUpperCase()) {
+                basicCss += `${sel} { color: ${conf.color} !important; }\n`;
+                // 输入框额外补 placeholder：浏览器给的默认灰在深色输入框上直接看不见，
+                // 而「深色底看不清」正是这组旋钮要解决的问题。opacity 压到 0.55 是为了
+                // 跟用户真打进去的字拉开层次，不然提示文字和正文一个样。
+                if (key === 'input') {
+                    basicCss += `${sel}::placeholder { color: ${conf.color} !important; opacity: 0.55 !important; }\n`;
+                }
                 hasChanges = true;
             }
 
@@ -1025,6 +1221,8 @@ function setupBubblePresets() {
             if (typeKey.startsWith('voice_')) continue;
 
             const isNarration = typeKey.startsWith('narration');
+            // 中立那四类的键名本来就不带后缀，split('_')[0] 原样返回，所以这里不用特判
+            const isNeutral = NEUTRAL_TYPES.has(typeKey);
             const baseType = isNarration ? 'narration' : typeKey.split('_')[0];
             const sel = classSelectorsMap[baseType];
             if(!sel) continue;
@@ -1039,7 +1237,13 @@ function setupBubblePresets() {
                     : '.message-wrapper.narration-wrapper:not(.narration-mine)');
 
             let ruleSel = '';
-            if (isNarration) {
+            if (isNeutral) {
+                // 没有我方/对方之分，直接用 class 本身。
+                // ★ 不能走下面那条分支：那里要从键名里切出 sideClass，中立键切出来是
+                //   undefined，会生成 `.message-wrapper.undefined …` 这种永不命中的选择器
+                //   —— 症状是面板上调得动、预览和聊天里都没反应。
+                ruleSel = sel;
+            } else if (isNarration) {
                 ruleSel = `${nwSelf} ${sel}`;
             } else {
                 const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
@@ -1060,7 +1264,11 @@ function setupBubblePresets() {
                 isTypeChanged = true;
                 hasChanges = true;
                 
-                // 伪元素智能染色
+                // 伪元素智能染色：用户自己手写的尖角 / 小三角（::before / ::after）
+                // 跟着气泡底色一起染，不然调完底色尖角还是旧的。
+                // ★ 这里读的是**用户那半边**（拆两个框之后 cssInput 里只剩手写内容）——
+                //   正好是想要的：以前连自动生成的区块一起扫，纯属浪费（生成块里
+                //   从来不写伪元素），还得指望正则别误伤自己刚生成的东西。
                 if (baseType === 'normal' && cssInput && cssInput.value) {
                     const customCss = cssInput.value;
                     const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
@@ -1198,6 +1406,21 @@ function setupBubblePresets() {
                 basicCss += `${ruleSel} {${typeCss} }\n`;
             }
 
+            // 裸文字那两类（消息时间 / 群昵称）一旦真长出了块，补一点内边距，
+            // 否则底色紧贴着字，边角弧度也拉不出形状。判据和 HEADER_BLOCK_NORMALIZE 一样：
+            // 只在"看得见的块"出现时才发，光改字色不动几何（不然用户只是想把灰字调亮一点，
+            // 时间戳的位置却整体挪了，会以为自己碰坏了什么）。
+            // ★ 这里**绝对不能**顺手发 display —— timePos 的反解正则（见 syncBasicUiFromCss）
+            //   是靠「`.message-time` 后面的花括号里有没有 display」来读回时间位置的，
+            //   发了就会把「不显示」误读成「气泡上方」，一存一读位置自己就跳了。
+            if (BARE_TEXT_PAD[typeKey]) {
+                const boxed = conf.opacity > 0 || conf.strokeW > 0;
+                if (boxed) {
+                    basicCss += `${ruleSel} { padding: ${BARE_TEXT_PAD[typeKey]} !important; }\n`;
+                    hasChanges = true;
+                }
+            }
+
             // 7. 特殊子元素颜色同步 (引用与图标)
             if (baseType === 'quote') {
                 if (conf.fontColor.toUpperCase() !== defaultConf.fontColor.toUpperCase()) {
@@ -1212,32 +1435,43 @@ function setupBubblePresets() {
                 }
             }
 
-            if (baseType === 'normal' && conf.fontColor.toUpperCase() !== defaultConf.fontColor.toUpperCase()) {
-                const svgSel = ruleSel.split(',').map(s => `${s.trim()} svg`).join(', ');
-                basicCss += `${svgSel} { color: ${conf.fontColor} !important; fill: ${conf.fontColor} !important; }\n`;
+            // 气泡里那些图标跟着字体颜色走（语音的播放三角、转账卡的图标、折叠通话的
+            // 话筒/摄像头、图片气泡的放大和识图按钮…）。
+            // ★ 以前这里锁死 `baseType === 'normal'`，所以调了转账气泡的字体颜色，
+            //   卡片上的图标还是旧色，半边新半边旧。现在所有类型都发。
+            // ★ `fill` 必须挂 `:not([fill="none"])`：这个项目里的线型图标是
+            //   `fill="none" stroke="currentColor"` 的写法，而 CSS 的优先级高过
+            //   presentation attribute —— 无条件发 fill 会把空心图标**灌成一个实心色块**
+            //   （原先只对普通气泡生效，所以一直没被发现）。
+            //   线型图标靠下面那条 color 走 currentColor 就够了。
+            // ★ 反过来**绝不能**无条件发 stroke：路径没写 stroke 时默认是 none，
+            //   硬发会给实心图标（语音那个播放三角）描上一圈外框。
+            // ★ 中立那四类跳过：它们是纯文字（时间 / 分割线 / 系统提示 / 群昵称），
+            //   里面不可能有图标，发了就是给生成块添三行永不命中的死规则。
+            if (!isNeutral && conf.fontColor.toUpperCase() !== defaultConf.fontColor.toUpperCase()) {
+                const parts = ruleSel.split(',').map(s => s.trim());
+                const svgSel = parts.map(s => `${s} svg`).join(', ');
+                basicCss += `${svgSel} { color: ${conf.fontColor} !important; }\n`;
+                const fillSel = parts.map(s => `${s} svg:not([fill="none"])`).join(', ');
+                basicCss += `${fillSel} { fill: ${conf.fontColor} !important; }\n`;
             }
         }
 
-        basicCss += `${END_MARKER}`;
-        
-        if (cssInput) {
-            let currentCss = cssInput.value;
-            const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`${escapeRegExp(START_MARKER)}[\\s\\S]*?${escapeRegExp(END_MARKER)}\\n?`);
+        basicCss += `/* META:${JSON.stringify(basicState)} */\n${END_MARKER}`;
 
-            if (!hasChanges) {
-                // 【核心逻辑】：如果没有任何改动，彻底删掉整个基础生成区块！不留一丝痕迹！
-                if (regex.test(currentCss)) {
-                    cssInput.value = currentCss.replace(regex, '').trim() + (currentCss.replace(regex, '').trim() ? '\n' : '');
-                }
-            } else {
-                if (regex.test(currentCss)) {
-                    cssInput.value = currentCss.replace(regex, basicCss + '\n');
-                } else {
-                    if (currentCss.trim() !== '' && !currentCss.endsWith('\n')) currentCss += '\n\n';
-                    else if (currentCss.trim() !== '') currentCss += '\n';
-                    cssInput.value = currentCss + basicCss + '\n';
-                }
+        // 生成块直接写进那个只读框，不再去用户的 textarea 里做正则手术 ——
+        // 两个框一分，「哪段是生成的」就不用从文本里猜了，原先那套
+        // 「有标记就原地替换、没标记就追加」的分支整段消失。
+        // hasChanges 为假时清空它（出厂设置就不该留痕迹，这样
+        // joinBubbleCss 拼出来的也一个字节都没有）。
+        const genEl = _genCssEl();
+        if (genEl) {
+            genEl.textContent = hasChanges ? basicCss : '';
+            const hint = document.getElementById('bubble-generated-css-hint');
+            if (hint) {
+                hint.textContent = hasChanges
+                    ? `${basicCss.split('\n').length} 行`
+                    : '暂无（没改过基础设置）';
             }
             updatePreview();
         }
@@ -1271,6 +1505,25 @@ function setupBubblePresets() {
             if (hideSend && currentFooterTarget === 'send') {
                 currentFooterTarget = 'reply';
                 ftrSelect.value = 'reply';
+            }
+        }
+
+        // 时间设成「不显示」时，「消息时间」那一组同样调了看不见 —— 照上面发送按钮
+        // 那条的路子把选项禁掉，正停在它上面就顶回普通气泡。
+        // ★ 不这么做的话症状很隐蔽：面板上色块、滑块全能拨，CSS 也确实生成了，
+        //   但预览和聊天里都是空的（三个槽位全 display:none），像是功能坏了。
+        const typeSel = document.getElementById('setting-bubble-type');
+        if (typeSel) {
+            const noTime = basicState.timePos === 'none';
+            const timeOpt = typeSel.querySelector('option[value="msgtime"]');
+            if (timeOpt) timeOpt.disabled = noTime;
+            if (noTime && currentSelectType === 'msgtime') {
+                currentSelectType = 'normal_sent';
+                typeSel.value = 'normal';
+                const sideSel = document.getElementById('setting-bubble-side');
+                if (sideSel) { sideSel.disabled = false; sideSel.value = 'sent'; }
+                const lbl = document.getElementById('current-type-label');
+                if (lbl) lbl.textContent = '普通气泡 - 我方';
             }
         }
 
@@ -1392,6 +1645,9 @@ function setupBubblePresets() {
         setTxt('val-footer-div-w', ftrBar.divW);
         setVal('setting-footer-div-c', ftrBar.divC);
         setVal('setting-footer-div-c-text', String(ftrBar.divC).toUpperCase());
+        // 工具栏图标颜色（靠一个 CSS 变量一次覆盖全部，见生成端那段注释）
+        setVal('setting-footer-btn-c', ftrBar.btnC);
+        setVal('setting-footer-btn-c-text', String(ftrBar.btnC).toUpperCase());
         const ftrSelectEl = document.getElementById('setting-footer-target');
         if (ftrSelectEl) ftrSelectEl.value = currentFooterTarget;
         const ftrLabelEl = document.getElementById('current-footer-label');
@@ -1402,6 +1658,8 @@ function setupBubblePresets() {
             || defaultBasicState.footer[currentFooterTarget];
         setVal('setting-footer-bg', ftrConf.bg);
         setVal('setting-footer-bg-text', String(ftrConf.bg).toUpperCase());
+        setVal('setting-footer-color', ftrConf.color);
+        setVal('setting-footer-color-text', String(ftrConf.color).toUpperCase());
         setVal('setting-footer-stroke-c', ftrConf.strokeC);
         setVal('setting-footer-stroke-c-text', String(ftrConf.strokeC).toUpperCase());
         setVal('setting-footer-stroke-w', ftrConf.strokeW);
@@ -1510,6 +1768,11 @@ function syncBasicUiFromCss(css) {
                                 basicState.footer[k] = { ...defaultBasicState.footer[k], ...parsed.footer[k] };
                             }
                         });
+                        // 工具栏图标的「线条粗细」(btnW → --bar-icon-stroke) 短命地存在过一版，
+                        // 发现 6 颗里只有 2 颗是线型、调了反而粗细不一，当天就删了。
+                        // 上面那层浅合并会把 parsed 里的 btnW 原样带进来、再写回 META 一直传下去，
+                        // 所以显式丢掉（同 header.title.fit 那条的处理）。不迁移：没有等价的新字段。
+                        delete basicState.footer.btnW;
                     }
                     
                     if (parsed.styles) {
@@ -1692,13 +1955,21 @@ function syncBasicUiFromCss(css) {
     function updateTypeLabel() {
         const t = typeSelect.value;
         const s = sideSelect.value;
+        const tName = typeSelect.options[typeSelect.selectedIndex].text;
         // 旁白以前是「中立」的一类、side 下拉被禁用；现在和普通气泡一样分两侧：
         // 我方 = 用户自己发的剧情旁白，对方 = AI 写的旁白。
-        sideSelect.disabled = false;
-        currentSelectType = `${t}_${s}`;
-        const tName = typeSelect.options[typeSelect.selectedIndex].text;
-        const sName = sideSelect.options[sideSelect.selectedIndex].text;
-        document.getElementById('current-type-label').textContent = `${tName} - ${sName}`;
+        // 真正中立的是后面补的那四类小字（时间 / 分割线 / 系统提示 / 群昵称）——
+        // 它们在静态 CSS 里两侧共用一条规则，拆成两套只是让用户多调一遍。
+        if (NEUTRAL_TYPES.has(t)) {
+            sideSelect.disabled = true;
+            currentSelectType = t;
+            document.getElementById('current-type-label').textContent = tName;
+        } else {
+            sideSelect.disabled = false;
+            currentSelectType = `${t}_${s}`;
+            const sName = sideSelect.options[sideSelect.selectedIndex].text;
+            document.getElementById('current-type-label').textContent = `${tName} - ${sName}`;
+        }
         updateUIFromState();
         // 这两个下拉本来就只在气泡那块面板上，能点到它说明已经停在第 0 页了；
         // 保留这句是为了「换气泡类型一定看得到气泡」，顺带把面板也校准回去。
@@ -1720,6 +1991,11 @@ function syncBasicUiFromCss(css) {
             if(id === 'setting-time-format') basicState.timeFormat = e.target.value.trim() || defaultBasicState.timeFormat;
             if(id === 'setting-custom-font') basicState.customFont = e.target.value;
             syncConditionalRows();
+            // 时间位置拨到「不显示」会把「消息时间」那个选项禁掉、可能顺带把当前选中的
+            // 修改对象顶回普通气泡（见 syncConditionalRows），所以得重新同步一遍控件 ——
+            // 不同步的话色块里还显示着时间那组的数值，而再拨一下写进去的是普通气泡，
+            // 用户会看到"我调的是时间，普通气泡却变色了"。同底栏藏发送键那条处理。
+            if(id === 'setting-time-pos') updateUIFromState();
             generateCssFromState();
         });
     });
@@ -1856,6 +2132,8 @@ function syncBasicUiFromCss(css) {
         ['setting-footer-bar-bg-text',   'footer', 'bg',      'text',   'setting-footer-bar-bg'],
         ['setting-footer-bar-opacity',   'footer', 'opacity', 'number', 'val-footer-bar-opacity'],
         ['setting-footer-bar-blur',      'footer', 'blur',    'number', 'val-footer-bar-blur'],
+        ['setting-footer-btn-c',         'footer', 'btnC',    'color',  'setting-footer-btn-c-text'],
+        ['setting-footer-btn-c-text',    'footer', 'btnC',    'text',   'setting-footer-btn-c'],
         ['setting-footer-div-w',         'footer', 'divW',    'number', 'val-footer-div-w'],
         ['setting-footer-div-c',         'footer', 'divC',    'color',  'setting-footer-div-c-text'],
         ['setting-footer-div-c-text',    'footer', 'divC',    'text',   'setting-footer-div-c']
@@ -1977,10 +2255,12 @@ function syncBasicUiFromCss(css) {
         });
     }
 
-    // 四个控件 → 当前对象的四个字段。'text' 那两个是色值的手输框。
+    // 控件 → 当前对象的字段。'text' 那两对是色值的手输框。
     const footerInputsMap = {
         'setting-footer-bg':         ['bg', 'color'],
         'setting-footer-bg-text':    ['bg', 'text'],
+        'setting-footer-color':      ['color', 'color'],
+        'setting-footer-color-text': ['color', 'text'],
         'setting-footer-stroke-c':   ['strokeC', 'color'],
         'setting-footer-stroke-c-text': ['strokeC', 'text'],
         'setting-footer-stroke-w':   ['strokeW', 'number'],
@@ -2005,19 +2285,16 @@ function syncBasicUiFromCss(css) {
 
             // 取色器 ↔ 手输框互相回填。手输的只在凑够 6 位合法 HEX 时才回填取色器，
             // 否则打字到一半（#0 / #00…）就会把取色器推成黑色。
-            if (id === 'setting-footer-bg') {
-                const t = document.getElementById('setting-footer-bg-text');
+            // ★ 这里按「手输框 id = 取色器 id + '-text'」的命名约定推出对方，
+            //   不要再逐个 id 硬写 —— 原先 bg / strokeC 各抄了一份四行的 if，
+            //   加第三对（color）时很容易只抄一半，症状是"取色器调了手输框不跟着变"。
+            if (kind === 'color') {
+                const t = document.getElementById(`${id}-text`);
                 if (t) t.value = String(val).toUpperCase();
             }
-            if (id === 'setting-footer-bg-text' && /^#[0-9A-F]{6}$/i.test(val)) {
-                document.getElementById('setting-footer-bg').value = val;
-            }
-            if (id === 'setting-footer-stroke-c') {
-                const t = document.getElementById('setting-footer-stroke-c-text');
-                if (t) t.value = String(val).toUpperCase();
-            }
-            if (id === 'setting-footer-stroke-c-text' && /^#[0-9A-F]{6}$/i.test(val)) {
-                document.getElementById('setting-footer-stroke-c').value = val;
+            if (kind === 'text' && /^#[0-9A-F]{6}$/i.test(val)) {
+                const c = document.getElementById(id.replace(/-text$/, ''));
+                if (c) c.value = val;
             }
             generateCssFromState();
         });
@@ -2052,9 +2329,34 @@ function syncBasicUiFromCss(css) {
     rebind('preview-prev-btn', () => setPreviewMode(currentPreviewMode - 1));
     rebind('preview-next-btn', () => setPreviewMode(currentPreviewMode + 1));
 
+    // 「自动生成的样式」那个折叠框。用的是全项目共用的 .collapsible-section
+    // （components.css），toggle 写法照抄 customize.js。
+    // ★ 必须像 addBtn/saveBtn/翻页键那样 cloneNode 去重绑定：setupBubblePresets 会被
+    //   调两次（main.js 的 init + chat_list.js 的 setupChatListScreen），绑两遍的话
+    //   点一下 toggle 两次 = 原地不动，症状是「点了没反应」。
+    const genHeader = document.querySelector('#bubble-generated-css-section .collapsible-header');
+    if (genHeader) {
+        const freshHeader = genHeader.cloneNode(true);
+        genHeader.parentNode.replaceChild(freshHeader, genHeader);
+        freshHeader.addEventListener('click', () => {
+            freshHeader.parentElement.classList.toggle('open');
+        });
+    }
+
     if(cssInput) {
         cssInput.addEventListener('input', () => {
-            syncBasicUiFromCss(cssInput.value); 
+            // ★ 这里**不能**再无脑 syncBasicUiFromCss(cssInput.value)。
+            //   拆两个框之后这个 textarea 里只有用户手写的那半边、不含 META 注释，
+            //   反解会把整块基础设置重置成默认值 —— 症状是"在高级框里随便敲个字，
+            //   上面调好的气泡全变回出厂样子"。面板状态的权威来源是 basicState，
+            //   它已经镜像在只读框的 META 里了，用户打字不该动它。
+            // 唯一要反解的情况：用户整段粘进来一份别人分享的完整 CSS（里面带生成块）。
+            //   这时把它摊回两个框，再按 META 还原面板 —— 比拆之前更顺手。
+            if (cssInput.value.includes(START_MARKER)) {
+                const full = cssInput.value;
+                spreadBubbleCss(full);
+                syncBasicUiFromCss(full);
+            }
             updatePreview();
         });
     }
@@ -2071,7 +2373,10 @@ function syncBasicUiFromCss(css) {
             currentEditingPresetOriginalName = ""; 
             if(nameInput) nameInput.value = newName;
             
-            if(cssInput) { cssInput.value = ""; generateCssFromState(); }
+            // 两个框一起清空。生成块那半边交给 generateCssFromState ——
+            // basicState 刚重置成默认，hasChanges 为假，它会把只读框清掉。
+            spreadBubbleCss('');
+            generateCssFromState();
             if(delBtn) delBtn.style.display = 'none';
             if(window.showToast) showToast('已准备新建模板，请配置后保存');
         });
@@ -2082,7 +2387,7 @@ function syncBasicUiFromCss(css) {
         const newSaveBtn = saveBtn.cloneNode(true); saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
         newSaveBtn.addEventListener('click', async () => {
             const newName = nameInput ? nameInput.value.trim() : "";
-            const newCss = cssInput ? cssInput.value.trim() : "";
+            const newCss = composeBubbleCss().trim();
             if (!newName) return (window.showToast && showToast('请输入预设名称'));
 
             if (currentEditingPresetOriginalName !== '默认' && newName === '默认') {
@@ -2193,7 +2498,7 @@ function syncBasicUiFromCss(css) {
             editBtn.onclick = function() {
                 currentEditingPresetOriginalName = p.name;
                 if(nameInput) nameInput.value = p.name;
-                if(cssInput) { cssInput.value = p.css; syncBasicUiFromCss(p.css); }
+                if(cssInput) { spreadBubbleCss(p.css); syncBasicUiFromCss(p.css); }
                 if(delBtn) delBtn.style.display = p.isDefault ? 'none' : 'block';
                 
                 const typeEl = document.getElementById('setting-bubble-type');
@@ -2347,12 +2652,12 @@ function syncBasicUiFromCss(css) {
     if(delBtn) delBtn.style.display = 'none'; // 默认预设不可删除
     
     if (defaultPreset && defaultPreset.css) {
-        if(cssInput) cssInput.value = defaultPreset.css;
-        syncBasicUiFromCss(defaultPreset.css); 
+        spreadBubbleCss(defaultPreset.css);
+        syncBasicUiFromCss(defaultPreset.css);
     } else {
-        if(cssInput) cssInput.value = '';
-        syncBasicUiFromCss(''); 
-        generateCssFromState(); 
+        spreadBubbleCss('');
+        syncBasicUiFromCss('');
+        generateCssFromState();
     }
     
     const initTypeEl = document.getElementById('setting-bubble-type');
@@ -2415,14 +2720,26 @@ if (typeof AppHelp !== 'undefined' && typeof AppHelp.register === 'function') {
         bubbleTypes: {
             title: '分类改气泡',
             content:
-                '上面两个下拉选「改哪一种气泡」，下面虚线框里那组控件就作用在它身上 ——\n'
-                + '四种类型 ×（我方 / 对方）＝ 8 套互相独立的配色，一套一套调。\n\n'
-                + '【四种类型分别是什么】\n'
+                '上面两个下拉选「改哪一种」，下面虚线框里那组控件就作用在它身上。\n'
+                + '前四种分我方 / 对方，各自独立；后四种两侧共用一套，\n'
+                + '选中它们时「我方 / 对方」那个下拉会自己变灰。\n\n'
+                + '【四种气泡】\n'
                 + '普通气泡：平时说话的那种。\n'
                 + '旁白气泡：AI 在「线下模式」和「通话」里描述动作的那种；\n'
                 + '　　　　　你自己在"+"面板发的「剧情旁白」算我方。\n'
                 + '转账气泡：转账 / 收款的卡片。\n'
                 + '引用气泡：带引用上一条的那种。\n\n'
+                + '【另外四种小字】\n'
+                + '这几样原本是写死的灰色，换成深色背景就看不清了，所以也放进来一起调：\n'
+                + '消息时间：每条消息旁边那个时间（三个位置共用一套颜色）。\n'
+                + '　　　　　时间设成「不显示」时这一项是灰的 —— 调了也看不见。\n'
+                + '时间分割线：隔开两段对话的那行「昨天 22:30」。\n'
+                + '系统提示：入群 / 改群名那种居中小条，撤回提示也算这一组。\n'
+                + '群昵称：群聊里气泡上方那个名字。\n\n'
+                + '【给小字加底色】\n'
+                + '消息时间和群昵称出厂是光秃秃的文字、没有底。\n'
+                + '把不透明度从 0 拉起来它们才会长出底色块，这时候会自动留一点内边距，\n'
+                + '再配上「边角弧度」就是个小胶囊。只改文字颜色的话位置一点都不会动。\n\n'
                 + '【不透明度 / 模糊度】\n'
                 + '想要毛玻璃效果就把不透明度调低一点、再把模糊度拉起来 ——\n'
                 + '不透明度 1 的时候背景全被挡住，模糊度拉满也看不出来。'
@@ -2503,14 +2820,52 @@ if (typeof AppHelp !== 'undefined' && typeof AppHelp.register === 'function') {
                 + '—— 这两个旋钮一旦动过，它就变成所选颜色的实线；\n'
                 + '想彻底去掉把粗细拉到 0。'
         },
+        footerIcon: {
+            title: '工具栏图标',
+            content:
+                '【图标颜色】\n'
+                + '底栏工具栏那排图标（语音/识图/相机/钱包/表情/加号）的颜色，一改全改。\n'
+                + '收纳工具栏之后，输入栏里那颗"+"也跟着这里走。\n\n'
+                + '【为什么没有「粗细」】\n'
+                + '这 6 颗里只有语音和钱包是空心线条画的，另外 4 颗是实心图形、\n'
+                + '粗细是画死在图里的。所以真给个粗细滑块，结果是 2 颗变粗、\n'
+                + '整排看着粗细不一 —— 不如不给。想整体换粗细得换图标素材。\n\n'
+                + '【不包括 AI 回复按钮】\n'
+                + '那颗是实心蓝底的，它的图标颜色在下面「部件」里选「AI 回复按钮」改文字颜色。'
+        },
         footerBlocks: {
             title: '底栏部件',
             content:
                 '底栏有三个能单独改的东西：发送按钮 / AI 回复按钮 / 输入栏。\n'
                 + '下拉选一个，虚线框里那组控件就作用在它身上。\n\n'
+                + '【文字颜色】\n'
+                + '发送按钮改的是"发送"两个字，AI 回复按钮改的是上面那个图标，\n'
+                + '输入栏改的是你打进去的字 —— 输入栏这一项会连灰色提示文字\n'
+                + '（「输入消息...」）一起改成同色的淡化版，所以底色调深了也看得见。\n\n'
                 + '【关于 AI 回复按钮】\n'
                 + '它在等 AI 回话的那几秒会自己变灰 —— 那是"正在生成"的进度反馈，\n'
-                + '你改的颜色只作用在它能点的时候，变灰那一下仍然是灰的。'
+                + '你改的底色只作用在它能点的时候，变灰那一下仍然是灰的；\n'
+                + '文字颜色不受影响（否则变灰时按钮上的图标会一起消失）。'
+        },
+
+        // ---------------- 高级 ----------------
+        customCss: {
+            title: '自己写 CSS',
+            content:
+                '这一栏分上下两块。\n\n'
+                + '【我的 CSS】\n'
+                + '你自己写的放这儿，想写什么写什么，随便改 —— 这块只有你会动。\n\n'
+                + '【自动生成的样式】\n'
+                + '上面「基础」里拨的每一个旋钮，都会在这里变成一段 CSS。\n'
+                + '它是**只读**的，平时折叠着，想参考写法就点开看 ——\n'
+                + '照着里面的选择器抄，是找"某个东西到底叫什么 class"最快的办法。\n'
+                + '以前这两块挤在同一个输入框里，改自己那几行很容易把生成的部分一起改坏，\n'
+                + '所以分开了。保存的时候还是合成一份，导出的预设和以前完全通用。\n\n'
+                + '【想盖掉生成的样式怎么办】\n'
+                + '生成的那些规则都带 !important，所以你要盖它，自己那条也得带 !important。\n\n'
+                + '【粘贴别人分享的外观】\n'
+                + '整段粘进「我的 CSS」就行 —— 认出里面带生成区块的话，\n'
+                + '会自动拆成两块、并把上面的旋钮一起还原成那份外观的设置。'
         },
 
         // ---------------- 单行的问号（不属于任何小标题） ----------------

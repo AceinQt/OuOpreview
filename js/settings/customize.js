@@ -236,11 +236,21 @@ function renderCustomizeForm() {
 
             
 
+            // ★ 这个 <style> 标签**不在 index.html 里**，必须自己建。
+            //   原先这里是「找不到就静默返回」，而全项目没有任何地方创建过
+            //   #global-css-style —— 于是 db.globalCss 能存、能存预设、能进备份，
+            //   就是永远不上页面，「立即应用」点了毫无反应。
+            //   建出来 append 到 head 末尾，排在 index.html 那条 main.css 的 <link>
+            //   之后，所以同权重时用户的规则赢（和 chat_settings.js 注入气泡 CSS 同一套路）。
             function applyGlobalCss(css) {
-                const styleElement = document.getElementById('global-css-style');
-                if (styleElement) {
-                    styleElement.innerHTML = css || '';
+                let styleElement = document.getElementById('global-css-style');
+                if (!styleElement) {
+                    styleElement = document.createElement('style');
+                    styleElement.id = 'global-css-style';
+                    document.head.appendChild(styleElement);
                 }
+                // 用 textContent 而不是 innerHTML：CSS 里的 > 和 & 不该被当 HTML 解析
+                styleElement.textContent = css || '';
             }
 
             function populateGlobalCssPresetSelect() {
