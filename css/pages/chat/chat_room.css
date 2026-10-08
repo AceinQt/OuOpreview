@@ -204,10 +204,21 @@
 }
 
 /* --- 3. 内容列 (包含：昵称/时间 + 气泡) --- */
+/* max-width 里那个 `+ var(--bub-stroke-x)` 是**描边补偿**，不是装饰：
+   reset.css 给 * 置了 border-box，于是用户一给气泡加描边，描边就直接从**正文可用宽**里扣
+   —— 实测 375px 宽的屏上 1px 描边就让每行少一个字（14 → 13），右边凭空空出一截
+   （用户原话「每行就少了一个字，导致右边很空」）。生成端 bubble_css_preset.js 的描边分支
+   按用户勾的描边方向算出左右两边占了几像素，写进这个变量。
+   ★ 这里和下面 .message-bubble 的 260px **两处都得加**：窄屏是这条 70% 在夹人，
+     宽屏是那条 260px 在夹人，只补一处，另一半屏宽照旧掉字。两处加同一个量，
+     所以不管哪条生效，正文宽都和「没描边」时逐像素相同。
+   ★ 变量设在这一层（气泡的祖先）而不是气泡上：气泡要靠继承读到它，
+     而列宽本身也得跟着放开，不然气泡放宽了也被列夹回去。
+   不加描边时变量兜底 0px，calc 结果和原来一模一样。 */
 .message-content-col {
     display: flex;
     flex-direction: column;
-    max-width: 70%; /* 限制气泡最大宽度，防止太宽 */
+    max-width: calc(70% + var(--bub-stroke-x, 0px)); /* 限制气泡最大宽度，防止太宽 */
     align-items: flex-start;
     gap:4px;
 }
@@ -315,7 +326,9 @@
 }
 
 .message-bubble {
-    max-width: 260px;
+    /* 260px 是「宽屏那一侧」的上限，+ var(--bub-stroke-x) 是描边补偿，
+       理由和 .message-content-col 那条完全一样，两处必须一起加，见那边的注释。 */
+    max-width: calc(260px + var(--bub-stroke-x, 0px));
     padding: 8px 12px;
     border-radius: var(--border-radius);
     word-wrap: break-word;
@@ -1658,11 +1671,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, filter 0.2s;
 }
 
+/* 「正在生成」那几秒 #get-reply-btn 会被置 disabled（chat_ai_service.js），
+   这是「别再点了」的唯一视觉反馈。
+   ★ 这里**不能**再换底色（原先是 `background-color: #cccccc`）：底栏这三个对象的
+     底色/字色/弧度/描边现在都能自定义（外观 → 底栏 → 修改对象），硬写一个灰
+     会把用户刚调好的按钮在生成期间变成一块灰方砖，和整套配色完全不搭。
+     改成**整颗变淡** —— 底色是用户自己的色，只是淡下去，状态照样读得出来。
+   ★ 用 filter 而不是 opacity：opacity 被「收纳 AI 回复」那一档的显隐占着
+     （见下方收纳段，0 ↔ 1），两条规则抢同一个属性就得靠权重分胜负，而那边是
+     1 id + 1 class、这边只有 3 个 class，必输 —— 结果就是收纳态下根本看不出变淡。
+     filter 和 opacity 是相乘的：藏着时 0 × 0.45 照样看不见，聚焦时 1 × 0.45 正好是淡。 */
 .message-input-area .icon-btn:disabled {
-    background-color: #cccccc;
+    filter: opacity(0.45);
     cursor: not-allowed;
 }
 
@@ -1791,15 +1814,17 @@
     height: 18px;
 }
 
-/* 露出来的两种情形：
-     · 输入框有焦点 —— 用户要的就是这个
-     · 正在生成 —— disabled 变灰是唯一的进度反馈，这会儿躲起来就等于没有反馈
+/* 露出来的唯一情形：输入框有焦点。
+   ★ 这里曾经还并着一条 `#get-reply-btn:disabled`，让它在「正在生成」期间也浮出来
+     （当时的理由是「变灰是唯一的进度反馈」）。用户要求去掉：收纳态下这颗按钮在那几秒
+     只是在「挡着别再发」，而「正在回复」这件事底下那条 typing-indicator 已经在说了，
+     不必为它专门从输入框里浮出一颗按钮。现在「生成中 + 没焦点」= 和平时一样藏着；
+     用户点进输入框时它照旧浮出来，只是淡的（.icon-btn:disabled 那条 filter）。
    ★ :focus-within 挂在**包装层**上而不是输入框自己身上：焦点万一真落到按钮上
      （桌面端点击就会），挂输入框的写法会在 mousedown 那一刻把按钮藏掉、click 打空。
      另一道保险在 chat_room.js —— 那边 mousedown 直接 preventDefault，
      焦点压根不离开输入框（iOS 上顺带保住键盘不收）。 */
-#chat-room-screen.bar-collapse-reply .message-input-box:focus-within #get-reply-btn,
-#chat-room-screen.bar-collapse-reply #get-reply-btn:disabled {
+#chat-room-screen.bar-collapse-reply .message-input-box:focus-within #get-reply-btn {
     opacity: 1;
     pointer-events: auto;
 }
@@ -2245,13 +2270,16 @@
         390    259     250（-9）
      所以这里 width:100% + max-width:260px：宽屏封顶跟气泡一样是 260px，
      窄屏则被 70% 的父列压住一起缩，两头都对齐。
+     ⚠️ 连那个 `+ var(--bub-stroke-x)` 的描边补偿也要跟着抄 —— 用户给普通气泡加描边时
+        气泡的封顶会放宽那么几像素（理由见 .message-content-col 那段注释），
+        这里不跟的话宽屏上卡片就比上下的气泡窄一截、右边缘对不齐。
    ★ margin 必须是 0：头像和气泡的间距由 .message-bubble-row 的 gap:8px 统一发，
      这里以前写 margin:0 8px，叠上去变成 16px，比左右的普通气泡多一截，
      左边缘也对不齐。别加回来。 */
 .forum-share-card {
     width: 100%;
-    max-width: 260px;
-    /* 跟 .message-bubble 的 max-width 保持一致 */
+    max-width: calc(260px + var(--bub-stroke-x, 0px));
+    /* 跟 .message-bubble 的 max-width 保持一致（逐字节一致，含描边补偿） */
     background-color: #ffffff;
     border-radius: var(--border-radius);
     padding: 12px 15px;

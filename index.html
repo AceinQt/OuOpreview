@@ -339,7 +339,12 @@
                                     <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
                             </button>
-                            <input type="file" id="global-bubble-import-input" accept=".json" style="display: none;">
+                            <!-- accept 列了四种而不是光一个 .json：安卓的文件选择器按 MIME 过滤，
+                                 Chrome 把 `.json` 翻成 application/json，而早期版本导出的文件
+                                 （走 `data:text/json` 那套写法）在 MediaStore 里记的是 text/json，
+                                 只写 .json 的话那些文件在列表里根本看不见。导出端已经改成
+                                 Blob + application/json，这里多列几种是为了捞回用户手上的旧文件。 -->
+                            <input type="file" id="global-bubble-import-input" accept=".json,application/json,text/json,text/plain" style="display: none;">
                         </div>
                     </div>
                 </div>
@@ -1144,9 +1149,9 @@
                          「输入框 → AI 回复 → + → 发送」，所以 #get-reply-btn 带了一条
                          `order: 1` 把自己放回最右边，删了它平时就跑到发送键左边去了。
                          ⚠️ 为什么不像下面 #inline-plus-btn 那样另画一颗：这颗按钮**有状态**
-                         （等 AI 回话时 disabled 变灰，是唯一的进度反馈），还进了外观页底栏的
+                         （等 AI 回话时 disabled 整颗变淡，告诉用户别再发），还进了外观页底栏的
                          「修改对象」下拉（用户能单独调它的色/弧度/描边）。画两颗就是两套 CSS
-                         加两处置灰，必漂；加号那颗能画两份是因为它没状态也不进那个下拉。 -->
+                         加两处置淡，必漂；加号那颗能画两份是因为它没状态也不进那个下拉。 -->
                     <div class="message-input-box">
                         <input type="text" id="message-input" placeholder="输入消息...">
                         <button id="get-reply-btn" class="icon-btn">
