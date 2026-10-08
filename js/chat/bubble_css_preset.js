@@ -160,6 +160,52 @@ function _saveBubblePresets(arr) {
    saveGlobalKeys(['bubbleCssPresets']);
 }
 
+// 预设名直接当文件名用会踩两个坑：`\ / : * ? " < > |` 这些字符安卓会静默换掉、
+// Chrome 还会把 `/` 当成路径分隔符（下载直接失败），而空格在某些文件管理器里
+// 长按选中都费劲。统一替成下划线；整个名字全被替掉（比如只打了几个空格）才退回「外观」。
+function _presetFileSafeName(name) {
+    const safe = String(name || '').replace(/[\\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '');
+    return safe || '外观';
+}
+
+// 「复制」出来的新名字：`同名(1)`，占了就往后数。
+// 口径和「新建预设」按钮的 `新建外观(n)` 一致（都从 1 开始找第一个空位），
+// 别换成「最大序号 +1」—— 删掉中间一个以后两处的行为就不一样了。
+function _nextCopyPresetName(baseName, presets) {
+    let n = 1, name = `${baseName}(${n})`;
+    while ((presets ||[]).some(p => p.name === name)) { n++; name = `${baseName}(${n})`; }
+    return name;
+}
+
+// 管理弹窗里每行的操作按钮。原先是「编辑/重命名/删除」三颗**文字**按钮，加上「复制」
+// 第四颗之后在窄屏（实测 390px 宽的手机）上会折行、把列表行撑成两层，所以整排换成
+// 36×36 的方形图标按钮 —— 样式直接复用 api 设置页那 5 颗的 `.api-icon-btn`
+// （api.css 在 main.css 里是全局 import 的，不用再抄一份；它的 `svg{width/height:18px}`
+// 也顺带避开了「iOS 上 viewBox 没宽高的 svg 看不见」那个坑）。
+//
+// 图标一律 `fill="none" stroke="currentColor"` 的线型写法，和项目里别处同族图标一致。
+const PRESET_ROW_ICONS = {
+    // 铅笔 = 进编辑器调样式
+    edit: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+    // 和 api 设置「复制当前预设」同一个图标，保持两处语义一致
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    // 大写 T = 只改名字，和铅笔区分开（两颗都用笔形的话没人分得清）
+    rename: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
+    del: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+};
+
+// title 之外必须再给一个 aria-label：图标按钮没有文字，title 在触屏上也摸不出来。
+function mkPresetRowBtn(kind, label, extraClass) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'api-icon-btn' + (extraClass ? ' ' + extraClass : '');
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        + 'stroke-linecap="round" stroke-linejoin="round">' + PRESET_ROW_ICONS[kind] + '</svg>';
+    return b;
+}
+
 // 预设的保存/删除/重命名会把新 CSS 直接注入用到该预设的每个聊天的
 // customBubbleCss / useCustomBubbleCss / bubbleThemeName 三个字段。
 // 渲染读的是 chat.customBubbleCss 而不是预设列表，所以这三个字段必须落盘；
@@ -1171,15 +1217,17 @@ function setupBubblePresets() {
             const def = ftrDef[key];
             const sel = FOOTER_SELECTORS[key];
 
-            // 底色单独一条、挂 :not(:disabled)。两颗按钮在「正在生成」期间是 disabled 的
-            // （chat_ai_service.js 给 #get-reply-btn 置的），chat_room.css 那条
-            // `.message-input-area .icon-btn:disabled { background-color:#cccccc }`
-            // 权重远低于这里 scope 过的选择器 —— 不加 :not(:disabled) 就等于
-            // 把「生成中变灰」这个唯一的进度反馈抹掉了。
+            // 底色单独一条。★ 这里曾经挂 `:not(:disabled)`，为的是给 chat_room.css 那条
+            // `.message-input-area .icon-btn:disabled { background-color:#cccccc }` 让路
+            // ——「正在生成」时按钮变灰是唯一的进度反馈，当时不躲开就等于把它抹掉。
+            // 现在 disabled 改成了**整颗变淡**（那边是 `filter: opacity(.45)`，压根不碰底色），
+            // 所以这里必须**不挂**：继续躲着的话，生成那几秒按钮会掉回
+            // var(--primary-color) 的默认蓝，用户自定义的颜色当场失效几秒再跳回来 ——
+            // 而「禁用时固定是灰的、跟自定义样式不搭」正是用户要求改掉的。
             if ((conf.bg || '').toUpperCase() !== def.bg.toUpperCase()) {
                 // .message-input-area .icon-btn 用的是 background 简写，这里只改 background-color；
                 // 简写剩下的部分（没有渐变/图片）不受影响。
-                basicCss += `${sel}:not(:disabled) { background-color: ${conf.bg} !important; }\n`;
+                basicCss += `${sel} { background-color: ${conf.bg} !important; }\n`;
                 hasChanges = true;
             }
 
@@ -1187,8 +1235,7 @@ function setupBubblePresets() {
             //   send  → "发送"二字
             //   reply → 那颗 svg（chat_room.css 给它 `fill: currentColor`，所以改 color 就够）
             //   input → 用户打进去的字
-            // ★ 不挂 :not(:disabled)：底色那条挂是为了保住「生成中变灰」这个进度反馈，
-            //   而变灰只换底色不换字色 —— 字色跟着一起灰掉反而会让按钮上的字消失。
+            // 同样不挂 :not(:disabled) —— 变淡是整颗一起淡（filter），没人需要让路。
             if ((conf.color || '').toUpperCase() !== (def.color || '').toUpperCase()) {
                 basicCss += `${sel} { color: ${conf.color} !important; }\n`;
                 // 输入框额外补 placeholder：浏览器给的默认灰在深色输入框上直接看不见，
@@ -1200,7 +1247,8 @@ function setupBubblePresets() {
                 hasChanges = true;
             }
 
-            // 弧度和描边反过来，连 disabled 态一起改 —— 变灰只该换颜色，不该把形状也变回去。
+            // 弧度和描边反过来，连 disabled 态一起改 —— 变淡只该整颗压低不透明度，
+            // 不该把形状也变回去。
             let shapeCss = '';
             if (conf.radius !== def.radius) {
                 shapeCss += ` border-radius: ${conf.radius}px !important;`;
@@ -1236,17 +1284,21 @@ function setupBubblePresets() {
                     ? '.message-wrapper.narration-wrapper.narration-mine'
                     : '.message-wrapper.narration-wrapper:not(.narration-mine)');
 
+            // 我方 / 对方那半边的 class。★ 中立那四类切出来是 undefined ——
+            // 所以凡是用到它的地方都必须先排除 isNeutral（和 isNarration），
+            // 否则会生成 `.message-wrapper.undefined …` 这种永不命中的选择器，
+            // 症状是面板上调得动、预览和聊天里都没反应。
+            // 下面三处用它：主规则的 ruleSel、伪元素智能染色、描边补偿。
+            const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
+
             let ruleSel = '';
             if (isNeutral) {
                 // 没有我方/对方之分，直接用 class 本身。
-                // ★ 不能走下面那条分支：那里要从键名里切出 sideClass，中立键切出来是
-                //   undefined，会生成 `.message-wrapper.undefined …` 这种永不命中的选择器
-                //   —— 症状是面板上调得动、预览和聊天里都没反应。
+                // ★ 不能走下面那条分支：那里要拼 sideClass，中立键是 undefined（见上）。
                 ruleSel = sel;
             } else if (isNarration) {
                 ruleSel = `${nwSelf} ${sel}`;
             } else {
-                const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
                 ruleSel = sel.split(',').map(s => {
                     const sTrim = s.trim();
                     return `.message-wrapper.${sideClass} ${sTrim}, ${sTrim}.${sideClass}`;
@@ -1271,7 +1323,6 @@ function setupBubblePresets() {
                 //   从来不写伪元素），还得指望正则别误伤自己刚生成的东西。
                 if (baseType === 'normal' && cssInput && cssInput.value) {
                     const customCss = cssInput.value;
-                    const sideClass = typeKey.split('_')[1] === 'recv' ? 'received' : typeKey.split('_')[1];
                     const pseudoRegex = new RegExp(`(?:message-bubble[^:{]*${sideClass}|${sideClass}[^:{]*message-bubble)::(after|before)[^:{]*\\{([^}]+)\\}`, 'ig');
                     
                     let pseudoMatch;
@@ -1376,6 +1427,33 @@ function setupBubblePresets() {
                     }
                 } else {
                     typeCss += ` border: none !important;`;
+                }
+
+                // 描边补偿：reset.css 给 * 置了 border-box，所以描边是**从正文可用宽里扣的**
+                // —— 实测 375px 宽的屏上 1px 描边就让每行少一个字（14 → 13），右边空出一截
+                // （用户原话「每行就少了一个字，导致右边很空」）。把水平方向实际占掉的
+                // 像素数写进 --bub-stroke-x，chat_room.css 里 .message-content-col 的 70%
+                // 和 .message-bubble 的 260px 两处 max-width 都加它，于是不管哪条在夹人，
+                // 正文宽都和「没描边」时逐像素相同。
+                // ★ 只有普通气泡那一族吃这碗饭：旁白是全宽卡片（压根不在 .message-content-col
+                //   里，自己 max-width:none），引用画在气泡**内部**，转账/图片各有更小的上限
+                //   —— 给它们补也补不到正文宽上去。
+                // ★ 变量设在**内容列**（气泡的祖先，靠继承传给气泡），并用 :has() 限定
+                //   「这条消息的气泡正是这一类」。一条消息只有一颗气泡，所以不会串到
+                //   别的类型/另一侧去；没描边的消息列宽一个像素都不动。
+                //   :has() 里那些逗号是安全的 —— scopeBubbleCss 的 splitSelectorList
+                //   只按**顶层**逗号切选择器组（bubble_css_scope.js 里有 depth 计数）。
+                //   ⚠️ .forum-share-card 也得算进来：它自己没有描边设置，是**刻意跟普通气泡
+                //      等宽**的（chat_room.css 那段注释写了，share_card.test.cjs 也在守
+                //      「两边 max-width 逐字节一致」）。漏了它，用户给气泡加描边之后
+                //      卡片就比上下的气泡窄 2×描边宽、右边缘对不齐。
+                // ★ 按勾选方向逐边算，不是一律 2×：只描左边就只补一边，补多了气泡会凭空变宽。
+                if (baseType === 'normal') {
+                    const edge = (side) => (sides.length === 4 || sides.includes(side)) ? conf.strokeW : 0;
+                    const padX = (conf.strokeW > 0 && sides.length > 0) ? edge('left') + edge('right') : 0;
+                    basicCss += `.message-wrapper.${sideClass} .message-content-col`
+                        + `:has(.message-bubble, .voice-bubble, .forum-share-card)`
+                        + ` { --bub-stroke-x: ${padX}px; }\n`;
                 }
 
                 // ★ 这里曾经硬写一条「我方旁白一律 border: none」—— 那是两类共用一套设置
@@ -2494,7 +2572,7 @@ function syncBasicUiFromCss(css) {
             const nameDiv = document.createElement('div'); nameDiv.className = 'list-item-title'; nameDiv.textContent = p.name;               
             const btnWrap = document.createElement('div'); btnWrap.className = 'list-item-btn';                
 
-            const editBtn = document.createElement('button'); editBtn.className = 'btn'; editBtn.textContent = '编辑';
+            const editBtn = mkPresetRowBtn('edit', '编辑');
             editBtn.onclick = function() {
                 currentEditingPresetOriginalName = p.name;
                 if(nameInput) nameInput.value = p.name;
@@ -2520,8 +2598,31 @@ function syncBasicUiFromCss(css) {
             };
             btnWrap.appendChild(editBtn);
 
+            // ★ 复制（= 另存为）。用户的真实处境：手滑把「默认」改了并保存，而「默认」
+            //   会强制注入到所有还没单独指定外观的聊天，于是一改就是全局生效、想单独
+            //   留一份都没地方留。复制一份出来就能把改好的样子落成独立预设，
+            //   然后把「默认」改回去。所以**「默认」这行也要有这颗按钮**。
+            // ★ 只复制**存盘的那份 css**，不碰编辑器里的未保存改动 —— 行上的按钮应该
+            //   对应行上的那个预设，顺手把编辑器状态塞进来会变成「复制出来的东西和
+            //   我点的那行不一样」。（想另存编辑器里的未保存改动：在名称框里换个名字
+            //   直接点保存就是新建，保存逻辑的 else 分支已经是这个行为。）
+            // ★ 新预设不需要动任何聊天：还没有聊天指向它。
+            const copyBtn = mkPresetRowBtn('copy', '复制为新预设');
+            copyBtn.onclick = async function () {
+                const presetsAll = _getBubblePresets();
+                const newName = _nextCopyPresetName(p.name, presetsAll);
+                presetsAll.push({ name: newName, css: p.css || '' });
+                _saveBubblePresets(presetsAll);
+                await saveGlobalKeys(['bubbleCssPresets']);
+
+                openManagePresetsModal();
+                if (typeof window.populateChatThemeSelects === 'function') window.populateChatThemeSelects();
+                if (window.showToast) showToast(`已复制为「${newName}」`);
+            };
+            btnWrap.appendChild(copyBtn);
+
             if (!p.isDefault) {
-                const renameBtn = document.createElement('button'); renameBtn.className = 'btn'; renameBtn.textContent = '重命名';               
+                const renameBtn = mkPresetRowBtn('rename', '重命名');
                 renameBtn.onclick = async function () {
                     const newName = await AppUI.prompt('请输入新名称：', p.name, '重命名预设');
                     if (!newName || newName === p.name) return;
@@ -2544,7 +2645,7 @@ function syncBasicUiFromCss(css) {
                     if (currentEditingPresetOriginalName === p.name) { currentEditingPresetOriginalName = newName; if(nameInput) nameInput.value = newName; }
                 };
 
-                const delListBtn = document.createElement('button'); delListBtn.className = 'btn btn-danger'; delListBtn.textContent = '删除';
+                const delListBtn = mkPresetRowBtn('del', '删除', 'del-btn');
                 delListBtn.onclick = async function () {
                     if (!await AppUI.confirm('确定删除预设 "' + p.name + '" ?\n相关聊天将恢复默认。', "系统提示", "确认", "取消")) return;
                     
@@ -2596,16 +2697,35 @@ function syncBasicUiFromCss(css) {
         const modal = document.getElementById('bubble-presets-modal'); modal.style.display = 'none'; modal.classList.remove('visible');
     });
 
+    // ================== 导出：只导「当前这一套」 ==================
+    // ★ 导的是**编辑器里现在这一份**（名字取名称框、CSS 取 composeBubbleCss()），
+    //   不是整个预设库 —— 用户要的是单独分享一套外观，以前一点就把全部预设打包出去。
+    //   取 composeBubbleCss() 而不是读那个 textarea：高级 Tab 已经拆成两个框，
+    //   直接读只拿到用户手写的那半边，生成块会整段丢掉。
+    // ★ 格式仍是**数组**（只装一个元素）：导入端按数组解析，老版本导出的多预设文件、
+    //   别人分享的文件都还能照常导进来，别图省事换成裸对象。
+    // ★ 必须走 Blob + `application/json`，**不能用 `data:text/json;charset=utf-8,...`**
+    //   那套老写法（2026-10-08 之前就是）：安卓下载管理器把 `text/json` 原样记进
+    //   MediaStore，而系统文件选择器是按 MIME 过滤的（accept 里的 `.json` 被 Chrome
+    //   翻成 `application/json`），两边对不上 —— 文件明明躺在下载目录里，导入列表里
+    //   却根本看不见，症状是「别的 json 都在，就我导的这个没有」。项目里别处的导出
+    //   （api_settings.js 那几个预设）一直用的就是 Blob + application/json，照抄它。
     const exportBtn = document.getElementById('global-bubble-export-btn');
     if (exportBtn) {
         const newExportBtn = exportBtn.cloneNode(true); exportBtn.parentNode.replaceChild(newExportBtn, exportBtn);
         newExportBtn.addEventListener('click', () => {
-            const presets = _getBubblePresets();
-            if (!presets || presets.length === 0) return (window.showToast && showToast('没有可导出的预设'));
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(presets, null, 2));
-            const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr);
-            const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ""); downloadAnchorNode.setAttribute("download", `qchat_bubbles_${dateStr}.json`);
-            document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove();
+            const name = (nameInput ? nameInput.value.trim() : '') || currentEditingPresetOriginalName;
+            if (!name) return (window.showToast && showToast('请先给这套外观起个名字'));
+
+            const one = { name, css: composeBubbleCss().trim() };
+            const blob = new Blob([JSON.stringify([one], null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${_presetFileSafeName(name)}_ouobubblepreset.json`;
+            document.body.appendChild(a); a.click();
+            setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 100);
+            if (window.showToast) showToast(`已导出外观：${name}`);
         });
     }
 
