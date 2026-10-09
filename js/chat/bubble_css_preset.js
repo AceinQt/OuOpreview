@@ -713,9 +713,34 @@ window.renderGlobalBubblePresets = function() {
     });
 };
 
+// ★★ 只许初始化一次。★★
+// `setupBubblePresets` 有**两个**调用点（`main.js` 的 init 直接调一次、它上一行的
+// `setupChatListScreen` 里又调一次），而下面整个函数体是个**闭包** —— `basicState`、
+// `currentSelectType`、`currentFooterTarget`、`currentHeaderTarget` 全是 `let`，
+// 调两次就是**两份互不相干的状态，绑在同一批控件上**。后果不是"把同一个值写两遍"：
+//
+//   · 「管理」「新建」「保存」「删除」这几颗按钮是 cloneNode 去重绑定的，所以**只有
+//     第二个闭包**收得到"换预设"这件事；第一个闭包的状态从此冻结在启动时那一份。
+//   · 可是滑块/取色器/下拉/开关**没有**去重，两个闭包都在听，而且第一个先触发。
+//   · 于是：在 A 预设里勾了「收纳发送按钮」→ 两个闭包都记下 hideSend=true（开关是共听的）；
+//     切到没收纳的 B 预设 → 只有第二个闭包把状态换成了 B，第一个还停在 hideSend=true。
+//     这时去点「修改对象 → 发送按钮」，第一个闭包的 change 先跑，它的 syncConditionalRows
+//     按自己那份陈旧状态把这个 option 重新 disabled、并把下拉顶回「AI 回复按钮」；
+//     第二个闭包紧接着读 `e.target.value`，读到的已经是被顶回去的 'reply'。
+//     症状就是用户报的「从 A 切到 B 以后，B 的发送按钮点不中、改色没反应」。
+//
+// 修法是守卫掉第二次调用，不是去把两份状态同步 —— 同一套控件只该有一个状态源。
+// 两个调用点都保留（`tests/appearance_bars.test.cjs` 明写了两处都要在，那是故意的：
+// 哪条路径先走到都能完成初始化），谁先到谁生效。
+// 下面那些 cloneNode 去重因此降级成第二道保险，留着不碍事。
+let _bubblePresetsInited = false;
+
 function setupBubblePresets() {
+    if (_bubblePresetsInited) return;
+    _bubblePresetsInited = true;
+
     // 记录当前正在编辑的预设原始名称 (空表示全新新建)
-    let currentEditingPresetOriginalName = ""; 
+    let currentEditingPresetOriginalName = "";
 
     const nameInput = document.getElementById('global-bubble-preset-name');
     const cssInput = document.getElementById('global-bubble-custom-css');
@@ -1618,6 +1643,37 @@ function setupBubblePresets() {
         if (widthRow) widthRow.style.display = showWidth ? '' : 'none';
     }
 
+    // 把三个「修改对象」下拉归位到第一项。换预设 / 新建 / 重置基础设置时必须跑一遍。
+    //
+    // ★★ 必须在 `updateUIFromState()` **之前**调，绝不能在之后。★★
+    // `updateUIFromState` 会把 `currentXxxTarget` 写进下拉（`select.value = currentFooterTarget`），
+    // 而它顺带跑的 `syncConditionalRows` 还可能**反过来改** `currentFooterTarget`
+    // （新预设藏了发送键 → 把选中项顶到「AI 回复按钮」）。所以顺序只能是
+    // 「先归位 → 再回显」；写在后面就是让状态和下拉当场对不上：
+    // 下拉显示「AI 回复按钮」而 `currentFooterTarget` 是 `'send'`，用户调出来的颜色
+    // 全落到那颗藏起来的发送键上 —— 症状是「色块能拨、预览里什么都没变」。
+    // 这个坑原先在换预设和启动兜底两处各踩了一次（两处都把 `currentFooterTarget = 'send'`
+    // 写在了 `updateUIFromState()` 后面），所以收口成一个函数、由
+    // `syncBasicUiFromCss` 在开头统一调用，别再在调用点手写这三行。
+    //
+    // ★ 顺手把「我方/对方」那个下拉的 disabled 解掉：中立类（msgtime/timediv/systip/
+    //   groupname）选中时会把它禁掉（见 updateTypeLabel），不解就会出现「换了预设还是
+    //   灰的、切不回对方气泡」。
+    function resetEditTargets() {
+        currentSelectType = 'normal_sent';
+        currentHeaderTarget = 'back';
+        currentFooterTarget = 'send';
+
+        // 气泡那组的三个控件不在 updateUIFromState 的管辖范围内（它只认 currentSelectType
+        // 算出来的那份数值），所以在这里一起摆正。
+        const typeEl = document.getElementById('setting-bubble-type');
+        if (typeEl) typeEl.value = 'normal';
+        const sideEl = document.getElementById('setting-bubble-side');
+        if (sideEl) { sideEl.value = 'sent'; sideEl.disabled = false; }
+        const labelEl = document.getElementById('current-type-label');
+        if (labelEl) labelEl.textContent = '普通气泡 - 我方';
+    }
+
     function updateUIFromState() {
         document.getElementById('setting-hide-avatar').checked = basicState.hideAvatar;
         document.getElementById('setting-time-pos').value = basicState.timePos;
@@ -1747,7 +1803,12 @@ function setupBubblePresets() {
     }
 
 function syncBasicUiFromCss(css) {
-        if (!css) { basicState = JSON.parse(JSON.stringify(defaultBasicState)); } 
+        // 这个函数是「把一份 CSS 装进面板」的唯一入口（换预设、启动兜底、粘贴别人分享的
+        // 完整外观都走它），所以三个「修改对象」下拉就在这里统一归位 —— 放在调用点手写
+        // 容易漏，漏掉的那一处就是用户报的「切完预设选不中发送按钮」。
+        // 末尾那句 updateUIFromState() 会把归位后的值回显出去，顺序已经是对的。
+        resetEditTargets();
+        if (!css) { basicState = JSON.parse(JSON.stringify(defaultBasicState)); }
         else {
             const metaMatch = css.match(/\/\* META:(.+?) \*\//);
             let parsedFromMeta = false;
@@ -2383,6 +2444,7 @@ function syncBasicUiFromCss(css) {
         resetBasicBtn.addEventListener('click',async () => {
              if (!await AppUI.confirm('是否确定重置基础设置，默认气泡样式将恢复原始样式。', "系统提示", "确认", "取消")) return; 
             basicState = JSON.parse(JSON.stringify(defaultBasicState));
+            resetEditTargets();   // 同新建：归位要排在回显前面
             updateUIFromState();
             generateCssFromState(); 
             updatePreview();
@@ -2447,7 +2509,11 @@ function syncBasicUiFromCss(css) {
             let newIndex = 1; let newName = `新建外观(${newIndex})`;
             while (presets.some(p => p.name === newName)) { newIndex++; newName = `新建外观(${newIndex})`; }
 
-            basicState = JSON.parse(JSON.stringify(defaultBasicState)); updateUIFromState();
+            // 新建 = 一份出厂状态，三个「修改对象」下拉也得跟着回到第一项
+            // （归位必须排在 updateUIFromState 前面，理由见 resetEditTargets 的注释）。
+            basicState = JSON.parse(JSON.stringify(defaultBasicState));
+            resetEditTargets();
+            updateUIFromState();
             currentEditingPresetOriginalName = ""; 
             if(nameInput) nameInput.value = newName;
             
@@ -2578,20 +2644,16 @@ function syncBasicUiFromCss(css) {
                 if(nameInput) nameInput.value = p.name;
                 if(cssInput) { spreadBubbleCss(p.css); syncBasicUiFromCss(p.css); }
                 if(delBtn) delBtn.style.display = p.isDefault ? 'none' : 'block';
-                
-                const typeEl = document.getElementById('setting-bubble-type');
-                if(typeEl) typeEl.value = 'normal';
-                const sideEl = document.getElementById('setting-bubble-side');
-                if(sideEl) sideEl.value = 'sent';
 
-                currentSelectType = 'normal_sent';
-                const labelEl = document.getElementById('current-type-label');
-                if(labelEl) labelEl.textContent = '普通气泡 - 我方';
-                updateUIFromState();
+                // 三个「修改对象」下拉的归位 + 控件回显都在 syncBasicUiFromCss 里做完了
+                // （它开头 resetEditTargets()、结尾 updateUIFromState()）。
+                // 这里原先手抄了一遍那几行，而且把 `currentFooterTarget = 'send'` 落在了
+                // updateUIFromState **后面** —— 新预设要是藏了发送键，syncConditionalRows
+                // 刚把选中项顶到「AI 回复按钮」，这一行又偷偷把状态改回 'send'，
+                // 于是下拉显示的和实际在改的不是同一个按钮。别再往这里加归位代码。
 
                 // 换了预设就回到第一页：下面的面板跟着回到「气泡」，
                 // 否则上一次停在底栏、换完预设看到的还是底栏那组控件。
-                currentFooterTarget = 'send';
                 setPreviewMode(0);
                 if(window.showToast) showToast(`已加载预设: ${p.name}`);
                 modal.style.display = 'none'; modal.classList.remove('visible');
@@ -2779,21 +2841,15 @@ function syncBasicUiFromCss(css) {
         syncBasicUiFromCss('');
         generateCssFromState();
     }
-    
-    const initTypeEl = document.getElementById('setting-bubble-type');
-    if(initTypeEl) initTypeEl.value = 'normal';
-    const initSideEl = document.getElementById('setting-bubble-side');
-    if(initSideEl) initSideEl.value = 'sent';
 
-    currentSelectType = 'normal_sent';
-    const initLabelEl = document.getElementById('current-type-label');
-    if(initLabelEl) initLabelEl.textContent = '普通气泡 - 我方';
-
-    updateUIFromState();
+    // 「修改对象」的归位 + 控件回显同样由 syncBasicUiFromCss 一手做完
+    // （开头 resetEditTargets()、结尾 updateUIFromState()）。这里原先手抄了一遍，
+    // 并且把 `currentFooterTarget = 'send'` 写在了 updateUIFromState 后面 ——
+    // 「默认」预设本身就藏了发送键的话，刚启动就是「下拉显示 AI 回复按钮、
+    // 实际在改发送键」，不换预设也能复现「改了色没反应」。详见 resetEditTargets。
 
     // 初始态：预览停在第一页，下面的面板也就是「基础 → 气泡」。
     currentAppearanceTab = 'basic';
-    currentFooterTarget = 'send';
     setPreviewMode(0);
 }
 
