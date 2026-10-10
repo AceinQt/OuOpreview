@@ -363,7 +363,7 @@
                 <div class="bottom-btn-card" id="bottom-btn-card">
                     <!-- data-tab 是「分组」而不是面板 id：「基础」下面挂着三块面板
                          （气泡/顶栏/底栏），具体显示哪一块由预览翻到了哪个视图决定，
-                         见 bubble_css_preset.js 的 BASIC_PANE_IDS / syncAppearancePane。 -->
+                         见 bubble_css/css_io.js 的 BASIC_PANE_IDS / syncAppearancePane。 -->
                     <div class="bottom-btn">
                         <button class="side-tab-btn active" data-tab="basic">基础</button>
                         <button class="side-tab-btn" data-tab="css">高级</button>
@@ -517,7 +517,7 @@
 
                 <!-- 「基础」的第二块：顶栏。预览翻到「顶部栏」视图时顶替上面那块。
                      ★ 说明一律不铺在页面上，收进小标题右边的问号 —— 文案注册在
-                     bubble_css_preset.js 的 AppHelp.register('bubble', …)，弹窗机制在
+                     bubble_css/help_text.js 的 AppHelp.register('bubble', …)，弹窗机制在
                      js/core/utils.js 的 AppHelp。以前这里是 5 条摊开的 .setting-hint，
                      加起来比设置项本身还高，一屏装不下两个开关。 -->
                 <div id="pane-basic-header" class="content-pane">
@@ -764,7 +764,7 @@
 
                 <!-- 栏目二：自定义 CSS -->
                 <!-- 两个框：上面可编辑、只装用户手写的；下面只读、装自动生成的区块（默认折叠）。
-                     拆开的原因见 bubble_css_preset.js 顶部那段注释 —— 合在一个 textarea 里时
+                     拆开的原因见 bubble_css/css_io.js 顶部那段注释 —— 合在一个 textarea 里时
                      用户改自己那几行很容易连带改到生成区块。落盘仍然是一个字段。 -->
                 <div id="pane-css" class="content-pane">
                     <div class="settings-group-title">
@@ -8363,9 +8363,20 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
     <script src="js/chat/proactive_prompt.js"></script>
     <script src="js/chat/group_prompt.js"></script>
     <script src="js/chat/char_import.js"></script>
-    <!-- scope 改写器要排在 bubble_css_preset / chat_settings 前面：两边都调它 -->
+    <!-- scope 改写器要排在 bubble_css/* 与 chat_settings 前面：两边都调它 -->
     <script src="js/chat/bubble_css_scope.js"></script>
-    <script src="js/chat/bubble_css_preset.js"></script>
+    <!-- 外观系统（原 bubble_css_preset.js，3074 行拆成 9 份）。
+         顺序不能乱：state 先声明共享状态，help_text 最后（加载时就 register）。
+         整组必须夹在 bubble_css_scope.js 之后、chat_settings.js 之前。 -->
+    <script src="js/chat/bubble_css/state.js"></script>
+    <script src="js/chat/bubble_css/css_io.js"></script>
+    <script src="js/chat/bubble_css/store.js"></script>
+    <script src="js/chat/bubble_css/preview.js"></script>
+    <script src="js/chat/bubble_css/generate.js"></script>
+    <script src="js/chat/bubble_css/panel.js"></script>
+    <script src="js/chat/bubble_css/parse.js"></script>
+    <script src="js/chat/bubble_css/wire.js"></script>
+    <script src="js/chat/bubble_css/help_text.js"></script>
     <script src="js/chat/chat_list.js"></script>
     <script src="js/chat/chat_settings.js"></script>
     <script src="js/chat/chat_search.js"></script>

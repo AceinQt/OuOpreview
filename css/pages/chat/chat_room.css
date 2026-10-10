@@ -186,7 +186,7 @@
      2. 折叠通话气泡和 peek 消息页（js/peek/peek_messages.js）都是裸的 img.message-avatar，
         没这层壳。display:contents 让「有壳/没壳」表现一致，不用去同步那几处。
    下面 flex-direction / align-items / gap 在 display:contents 下全是惰性的，
-   等「头像下方」那个选项把 display 翻成 flex（生成端在 bubble_css_preset.js）才生效。 */
+   等「头像下方」那个选项把 display 翻成 flex（生成端在 bubble_css/generate.js）才生效。 */
 .message-avatar-col {
     display: contents;
     flex-direction: column;
@@ -207,7 +207,7 @@
 /* max-width 里那个 `+ var(--bub-stroke-x)` 是**描边补偿**，不是装饰：
    reset.css 给 * 置了 border-box，于是用户一给气泡加描边，描边就直接从**正文可用宽**里扣
    —— 实测 375px 宽的屏上 1px 描边就让每行少一个字（14 → 13），右边凭空空出一截
-   （用户原话「每行就少了一个字，导致右边很空」）。生成端 bubble_css_preset.js 的描边分支
+   （用户原话「每行就少了一个字，导致右边很空」）。生成端 bubble_css/generate.js 的描边分支
    按用户勾的描边方向算出左右两边占了几像素，写进这个变量。
    ★ 这里和下面 .message-bubble 的 260px **两处都得加**：窄屏是这条 70% 在夹人，
      宽屏是那条 260px 在夹人，只补一处，另一半屏宽照旧掉字。两处加同一个量，
@@ -273,7 +273,7 @@
 
 
 /* 每条消息的时间，一共三个槽位，气泡工厂对每条消息都把三个都画出来，
-   由外观 → 基础 →「消息时间」那个下拉决定放开哪一个（生成端见 bubble_css_preset.js 的
+   由外观 → 基础 →「消息时间」那个下拉决定放开哪一个（生成端见 bubble_css/generate.js 的
    timePos 分支）。默认三个全关 = 「不显示」。
      · .message-time        气泡上方（meta 行里，群聊那行还带身份标签和昵称）
      · .message-time-avatar 头像下方（在 .message-avatar-col 里）
@@ -756,7 +756,7 @@
 /* 我方旁白（用户自己在"+"面板发的剧情旁白）的**默认**样子：除了不画描边，其余和
    对方（AI）旁白一致。
    ★ 这条只是默认值，不是强制。外观里「旁白气泡」已经分我方/对方两套独立设置
-     （bubble_css_preset.js 的 narration_sent / narration_received），用户给我方调了描边
+     （bubble_css/state.js 的 narration_sent / narration_received），用户给我方调了描边
      的话，生成端会出一条带 ID 作用域 + !important 的规则盖掉这里。
      生成端曾经硬写过一条「我方一律 border:none」来区分两者 —— 拆成两套之后那条被删了，
      留着它会让用户刚调好的我方描边当场消失。
@@ -773,7 +773,7 @@
    ★ 只和**同类**拼接：我方旁白只跟我方连，AI 旁白只跟 AI 连。
      混着连的话一张大卡片会上半截没描边、下半截挂着描边，看着像画坏了。
      区分靠 narration-mine：带它的是我方，:not(.narration-mine) 的是 AI。
-     生成端 bubble_css_preset.js 里那几条是照这个分组抄的，改这里要一起改。
+     生成端 bubble_css/generate.js 里那几条是照这个分组抄的，改这里要一起改。
    ========================================= */
 
 /*
