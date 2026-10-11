@@ -2887,6 +2887,13 @@
 
                     <div class="voice-test-result" id="api-voice-test-result" hidden></div>
                     <audio class="voice-preview-player" id="api-voice-preview-player" controls hidden></audio>
+                    <!-- 试听是真花钱的一次合成，所以别让它响一遍就没了：这两颗管「再听一遍」
+                         和「存下来」。没音频时禁用而不隐藏，否则用户不知道还能下载。
+                         原生 controls 留着是为了进度条，播放键的字由播放器事件同步。 -->
+                    <div class="btn-group voice-preview-btns">
+                        <button type="button" class="btn btn-neutral" id="api-voice-replay-btn" disabled style="margin-bottom: 0;">播放</button>
+                        <button type="button" class="btn btn-neutral" id="api-voice-download-btn" disabled style="margin-bottom: 0;">下载</button>
+                    </div>
 
                     <p class="voice-group-title">用量</p>
 
@@ -6720,8 +6727,8 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
             </div>
             <div class="collapsible-content">
                 <div class="form-group mb-0">
-                    <textarea id="voice-setting-tone" rows="3" placeholder="约束模型怎么写语音消息的文字。例如：语气慵懒随性，多用语气词和停顿，别说书面语" maxlength="300" class="mb-0"></textarea>
-                    <p class="field-hint">这段注入给语言模型，只管语音消息的文字怎么写，不影响普通消息。留空则一个字都不注入。</p>
+                    <textarea id="voice-setting-tone" rows="6" placeholder="约束模型怎么写语音消息的文字。例如：语气慵懒随性，多用语气词和停顿，别说书面语" maxlength="2000" class="mb-0"></textarea>
+                    <p class="field-hint">这段注入给语言模型，只管语音消息的文字怎么写，不影响普通消息。留空则一个字都不注入。最多 2000 字，够整段贴服务商的官方语气词/停顿写法。</p>
                 </div>
             </div>
         </div>

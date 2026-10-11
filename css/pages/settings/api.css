@@ -347,6 +347,19 @@
     margin-top: 12px;
 }
 
+/* 试听的「播放 / 下载」按钮行。同 .image-preview-btns：全局 .btn-group 是
+   "固定 50px 高 + 子按钮 width:100%"，两颗在手机上会溢出，高度得交还给内容。 */
+.voice-preview-btns {
+    height: auto;
+    margin-top: 10px;
+    gap: 10px;
+}
+
+.voice-preview-btns .btn {
+    flex: 1 1 0;         /* 两颗等分整行，随屏宽伸缩 */
+    min-width: 0;        /* flex 子项默认 min-width:auto 会撑破，必须归零 */
+}
+
 /* 分组小标题（语音 tab 字段多，靠它把「用量」单独分出一段） */
 .voice-group-title {
     margin: 26px 2px 12px;
