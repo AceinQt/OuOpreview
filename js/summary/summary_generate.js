@@ -72,15 +72,14 @@ async function _fetchCompletion(cfg, body) {
  /**
  * 判断一条消息是否为纯图片消息（base64 或 url 格式）。
  * 图片消息不应参与字数统计，否则会因 base64 超长而单独成块。
+ *
+ * ★ 真正的判断在 core/utils.js 的 isImageOnlyMessage / messageToPlainText。
+ *   这里只留两个薄壳保住原有调用点 —— 同一份「消息→文本」的规则还被
+ *   memory_retrieval.js 的向量查询用着，两边分叉过一次（向量那头把整条
+ *   base64 当查询文本发出去，撞 embedding 输入上限），所以不再各写一份。
  */
 function _isImageOnlyMsg(m) {
-    const c = m.content;
-    if (!c) return false;
-    // base64 图片
-    if (typeof c === 'string' && c.startsWith('data:image/')) return true;
-    // array-format content（Gemini 多模态格式），仅含 image 部分
-    if (Array.isArray(c) && c.every(part => part.type === 'image_url' || part.type === 'image')) return true;
-    return false;
+    return isImageOnlyMessage(m);
 }
 
 /**
@@ -88,13 +87,7 @@ function _isImageOnlyMsg(m) {
  * 图片统一替换为占位符，避免 base64 撑爆字数限制。
  */
 function _getMsgDisplayText(m, getName) {
-    if (_isImageOnlyMsg(m)) return `${getName(m)}: [发送了一张图片]`;
-    // array-format 含图含文：只取文字部分
-    if (Array.isArray(m.content)) {
-        const text = m.content.filter(p => p.type === 'text').map(p => p.text).join('');
-        return `${getName(m)}: ${text || '[图片]'}`;
-    }
-    return `${getName(m)}: ${m.content}`;
+    return `${getName(m)}: ${messageToPlainText(m, '[发送了一张图片]')}`;
 }
  
  
@@ -268,9 +261,11 @@ const rawChunks = _buildSummaryChunks(rawFiltered, chat.chunkGranularity || 10);
             .map((c, i) => `=== 片段${i}（共${c.msgs.length}条消息）===\n${c._text}`)
             .join('\n\n');
     } else {
+        // 日记分支同样要折图片 —— 以前这里是裸 `m.content`，
+        // 范围里只要有一张上传图，整条 base64 就进了日记 prompt。
         messagesToSummarize = rangeMsgs
             .filter(_filterMsg)
-            .map(m => `${_getName(m)}: ${m.content}`)
+            .map(m => _getMsgDisplayText(m, _getName))
             .join('\n');
     }
 

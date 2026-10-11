@@ -540,6 +540,27 @@ function setupChatRoom() {
     // 【核心修复】双向滚动监听 (加入无感预加载)
     // ==========================================
     messageArea.addEventListener('scroll', () => {
+        // ⚠️ 隐藏态送达的 scroll 事件一律丢掉 —— 这不是防御性冗余，是修一个真 bug。
+        //    `.screen` 之间靠 display:none 互斥，而 display:none 的元素**没有布局盒**，
+        //    scrollTop / scrollHeight / clientHeight 三个读数全是 0（实测）。于是下面
+        //    两个判据在隐藏态**双双无条件成立**：上翻 `0 < 50`、下翻 `0-0-0 < 50`，
+        //    等于凭空替用户滚了一次到顶 + 一次到底。
+        //    事件从哪来：scroll 事件是**异步派发**的。离开聊天室时 _screenLeaveHooks 先调
+        //    closeChatRoomPanels → setChatExpansionPanelOpen(false) → `scrollTop -= h`
+        //    （见那个函数第 ④ 条），此时页面还可见；紧接着同一个 task 里 switchScreen 把
+        //    聊天室 display:none 掉，排队中的 scroll 事件这才送达 —— 处理器重新读 scrollTop
+        //    就读成 0 了。所以只要「从 + 面板点进记忆总结/喵坛等别的页」就会踩上。
+        //    后果不在当场而在返回时：loadMoreMessages 延迟 200ms 渲染，人在那边多待一会儿
+        //    （比如在详情页滑两下）这一页就在隐藏态前插进 DOM，而 renderMessages 的位置补偿
+        //    `newScrollHeight - oldScrollHeight + oldScrollTop` 三项全是 0、完全失效；
+        //    Chrome 在重新显示时会把隐藏前那个「贴底」偏移量原样恢复，上方却凭空多了一页
+        //    （MESSAGES_PER_PAGE=50 条），表现为「返回聊天室后往上翻了很多」。
+        //    秒回则 200ms 还没到、渲染发生在可见态，补偿正常 —— 这就是它时灵时不灵的原因。
+        //    用 clientHeight 而不是查 #chat-room-screen 有没有 .active：0 高度正是
+        //    「这些读数不可信」的充要条件，顺带盖住别的隐藏方式（见记忆里那条
+        //    「属性读数和几何量值对不上时信几何」）。
+        if (!messageArea.clientHeight) return;
+
         // 1. 向上滚动：加载历史消息 (Older)
         if (messageArea.scrollTop < 50) {
             const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
@@ -1308,6 +1329,23 @@ function _calcInitialStart(chat) {
 function renderMessages(isLoadMore = false, forceScrollToBottom = false) {
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
     if (!chat || !chat.history) return;
+
+    // ⚠️ 第二道闸：**前插这一页绝不能在隐藏态执行**。
+    //    上面那个 scroll 守卫挡住的是「隐藏态凭空触发」，这里挡的是另一半 ——
+    //    用户**真的**滚到顶触发了加载，然后在渲染落地前离开了聊天室：
+    //    loadMoreMessages 要等 200ms，loadOlderFromDB 还要 await 一次 DB 读，
+    //    这两个窗口里换页完全来得及。一旦落在隐藏态，下面场景 B 的位置补偿
+    //    `newScrollHeight - oldScrollHeight + oldScrollTop` 三项全读成 0（没有布局盒），
+    //    补偿变成空操作，而 DOM 顶部已经实实在在多了一页 —— 返回时 Chrome 恢复
+    //    隐藏前的偏移量，人就被顶到一页之上，和那个 bug 一模一样。
+    //    直接放弃本次渲染并解锁：数据和游标都没动（loadOlderFromDB 的 unshift + 游标平移
+    //    已经自洽，只是 DOM 还没吃到这一页），下次可见态滚到顶会自然补上，不会丢消息。
+    //    只拦 isLoadMore：全量重绘（场景 C）不靠补偿、自己会 forceToBottom，隐藏态跑也无害，
+    //    而且进聊天室那一下本来就可能赶在显示之前。
+    if (isLoadMore && !messageArea.clientHeight) {
+        isLoadingHistory = false;
+        return;
+    }
 
     // 1. 【关键】记录插入前的滚动高度和当前滚动位置
     const oldScrollHeight = messageArea.scrollHeight;
