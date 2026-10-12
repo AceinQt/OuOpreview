@@ -883,7 +883,12 @@ function _showCallOverlay(callMode, chat, isIncoming = false) {
     const bgBlur = document.getElementById('call-bg-blur');
     if (bgBlur) {
         if (chat.avatar) {
-            bgBlur.style.backgroundImage = `url('${chat.avatar}')`;
+            // 同一张图发给里面两层：far 是重模糊兜底（背景图）、near 是主层（<img>），
+            // 为什么非得拆成两层、为什么主层是 img，见 call_overlay.css 那段注释
+            const far = document.getElementById('call-bg-far');
+            const near = document.getElementById('call-bg-near');
+            if (far) far.style.backgroundImage = `url('${chat.avatar}')`;
+            if (near) near.src = chat.avatar;
             bgBlur.style.display = 'block';
         } else {
             bgBlur.style.display = 'none';

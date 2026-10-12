@@ -766,12 +766,35 @@ async function generateLongTermSummaryContent(startDateStr, endDateStr) {
         const chat = getCurrentChatObject();
         if (!chat) throw new Error("未找到聊天对象");
 
+        // 0. 范围端点也规范一遍：长期总结详情页现在允许手改日期范围，
+        //    手打的 `2025-10-1` 不收拾干净的话，比较的两边就又对不齐了。
+        startDateStr = normalizeDateStr(startDateStr) || startDateStr;
+        endDateStr   = normalizeDateStr(endDateStr)   || endDateStr;
+
         // 1. 筛选当前时间范围内的短期总结（素材）
-        const shortSummaries = (chat.memorySummaries || []).filter(item => {
-            if (!item.occurredAt) return false;
-            const itemDate = item.occurredAt.split(' ')[0];
-            return itemDate >= startDateStr && itemDate <= endDateStr;
-        });
+        //    发生日期一律过 normalizeDateStr 再比大小：这里是字典序比较，
+        //    没零填充的 `2025-10-9` 会被 `2025-10-10` 判成「超出范围」而整天漏掉
+        //    （连带那天的收藏也取消不掉）。详见 summary_core.js 的注释。
+        //    另外按日期排序后再喂给 LLM —— memorySummaries 是按**创建顺序**存的，
+        //    事后补写的某天会插在错位置，而 Prompt 要求「按时间发展脉络撰写」。
+        const skippedNoDate = [];
+        const shortSummaries = (chat.memorySummaries || [])
+            .filter(item => {
+                const itemDate = normalizeDateStr(item.occurredAt);
+                if (!itemDate) {
+                    // 日期为空/无法识别 → 没法判断在不在范围内，只能跳过；
+                    // 但如果它是收藏过的，用户多半是指望它进来的，末尾提示一声别闷着。
+                    if (item.isFavorited) skippedNoDate.push(item);
+                    return false;
+                }
+                return itemDate >= startDateStr && itemDate <= endDateStr;
+            })
+            .sort((a, b) => {
+                const dateA = normalizeDateStr(a.occurredAt);
+                const dateB = normalizeDateStr(b.occurredAt);
+                if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+                return (a.createdAt || 0) - (b.createdAt || 0);
+            });
 
         if (shortSummaries.length === 0) {
             throw new Error(`在 ${startDateStr} 至 ${endDateStr} 期间没有找到可用的短期总结。`);
@@ -791,7 +814,7 @@ async function generateLongTermSummaryContent(startDateStr, endDateStr) {
                     .join('；');
                 if (highlights) annotation = `\n⚑ 非日常亮点：${highlights}`;
             }
-            return `[日期: ${s.occurredAt.split(' ')[0]}] ${s.title}\n${getShortSummaryContent(s, chat)}${annotation}`;
+            return `[日期: ${normalizeDateStr(s.occurredAt)}] ${s.title}\n${getShortSummaryContent(s, chat)}${annotation}`;
         }).join('\n\n----------------\n\n');
 
         // 2. 获取此日期之前的长期总结（历史背景）
@@ -922,7 +945,16 @@ const rawContent = await _fetchCompletion(_memCfg2, {
         // ★ V6：精准保存新生成的长期总结
         await saveMemoryItem(newItem, currentChatId, 'long');
         renderMemoryScreen();
-        showToast(`长期总结已生成！已取消 ${cancelCount} 条短期总结的收藏。`);
+
+        // 日期识别不出来的收藏条目要明说。以前这类条目是静悄悄漏掉的，
+        // 用户只能靠「收藏标志怎么还在」反推出少了一天。
+        let doneTip = `长期总结已生成！已取消 ${cancelCount} 条短期总结的收藏。`;
+        if (skippedNoDate.length > 0) {
+            doneTip += `另有 ${skippedNoDate.length} 条已收藏的总结因发生日期为空或无法识别，未纳入素材。`;
+            console.warn('[长期总结] 以下已收藏的短期总结日期无法识别，未纳入素材：',
+                skippedNoDate.map(s => ({ id: s.id, title: s.title, occurredAt: s.occurredAt })));
+        }
+        showToast(doneTip);
 
     } catch (error) {
         console.error(error);
