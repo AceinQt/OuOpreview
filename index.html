@@ -3629,7 +3629,7 @@
         <h2 id="summary-detail-title"></h2>
         
         <div class="date-edit-container">
-            <span>发生时间:</span>
+            <span id="summary-date-label">发生时间:</span>
             <input type="text" id="summary-occurred-at" class="date-edit-input" placeholder="YYYY-MM-DD" readonly>
             <span id="summary-range-display" style="margin-left: auto;"></span>
         </div>
@@ -7311,7 +7311,11 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
        等待接通屏
        ══════════════════════════════════════════ -->
   <div id="call-waiting">
-    <div id="call-bg-blur"></div>
+    <div id="call-bg-blur">
+      <!-- far = 宽屏兜底的重模糊底层，near = 纵向铺满的主层；同一张图两层，见 call_overlay.css -->
+      <div id="call-bg-far"></div>
+      <img id="call-bg-near" alt="">
+    </div>
 
     <!-- 姓名 + 状态 -->
     <div id="call-waiting-info">
