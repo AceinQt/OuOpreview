@@ -3264,13 +3264,21 @@
                <!--  Card 4: 数据瘦身与修复  -->
         <div class="storage-card cloud-card" id="cleanup-card">
             <div class="cloud-left">
-                <!-- 蓝绿色的清理图标 -->
+                <!-- 清扫图标。项目里原先没有任何扫把素材（broom/sweep/扫把/清扫 全无命中），
+                     这张是为此新画的：柄 + 宽梯形头 + band + 3 根鬃毛，线宽 2/24，
+                     和 svgrepo 那批素材的环宽对齐。斜置的画法在 24px 下会糊成一团，
+                     别"优化"回斜的。
+                     ⚠️ class="ic-line" 不能省，见 storage.css 里 .cloud-icon-bg svg.ic-line
+                     那段 —— 少了它会被 fill:white 填成实心块。这个位置原先放的是
+                     feather trash-2（本身也是线性的），就是因为少这一条才糊成一团的。 -->
                 <div class="cloud-icon-bg">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    <svg class="ic-line" viewBox="0 0 24 24">
+                        <path d="M13.5 2.5 L12 11"/>
+                        <path d="M7.5 11 H16.5 L18 20 H6 Z"/>
+                        <path d="M6.6 15.5 H17.4"/>
+                        <path d="M9.6 15.5 V20"/>
+                        <path d="M12 15.5 V20"/>
+                        <path d="M14.4 15.5 V20"/>
                     </svg>
                 </div>
                 <div>
@@ -3279,7 +3287,27 @@
                 </div>
             </div>
             <div class="cloud-actions">
-                <button id="btn-cleanup-duplicates" class="btn-export-sm">清理</button>               
+                <button id="btn-cleanup-duplicates" class="btn-export-sm">清理</button>
+            </div>
+        </div>
+               <!--  Card 5: 清除所有数据  -->
+        <div class="storage-card cloud-card" id="wipe-all-card">
+            <div class="cloud-left">
+                <!-- 线性垃圾桶，复用项目里用得最多那一张（删人设/删角色/解散群/清控制台/
+                     论坛收藏管理/删帖/删世界书条目/批量删除 共 8 处都是它）：桶身收腰、
+                     桶盖圆角走贝塞尔曲线。同样必须挂 ic-line。 -->
+                <div class="cloud-icon-bg">
+                    <svg class="ic-line" viewBox="0 0 24 24">
+                        <path d="M19 7L18.1327 19.1425C18.0579 20.1891 17.187 21 16.1378 21H7.86224C6.81296 21 5.94208 20.1891 5.86732 19.1425L5 7M10 11V17M14 11V17M15 7V4C15 3.44772 14.5523 3 14 3H10C9.44772 3 9 3.44772 9 4V7M4 7H20"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="cloud-title">清除所有数据</div>
+                    <div class="cloud-desc">删除本机全部记录，不可撤销</div>
+                </div>
+            </div>
+            <div class="cloud-actions">
+                <button id="btn-wipe-all-data" class="btn-export-sm">清除</button>
             </div>
         </div>
 </main>
