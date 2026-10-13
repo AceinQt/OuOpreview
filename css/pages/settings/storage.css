@@ -146,7 +146,10 @@
 .storage-item-right {
     display: flex;
     align-items: center;
-    gap: 20px; /* 大小和按钮之间的距离 */
+    /* 原先是 20px。加了删除按钮后右侧最多要放「体积 + 说明文字 + 两颗按钮」，
+       20px 的间距在 375px 屏上会把按钮挤出卡片。实测 10px 下
+       「本地媒体 1000.00 MB 不参与备份 [删]」仍有余量。 */
+    gap: 10px;
 }
 
 .storage-detail-size {
@@ -179,6 +182,64 @@
     background: var(--accent-color);
 }
 
+/* ── 详情列表里的图标按钮（删除 / 导出）─────────────────────────
+   ⚠️ 别把 .btn-export-sm 本身改成图标尺寸：那个类还被 GitHub 卡片的
+   上传/下载/配置 和「重复数据清理」的清理按钮用着，它们都是文字按钮，
+   动基类会把那四颗一起压扁。所以另立一个变体类，只给详情行用。
+
+   颜色刻意和导出键完全一致（用户明确要求"不要红色，会比较丑"）——
+   两颗按钮靠图标区分，防误删靠的是两道「必须手打确认短语」的弹窗，
+   不靠颜色警示。改配色前先想清楚这一点。 */
+.storage-item-btns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.btn-icon-sm {
+    border: none;
+    background: var(--primary-color, #007bff);
+    color: #fff;
+    width: 30px;
+    height: 26px;
+    border-radius: 8px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 线型素材：几何写在 svg 里，颜色和线宽全从 CSS 给。
+   ⚠️ fill:none 必须显式写出来 —— 表现属性（标签上的 fill="none"）
+   在任何一条 CSS fill 规则面前都没有优先级，漏了就会被填成实心块。 */
+.btn-icon-sm svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.btn-icon-sm:active {
+    filter: brightness(0.9);
+    transform: scale(0.98);
+}
+
+.btn-icon-sm:disabled {
+    background: var(--accent-color);
+    opacity: 0.7;
+}
+
 /* --- 卡片 3: GitHub --- */
 .cloud-card {
     display: flex;
@@ -206,6 +267,21 @@
     fill: white;
     width: 24px;
     height: 24px;
+}
+
+/* ★ 线型图标（.ic-line）必须在这里显式 fill:none。
+   上面那条 .cloud-icon-bg svg{fill:white} 会把标签上的 fill="none" 整个盖掉
+   —— 表现属性在 CSS 面前没有优先级（同 chat_modal.css 里 .ic-line 那段的说明），
+   于是描边路径被填成白色实心块，24px 下看着就是"一团"。
+   「重复数据清理」那个垃圾桶图标本身是线性的 feather trash-2，
+   糊掉纯粹是因为少了这一条，换图标不加这条照样是一团。
+   新素材一律挂 class="ic-line"；GitHub 那颗是面型实心路径，不要挂。 */
+.cloud-icon-bg svg.ic-line {
+    fill: none;
+    stroke: white;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .cloud-title {
