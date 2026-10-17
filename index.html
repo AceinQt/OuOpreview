@@ -2584,6 +2584,14 @@
                         </label>
                     </div>
                     
+                    <div class="form-group form-group-switch" id="api-chat-flex-row" hidden>
+                        <label for="api-chat-flex" title="仅支持的模型可按 Flex 五折档处理；可能排队或返回 429/503，不自动降级全价。聊天与识图等跟随此文字预设，已有自动超时至少 10 分钟；Vertex 需 global，中转代理需确认透传。">Flex 弹性推理（五折）</label>
+                        <label class="switch">
+                            <input type="checkbox" id="api-chat-flex">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
                     <div class="form-group form-group-switch">
                         <label for="api-chat-compat" title="不含图片的消息将以纯文本格式发送，解决部分中转站报错">兼容模式</label>
                         <label class="switch">
@@ -7256,7 +7264,8 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
             <div id="vision-api-hint">
                 选"同聊天API"则跟随每个聊天各自的 API 设置；一旦在此指定预设，所有聊天的图片转化都使用设置的api。<br>
                 请选择支持识图（视觉）的模型，否则转化会失败。<br>
-                超时默认 120 秒，网络差或图片大的时候老是提示"请求超时"就往上调；范围 10–600，留空按默认。
+                超时默认 120 秒，网络差或图片大的时候老是提示"请求超时"就往上调；范围 10–600，留空按默认。<br>
+                所选 Gemini / Vertex 文字预设开启 Flex 时，本次实际等待至少 600 秒，不改写这里保存的秒数。
             </div>
             <div class="btn-group">
                 <button type="submit" class="btn btn-primary">保存设置</button>
