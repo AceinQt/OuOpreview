@@ -68,7 +68,10 @@ const API_TAB_DEFS = {
         modelRequiredMsg: '请选择模型后保存！',
         providerUrls: CHAT_PROVIDER_URLS,
         providerFields: [
-            { rowId: 'api-chat-project-row', providers: ['vertexExpress'] }
+            { rowId: 'api-chat-project-row', providers: ['vertexExpress'] },
+            // 本站仅给 Google 原生两条线开放：Gemini 用 body，Vertex 用 Flex 头。
+            // 中转站/其他 provider 是否另有计费参数不能靠模型名猜。
+            { rowId: 'api-chat-flex-row', providers: ['gemini', 'vertexExpress'] }
         ],
         fields: [
             { key: 'provider', kind: 'text',        blank: 'newapi', get: s => s.provider || 'newapi' },
@@ -94,6 +97,14 @@ const API_TAB_DEFS = {
             {
                 key: 'compatibilityModeEnabled', id: 'compat', kind: 'check', blank: false,
                 get: s => !!s.compatibilityModeEnabled
+            },
+            // Flex 弹性推理（五折）。缺字段＝关闭 —— 这是花钱相关的开关，
+            // 绝不能像 streamEnabled 那样"缺字段当开启"：老预设升上来会被静默改计费档。
+            // 实际注入在 llm_client.js 的 buildLLMRequest/buildLLMRequestTarget，
+            // callLLM 和自己组装 body 的聊天/识图都走共享入口。
+            {
+                key: 'flexEnabled', id: 'flex', kind: 'check', blank: false,
+                get: s => !!s.flexEnabled
             },
             {
                 key: 'temperature', id: 'temp', kind: 'range', blank: 0.8,
