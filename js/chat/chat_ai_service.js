@@ -781,8 +781,9 @@ async function getAiReply(chatId, chatType, isBackground = false, proactiveApiPr
             x.name === _overrideName && (!x.type || x.type === 'chat')
         );
         if (_preset && _preset.data) {
-            // 合并：预设覆盖全局
-            effectiveApiSettings = { ...db.apiSettings, ..._preset.data };
+            // 其余字段保留全局兜底；Flex 属于当前预设，旧预设缺字段就是关闭。
+            effectiveApiSettings = { ...db.apiSettings, ..._preset.data,
+                flexEnabled: !!_preset.data.flexEnabled };
         }
     }
     
@@ -1083,10 +1084,11 @@ const activeReinforcement = offlineReinforcement || callReinforcement;
 requestBody = { model: model, messages: apiMessages, stream: streamEnabled, temperature: _temp };
         }
 
-        // 端点与鉴权头统一由 llm_client.js 的 buildLLMRequestTarget 决定
-        // （多 key 轮询也在它内部做，所以这里不用再 getRandomValue）
-        const { endpoint, headers } = buildLLMRequestTarget(
+        // 聊天保留自己的 prompt/SSE 渲染，但发送前必须过共享请求构造，
+        // 只借端点函数会漏掉 Gemini 的 Flex body（曾经开关开着也没发出去）。
+        const { endpoint, headers, body } = buildLLMRequest(
             normalizeLLMConfig(effectiveApiSettings),
+            requestBody,
             { stream: streamEnabled }
         );
 
@@ -1094,7 +1096,7 @@ requestBody = { model: model, messages: apiMessages, stream: streamEnabled, temp
 const response = await fetch(endpoint, {
     method: 'POST',
     headers: headers,
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(body),
     signal: callAbortController.signal                // ← 挂载信号
 });
         if (!response.ok) {

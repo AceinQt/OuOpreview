@@ -152,15 +152,14 @@
                 return clampVisionTimeoutSec((db.globalVisionSettings || {}).timeoutSec);
             }
 
-            // 调识图 API，返回图片的文字描述（非流式，超时秒数见 _getVisionTimeoutSec）
+            // 调识图 API，返回图片的文字描述。Flex 时实际等待至少 10 分钟，
+            // 只扩大本次请求，不改写用户保存的普通识图超时秒数。
             async function requestImageDescription(dataUrl, chat) {
-                const cfg = _getVisionApiConfig(chat);
+                const cfg = normalizeLLMConfig(_getVisionApiConfig(chat));
                 const { url, key, model, provider } = cfg;
                 if (!url || !key || !model) throw new Error('识图API未配置完整');
 
-                // 端点与鉴权头统一由 llm_client.js 决定（多 key 轮询也在它内部）
-                const { endpoint, headers } = buildLLMRequestTarget(cfg, { stream: false });
-                const timeoutSec = _getVisionTimeoutSec();
+                const timeoutSec = getLLMTimeout(cfg, _getVisionTimeoutSec() * 1000) / 1000;
                 const controller = new AbortController();
                 const timer = setTimeout(() => controller.abort(), timeoutSec * 1000);
 
@@ -198,10 +197,13 @@
                         };
                     }
 
-                    const response = await fetch(endpoint, {
+                    // 识图自己保留图文组装/解析，但 Flex 与聊天共用发送入口，
+                    // 不能只借端点和鉴权头，否则 Gemini 的顶层计费字段会漏掉。
+                    const request = buildLLMRequest(cfg, body, { stream: false });
+                    const response = await fetch(request.endpoint, {
                         method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify(body),
+                        headers: request.headers,
+                        body: JSON.stringify(request.body),
                         signal: controller.signal
                     });
 
