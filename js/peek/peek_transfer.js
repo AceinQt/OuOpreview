@@ -201,7 +201,7 @@ https://example.com/interesting-article
 #SECRET_CHAT_NOON_85%#[12:15|${senderName}的消息:我前阵子看到一篇关于心理学的文章，挺有意思的][12:16|${senderName}的消息:https://example.com/interesting-article]
 `;
 
-        const contentStr = await callPeekApi({ ...cfg, messages: [{ role: 'user', content: systemPrompt }] });
+        const contentStr = await callPeekApi({ ...cfg, feature: '偷看中转站生成', messages: [{ role: 'user', content: systemPrompt }] });
 
         const parts = contentStr.split(/===PROACTIVE_MESSAGES===/i);
         const transferRawText = parts[0] || '';

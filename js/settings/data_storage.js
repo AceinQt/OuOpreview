@@ -7,10 +7,11 @@ const dataStorage = {
     //     2-4 角色与聊天 / 记忆与向量 / 角色手机数据 —— 这三项一起导出，必须挨着
     //     5  个性化          —— 很多也是聊天相关的设置
     //     6  世界书          —— 体积小，但几乎所有功能都用到
-    //     7  喵坛            —— 聊天之外最占空间的，但本身依赖聊天+世界书
-    //     8  ToDouo
-    //     9  游戏            —— 体积很小，同样依赖聊天+世界书
-    //     10 本地媒体        —— 唯一不参与导出的，放最后
+    //     7  正则            —— 小型独立规则库，绑定在角色/群，内容单独导出
+    //     8  喵坛            —— 聊天之外最占空间的，但本身依赖聊天+世界书
+    //     9  ToDouo
+    //     10 游戏            —— 体积很小，同样依赖聊天+世界书
+    //     11 本地媒体        —— 唯一不参与导出的，放最后
     //   往下加新分类时**必须**同时加进这里，否则详情列表不会显示它
     //   （历史上语音/图片就是这么漏掉的）。
     categoryOrder: [
@@ -20,6 +21,7 @@ const dataStorage = {
         'peek',
         'personalization',
         'worldBooks',
+        'regex',
         'forum',
         'study',
         'rpg',
@@ -29,7 +31,7 @@ const dataStorage = {
     // ★ 配色 = 沿 categoryOrder 从深到浅的单色蓝渐变，一一对应，无重复色。
     //   为什么是渐变而不是"相邻色差最大化"：饼图的作用只是让人一眼看出**哪几项很大**，
     //   不需要分辨挨着的扇区 —— 精确数值下面的列表里有数字，看得更清楚。
-    //   而顺序本身已经把几个大项拉开了距离（角色与聊天 2、喵坛 7、ToDouo 8、本地媒体 10），
+    //   而顺序本身已经把几个大项拉开了距离（角色与聊天 2、喵坛 8、ToDouo 9、本地媒体 11），
     //   在渐变上自然落到深/中/浅不同段位，该区分的地方就已经区分开了。
     //   渐变还顺带保证了列表从上到下颜色是连续过渡的，比跳变好看。
     categoryColors: {
@@ -39,6 +41,7 @@ const dataStorage = {
         peek:            '#2E81C2',
         personalization: '#3991CC',
         worldBooks:      '#4EA2D8',
+        regex:           '#62ADDE',
         forum:           '#77B7E3',
         study:           '#A5D2F1',
         rpg:             '#CEE9FB',
@@ -52,6 +55,7 @@ const dataStorage = {
         peek:            '角色手机数据',
         personalization: '个性化',
         worldBooks:      '世界书',
+        regex:           '正则',
         forum:           '喵坛',
         study:           'ToDouo',
         rpg:             '游戏',
@@ -94,6 +98,7 @@ const dataStorage = {
             peek: 0,
             personalization: 0,
             worldBooks: 0,
+            regex: 0,
             forum: 0,
             study: 0,
             rpg: 0,
@@ -147,8 +152,11 @@ const dataStorage = {
             // ★ 1.5 偷看手机数据（单独统计，随角色导出，不提供独立导出）
             categorizedSizes.peek += stringify(db.peekData);
 
-            // 2. 世界书
+            // 2. 世界书：类别登记也归这里，只有空类别时仍可导出和清空。
             categorizedSizes.worldBooks += stringify(db.worldBooks);
+            categorizedSizes.worldBooks += stringify(db.worldBookCategories);
+            // 正则独立管理，不能因存于 globalSettings 就重复算入系统设置。
+            categorizedSizes.regex += stringify(db.regexCategories);
 
             // ★ 3. 记忆与向量（从独立表精确统计，不依赖内存挂载）
             if (typeof dexieDB !== 'undefined') {
@@ -205,7 +213,9 @@ const dataStorage = {
                 const countedElsewhere = new Set([
                     'wallpaper', 'customIcons', 'bubbleCssPresets', 'globalCss', 'globalCssPresets',
                     'homeSignature', 'insWidgetSettings', 'homeWidgetSettings',
-                    'studySettings'   // 归到 ToDouo
+                    'studySettings',  // 归到 ToDouo
+                    'worldBookCategories', // 世界书类别登记不算系统设置
+                    'regexCategories' // 正则规则库独立统计
                 ]);
                 globalSettingKeys.forEach(key => {
                     if (countedElsewhere.has(key)) return;
@@ -222,6 +232,18 @@ const dataStorage = {
                 categorizedSizes.settings += stringify(db.homeStatusBarColor);
                 categorizedSizes.settings += stringify(db.homeNavigationBarColor);
             }
+
+            // API 用量日志只存独立表、不挂载到内存 db，归入系统设置。
+            // 优先让账本模块流式统计；模块未加载时仍按游标累加，不能为算体积整表 toArray。
+            try {
+                if (typeof window.ApiUsageLedger?.storageSize === 'function') {
+                    categorizedSizes.settings += await window.ApiUsageLedger.storageSize();
+                } else if (typeof dexieDB !== 'undefined' && dexieDB.apiCallLogs) {
+                    await dexieDB.apiCallLogs.toCollection().each(row => {
+                        categorizedSizes.settings += stringify(row);
+                    });
+                }
+            } catch (e) { console.warn('[storage] API 用量日志统计失败:', e); }
 
 // ★ 8. ToDouo 模块
 categorizedSizes.study += stringify(db.studyBooks);
@@ -916,7 +938,7 @@ function setupWipeAllCard() {
             () => window.clearAllData(),
             '所有数据已清空。\n页面即将刷新。',
             '这会删除本机**全部**记录：角色与聊天、记忆与向量、角色手机数据、'
-            + '世界书、喵坛、ToDouo、游戏、个性化、系统设置（含各类 API 凭据）'
+            + '世界书、正则、喵坛、ToDouo、游戏、个性化、系统设置（含各类 API 凭据）'
             + '以及本地语音/图片缓存。\n\n云端备份不受影响，但本机不会留下任何副本。'
         );
     });

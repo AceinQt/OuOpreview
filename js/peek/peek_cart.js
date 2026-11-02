@@ -193,7 +193,7 @@ async function generateAndRenderPeekCart(options = {}) {
 #SECRET_CHAT_EVENING_85%#[19:16|${senderName}发来的照片/视频:耳机的图片][19:15|${senderName}的消息:你觉得黑色的耳机好看还是白色的好看？][19:16|${senderName}的消息:我想换个新耳机，但在颜色上纠结了半天...]
 `;
 
-        const contentStr = await callPeekApi({ ...cfg, messages: [{ role: 'user', content: systemPrompt }] });
+        const contentStr = await callPeekApi({ ...cfg, feature: '偷看购物车生成', messages: [{ role: 'user', content: systemPrompt }] });
 
         const parts = contentStr.split(/===PROACTIVE_MESSAGES===/i);
         const cartRawText = parts[0] || '';

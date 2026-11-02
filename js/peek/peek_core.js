@@ -272,6 +272,7 @@ function getPeekApiConfig(charId) {
             // 展开兜底：projectId 之类的新字段不用回来逐个加
             return {
                 ...d,
+                presetName:    preset.name,
                 url:           d.url || d.apiUrl || '',
                 key:           d.key || d.apiKey || '',
                 model:         d.model || '',
@@ -292,6 +293,7 @@ function getPeekApiConfig(charId) {
             const d = preset.data;
             return {
                 ...d,
+                presetName:    preset.name,
                 url:           d.url || d.apiUrl || '',
                 key:           d.key || d.apiKey || '',
                 model:         d.model || '',
@@ -306,6 +308,7 @@ function getPeekApiConfig(charId) {
     const s = db.apiSettings || {};
     return {
         ...s,
+        presetName:    s.presetName || s.activePreset || '全局默认',
         url:           s.url || s.apiUrl || '',
         key:           s.key || s.apiKey || '',
         model:         s.model || '',
@@ -326,6 +329,7 @@ async function callPeekApi(opts = {}) {
     //（js/api/llm_client.js）。Peek 内容要整体结构化解析，所以流式也只在读完后一次性返回。
     // cfg 整体透传：调用方多带的字段（如 projectId）不会在这里被丢掉。
     const text = await callLLM({
+        feature: opts.feature || '偷看生成',
         cfg: opts,
         messages,
         temperature,
