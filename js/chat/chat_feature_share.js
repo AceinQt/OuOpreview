@@ -592,8 +592,8 @@ function sanitizeShareFieldText(text) {
  *
  * 合并而不是二选一（`preset.data || db.apiSettings`）：预设里没填的字段
  * ——尤其是温度和流式开关——要能落到全局默认上。口径和 chat_ai_service.js
- * 解析 chatApiPreset 时的口径一致；唯独 Flex 只认当前预设，缺字段就是关闭。
- * 不能让旧预设从全局默认继承付费路由开关。
+ * 解析 chatApiPreset 时的口径一致；Flex 和计价只认当前预设，缺字段分别关闭、归零。
+ * 不能让旧预设从全局默认继承付费路由开关或另一套价格。
  *
  * 整份 preset.data 原样透传，别只挑 url/key/model 三个字段：
  * vertexExpress 还要 projectId，挑字段会漏掉；温度和流式也会一起丢。
@@ -602,9 +602,14 @@ function _getShareApiConfig(chat) {
     const presetName = chat && chat.chatApiPreset;
     const preset = presetName && (db.apiPresets || [])
         .find(p => p.name === presetName && (!p.type || p.type === 'chat'));
-    if (!preset?.data) return { ...(db.apiSettings || {}) };
+    if (!preset?.data) {
+        const cfg = db.apiSettings || {};
+        return { ...cfg, presetName: cfg.presetName || cfg.activePreset || '全局默认' };
+    }
     return { ...(db.apiSettings || {}), ...preset.data,
-        flexEnabled: !!preset.data.flexEnabled };
+        flexEnabled: !!preset.data.flexEnabled,
+        usagePricing: preset.data.usagePricing,
+        presetName: preset.name };
 }
 
 /**
@@ -765,6 +770,7 @@ async function completeShareContent() {
         }
 
         const raw = await callLLM({
+            feature: '分享补全',
             cfg: _getShareApiConfig(chat),
             messages: [
                 { role: 'system', content: SHARE_COMPLETE_SYSTEM_PROMPT },

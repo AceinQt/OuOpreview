@@ -134,7 +134,9 @@ function createHiddenMessageRow(message) {
 
 function createMessageBubbleElement(message) {
     const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-    const { role, content, timestamp, id, transferStatus, giftStatus, stickerData, senderId, quote, isWithdrawn, originalContent } = message;
+    const { role, timestamp, id, transferStatus, giftStatus, stickerData, senderId, quote, isWithdrawn, originalContent } = message;
+    // 类型在生成端已识别：存储正则产出的控制样式文本只能作为正文，不能重新触发协议。
+    const content = window.ChatRegex ? ChatRegex.classificationContent(message) : message.content;
 
 
     // ==========================================
@@ -191,8 +193,11 @@ function createMessageBubbleElement(message) {
         const bubble = document.createElement('div');
         bubble.className = 'narration-bubble markdown-content';
 
-        const htmlContent = marked.parse(text, { breaks: true });
-        bubble.innerHTML = DOMPurify.sanitize(htmlContent);
+        if (window.ChatRegex) ChatRegex.renderBody(bubble, text, message, chat, currentChatType, { markdown: true });
+        else {
+            const htmlContent = marked.parse(text, { breaks: true });
+            bubble.innerHTML = DOMPurify.sanitize(htmlContent);
+        }
 
         wrapper.appendChild(bubble);
 
@@ -203,7 +208,8 @@ function createMessageBubbleElement(message) {
     const isBilingualMode = chat.bilingualModeEnabled;
     let bilingualMatch = null;
     if (isBilingualMode && role === 'assistant') {
-        const contentMatch = content.match(/^\[.*?的消息：([\s\S]+)\]$/);
+        const bilingualSource = message.regexKind === 'text' ? message.content : content;
+        const contentMatch = bilingualSource.match(/^\[.*?的消息：([\s\S]+)\]$/);
         if (contentMatch) {
             const mainText = contentMatch[1].trim();
             const lastCloseParen = Math.max(mainText.lastIndexOf(')'), mainText.lastIndexOf('）'));
@@ -238,7 +244,8 @@ function createMessageBubbleElement(message) {
 
         const bubbleElement = document.createElement('div');
         bubbleElement.className = 'message-bubble received bilingual-bubble';
-        bubbleElement.innerHTML = `<span>${DOMPurify.sanitize(foreignText)}</span>`;
+        if (window.ChatRegex) ChatRegex.renderBody(bubbleElement, foreignText, message, chat, currentChatType, { ignoreStoredBody: true });
+        else bubbleElement.innerHTML = `<span>${DOMPurify.sanitize(foreignText)}</span>`;
 
         const themeKey = chat.theme || 'white_blue';
         const theme = colorThemes[themeKey] || colorThemes['white_blue'];
@@ -248,7 +255,8 @@ function createMessageBubbleElement(message) {
 
         const translationDiv = document.createElement('div');
         translationDiv.className = 'translation-text';
-        translationDiv.textContent = chineseText;
+        if (window.ChatRegex) ChatRegex.renderBody(translationDiv, chineseText, message, chat, currentChatType, { plainText: true, ignoreStoredBody: true });
+        else translationDiv.textContent = chineseText;
 
         // 结构和下面普通消息那条保持一致：头像列 + 内容列（meta 行在上、气泡在下）+ 气泡后时间。
         // 这里以前是老版本的 `.message-info`（竖排，时间画在头像**下面**），
@@ -418,7 +426,8 @@ function createMessageBubbleElement(message) {
     const privateGiftRegex = /\[(?:.+?)送来的礼物[:：]\s*([\s\S]+?)\]/;
     const groupGiftRegex = /\[(.*?)\s*向\s*(.*?)\s*送来了礼物[:：]\s*([\s\S]+?)\]/;
     const imageRecogRegex = /\[.*?发来了一张图片[:：]\]/;
-    const textRegex = /\[(?:.+?)的消息[:：]\s*([\s\S]+?)\]/;
+    // 先以完整外壳取正文；内容中的方括号/HTML 属性不会在第一个 ] 处被截断。
+    const textRegex = /^\[(?:[^\[\]\r\n]+?)的消息[:：]\s*([\s\S]*)\]$/;
     // 位置：先整体抓 body，再在分支里按「；地址：」拆成地点名 + 详细地址（地址选填）
     // 发送者名里禁冒号，免得正文提到「发送了位置：」的普通消息被这条抢走（本分支在 textRegex 之前）
     const locationRegex = /\[(?:[^\[\]：:]+?)发送了位置[:：]\s*([\s\S]+?)\]/;
@@ -837,13 +846,15 @@ function createMessageBubbleElement(message) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
         let userText = textMatch[1].trim().replace(/\[发送时间:.*?\]/g, '').trim();
-        bubbleElement.innerHTML = DOMPurify.sanitize(userText);
+        if (window.ChatRegex) ChatRegex.renderBody(bubbleElement, userText, message, chat, currentChatType);
+        else bubbleElement.innerHTML = DOMPurify.sanitize(userText);
         bubbleElement.style.backgroundColor = bubbleTheme.bg;
         bubbleElement.style.color = bubbleTheme.text;
     } else if (message && Array.isArray(message.parts) && message.parts.length > 0 && message.parts[0].type === 'html') {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
-        bubbleElement.innerHTML = DOMPurify.sanitize(message.parts[0].text, { ADD_TAGS: ['style'], ADD_ATTR: ['style'] });
+        if (window.ChatRegex) ChatRegex.renderBody(bubbleElement, message.parts[0].text, message, chat, currentChatType, { allowStyle: true });
+        else bubbleElement.innerHTML = DOMPurify.sanitize(message.parts[0].text, { ADD_TAGS: ['style'], ADD_ATTR: ['style'] });
     } else {
         bubbleElement = document.createElement('div');
         bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
@@ -853,7 +864,8 @@ function createMessageBubbleElement(message) {
             displayedContent = plainTextMatch[1].trim();
         }
         displayedContent = displayedContent.replace(/\[发送时间:.*?\]/g, '').trim();
-        bubbleElement.innerHTML = DOMPurify.sanitize(displayedContent);
+        if (window.ChatRegex) ChatRegex.renderBody(bubbleElement, displayedContent, message, chat, currentChatType);
+        else bubbleElement.innerHTML = DOMPurify.sanitize(displayedContent);
         bubbleElement.style.backgroundColor = bubbleTheme.bg;
         bubbleElement.style.color = bubbleTheme.text;
     }

@@ -422,8 +422,12 @@ function setupGroupChatSystem() {
     linkGroupWorldBookBtn.addEventListener('click', () => {
         const group = db.groups.find(g => g.id === currentChatId);
         if (!group) return;
-        renderCategorizedWorldBookList(document.getElementById('world-book-selection-list'), db.worldBooks, group.worldBookIds || [], 'wb-select-group');
-        document.getElementById('world-book-selection-modal').classList.add('visible');
+        openChatWorldBookSelection(group.id, 'group');
+    });
+
+    document.getElementById('link-group-regex-btn')?.addEventListener('click', () => {
+        const group = db.groups.find(g => g.id === currentChatId);
+        if (group && typeof openChatRegexSelection === 'function') openChatRegexSelection(group.id, 'group');
     });
 
     // 16. 最大记忆轮数：点击菜单唤起输入弹窗（与私聊一致）
@@ -639,6 +643,9 @@ if (groupApiPresetSel) {
     groupApiPresetSel.value = group.chatApiPreset || '';
 }
 
+const groupCacheToggle = document.getElementById('setting-group-cache-optimization');
+if (groupCacheToggle) groupCacheToggle.checked = group.cacheOptimizationEnabled === true;
+
 // 天气：隐藏 input 暂存，侧栏只显示文案，具体设置走弹窗
 const groupWeatherModeInput = document.getElementById('setting-group-weather-mode');
 if (groupWeatherModeInput) {
@@ -849,6 +856,12 @@ if (groupTimePEl) group.timePerceptionEnabled = groupTimePEl.checked;
 const groupApiPresetSel = document.getElementById('setting-group-api-preset');
 if (groupApiPresetSel) {
     group.chatApiPreset = groupApiPresetSel.value;
+}
+const groupCacheToggleSave = document.getElementById('setting-group-cache-optimization');
+if (groupCacheToggleSave) {
+    const changed = groupCacheToggleSave.checked !== (group.cacheOptimizationEnabled === true);
+    group.cacheOptimizationEnabled = groupCacheToggleSave.checked;
+    if (changed && typeof ChatPromptCache !== 'undefined') ChatPromptCache.reset(group);
 }
 const groupWeatherModeInputSave = document.getElementById('setting-group-weather-mode');
 if (groupWeatherModeInputSave) {

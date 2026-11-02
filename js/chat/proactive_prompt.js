@@ -4,9 +4,11 @@
  * 私聊主动消息专用 Prompt
  */
 function generateProactivePrivatePrompt(character) {
-    const worldBooksBefore = (character.worldBookIds ||[]).map(id => typeof db !== 'undefined' && db.worldBooks ? db.worldBooks.find(wb => wb.id === id && wb.position === 'before') : null).filter(Boolean).map(wb => wb.content).join('\n');
-    const worldBooksAfter = (character.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'after')).filter(Boolean).map(wb => wb.content).join('\n');
-    const worldBooksWriting = (character.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'writing')).filter(Boolean).map(wb => wb.content).join('\n');
+    // 按要接收主动消息的角色模式取书，不能跟随当前前台打开的聊天室。
+    const chatWorldBooks = getChatWorldBooks(character);
+    const worldBooksBefore = chatWorldBooks.filter(wb => wb.position === 'before').map(wb => wb.content).join('\n');
+    const worldBooksAfter = chatWorldBooks.filter(wb => wb.position === 'after').map(wb => wb.content).join('\n');
+    const worldBooksWriting = chatWorldBooks.filter(wb => wb.position === 'writing').map(wb => wb.content).join('\n');
     
     const now = new Date();
     const pad = (n) => n < 10 ? '0' + n : n;
