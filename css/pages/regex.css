@@ -1,0 +1,39 @@
+/* 正则目录沿用草稿卡片，编辑和关联只扩展本功能自己的控件。 */
+.regex-card-icon { font-family: monospace; font-size: 30px; color: #aaa; }
+.regex-category-card, .regex-rule-card { cursor: pointer; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+/* 卡片复用世界书的选中底色与勾选标记，多选时隐藏排序按钮，把右侧留给勾选。 */
+.regex-category-card.is-selecting, .regex-rule-card.is-selecting { padding-right: 56px; }
+.regex-rule-card.is-selecting .regex-rule-controls { display: none; }
+/* 类别编辑沿用总结页的实心笔，尺寸与填充均使用公共操作按钮样式。 */
+.regex-rule-card { display: flex; align-items: center; gap: 10px; padding: 16px; }
+.regex-rule-open { border: 0; background: transparent; min-width: 0; padding: 0; text-align: left; font: inherit; cursor: pointer; }
+.regex-rule-open .draft-card-title { overflow-wrap: anywhere; }
+.regex-rule-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.regex-order-btn { width: 30px; height: 36px; border: 1px solid #ddd; background: #fff; border-radius: 8px; cursor: pointer; }
+.regex-order-btn:disabled { opacity: .35; }
+.regex-busy { pointer-events: none; opacity: .6; }
+/* 居中标题要让出右侧两个按钮及间距，不能只预留按钮自身宽度。 */
+#regex-category-screen .title-container { max-width: calc(100% - 210px); }
+#regex-category-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#edit-regex-screen [hidden], #regex-category-screen [hidden] { display: none !important; }
+#edit-regex-screen textarea { white-space: pre-wrap; font-family: monospace; }
+#edit-regex-screen .content, #regex-category-screen .content { padding-bottom: max(16px, var(--safe-bottom)); }
+.regex-test-section { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 20px; }
+.regex-test-section h3 { font-size: 15px; margin: 16px 0 10px; }
+#regex-test-status { font-size: 13px; overflow-wrap: anywhere; }
+#regex-test-preview { min-width: 0; padding: 12px; border: 1px solid #ddd; border-radius: 10px; background: #fff; }
+.regex-help { font-size: 12px; color: var(--text-secondary, #888); line-height: 1.6; }
+.regex-setting-arrow { margin-left: auto; color: #ccc; font-size: 25px; }
+#regex-selection-list { padding: 0; list-style: none; max-height: 60vh; overflow-y: auto; }
+/* 关联行就是整个类别；不再提供展开按钮、子规则与类别全选控件。 */
+#regex-selection-list .regex-binding-row .wb-mode-name { min-width: 0; overflow-wrap: anywhere; }
+#regex-selection-list .regex-group-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 4px; }
+#regex-selection-list .regex-group-row .wb-mode-cell { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 0; }
+#regex-selection-list .regex-group-row input { width: 20px; height: 20px; }
+/* 气泡 iframe 用父容器宽度布局；窄屏仍受气泡栏限制，不会横向溢出。 */
+.regex-html-bubble { width: 280px; max-width: 100%; min-width: 0; }
+@media (max-width: 380px) {
+    .regex-rule-card { gap: 6px; padding: 12px; }
+    .regex-rule-controls { gap: 3px; }
+    .regex-order-btn { width: 25px; }
+}
