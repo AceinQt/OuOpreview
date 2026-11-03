@@ -167,10 +167,13 @@ window.exportPartialData = async function(categoryKey) {
 
         switch (categoryKey) {
             case 'worldBooks':
+                // 页面合并为「世界书与正则」，沿用 worldBooks 分项键，旧备份结构不改名。
                 partialData.worldBooks = db.worldBooks || [];
                 partialData.worldBookCategories = collectWorldBookCategories(db.worldBookCategories, db.worldBooks);
+                partialData.regexCategories = normalizeRegexCategories(db.regexCategories);
                 break;
             case 'regex':
+                // 兼容旧独立正则入口；存储页不再单独展示。
                 partialData.regexCategories = normalizeRegexCategories(db.regexCategories);
                 break;
             case 'rpg': partialData.rpgProfiles = db.rpgProfiles || []; break;
@@ -291,14 +294,15 @@ const PERSONALIZATION_SETTING_KEYS = [
     'homeSignature', 'insWidgetSettings', 'homeWidgetSettings'
 ];
 const STUDY_SETTING_KEYS = ['studySettings'];
-const WORLD_BOOK_SETTING_KEYS = ['worldBookCategories'];
+// 世界书与正则在存储页是一项；旧正则独立入口只使用下面的兼容清单。
+const WORLD_BOOK_SETTING_KEYS = ['worldBookCategories', 'regexCategories'];
 const REGEX_SETTING_KEYS = ['regexCategories'];
 
-// 系统设置 = 白名单减去个性化、学习、世界书和正则四组。刻意不写死清单 —— 往 globalSettingKeys 加 key 时
+// 系统设置 = 白名单减去个性化、学习、世界书与正则三组。刻意不写死清单 —— 往 globalSettingKeys 加 key 时
 // 这里自动跟上，不用再记得改第二处（统计那边也是同一个思路）。
 function _settingsCategorySettingKeys() {
     if (typeof globalSettingKeys === 'undefined' || !Array.isArray(globalSettingKeys)) return [];
-    const elsewhere = new Set([...PERSONALIZATION_SETTING_KEYS, ...STUDY_SETTING_KEYS, ...WORLD_BOOK_SETTING_KEYS, ...REGEX_SETTING_KEYS]);
+    const elsewhere = new Set([...PERSONALIZATION_SETTING_KEYS, ...STUDY_SETTING_KEYS, ...WORLD_BOOK_SETTING_KEYS]);
     return globalSettingKeys.filter(k => !elsewhere.has(k));
 }
 
@@ -332,17 +336,19 @@ window.clearPartialData = async function (categoryKey) {
             break;
 
         case 'worldBooks':
-            // 条目与类别同进同退；不能清了条目却因设置删除失败留下空类别。
+            // 条目、世界书类别与正则库同进同退；任一删除失败都回滚，不能只清空半项。
+            // 和原独立清空一致，角色/群/论坛的关联仍保留，缺失的引用由读取端忽略。
             await T.transaction('rw', T.worldBooks, T.globalSettings, async () => {
                 await T.worldBooks.clear();
                 await T.globalSettings.bulkDelete(WORLD_BOOK_SETTING_KEYS);
             });
             db.worldBooks = [];
             db.worldBookCategories = [];
+            db.regexCategories = [];
             break;
 
         case 'regex':
-            // 只清规则库，不改角色/群的绑定；缺失的规则引用由读取端忽略。
+            // 兼容旧独立入口：只清规则库，不改角色/群/论坛绑定，缺失引用由读取端忽略。
             await T.transaction('rw', T.globalSettings, async () => {
                 await T.globalSettings.bulkDelete(REGEX_SETTING_KEYS);
             });
@@ -1569,6 +1575,8 @@ async function importBackupData(data, isCloudPartialRestore = false) {
         const restoresWorldBooks = !isPartial || data._partialType === 'worldBooks'
             || Object.prototype.hasOwnProperty.call(data, 'worldBooks')
             || Object.prototype.hasOwnProperty.call(data, 'worldBookCategories');
+        // 新组合分项显式携带 regexCategories；不能只因类型为 worldBooks 就恢复正则，
+        // 否则导入旧的纯世界书云端分项时会把现有正则误清空。
         const restoresRegex = !isPartial || data._partialType === 'regex'
             || Object.prototype.hasOwnProperty.call(data, 'regexCategories');
         let message = "";
