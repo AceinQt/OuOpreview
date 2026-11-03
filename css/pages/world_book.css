@@ -4,7 +4,8 @@
     --wb-button-radius: 12px;
     --wb-top-inset: max(12px, var(--safe-top));
     --wb-header-height: calc(var(--wb-top-inset) + 64px);
-    background-color: #F8F8F6;
+    --wb-page-background: #F8F8F6;
+    background-color: var(--wb-page-background);
 }
 
 /* 左栏背景贴齐页面三边；安全区分别留在左栏按钮和右侧内容内部。 */
@@ -116,7 +117,8 @@
     height: var(--wb-header-height);
     min-height: var(--wb-header-height);
     padding: var(--wb-top-inset) 0 12px;
-    background-color: transparent;
+    /* 系统顶栏读取 header 的计算背景色；透明会回退为白色，不能跟随右侧标题区。 */
+    background-color: var(--wb-page-background);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     border-bottom: 1px solid #DCDCD8;
@@ -143,9 +145,12 @@
     max-width: 100%;
 }
 
-/* 只给顶栏标题使用日记卡片的衬线字体，不改变计数、按钮或列表字体。 */
+/* Georgia/Times 没有中文字形；显式提供 iOS 宋体，再回退到其他平台的中文衬线字体。
+   5.56vw 是屏宽的 5.56%，360px 屏约 20px、430px 屏约 24px，再由 clamp 限制在 20–24px。
+   仅目录标题随屏宽调整，多选计数、按钮和列表维持原字号。 */
 #world-book-screen .app-header .title {
-    font-family: 'Georgia', 'Times New Roman', serif;
+    font-family: 'Songti SC', 'Songti TC', 'STSong', 'SimSun', 'Noto Serif CJK SC', 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+    font-size: clamp(20px, 5.56vw, 24px);
 }
 
 #world-book-screen .action-btn-group {
@@ -177,6 +182,7 @@
     border-color: #ef5350;
 }
 
+#world-book-screen .action-btn svg,
 #world-book-screen .wb-select-delete svg {
     width: 24px;
     height: 24px;
@@ -232,6 +238,30 @@
 
 #world-book-screen .wb-category-card.is-selecting {
     padding-right: 56px;
+}
+
+/* 单条内容共用书本尺寸与配色；图标不参与压缩，把剩余空间交给可截断的标题/预览。 */
+.wb-entry-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+}
+
+.wb-entry-icon svg {
+    width: 40px;
+    height: 40px;
+    fill: #FDFDFB;
+    stroke: #C8C8C3;
+    stroke-width: 1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.wb-entry-icon svg path + path {
+    fill: none;
 }
 
 /* 类别内条目与正则规则统一为独立卡片；仅覆盖本页，不改变其他列表。 */

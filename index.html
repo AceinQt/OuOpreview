@@ -2208,7 +2208,7 @@
                 <div class="wb-main-column">
                     <header class="app-header" id="wb-directory-header">
                         <div class="title-container"><h1 class="title">世界书</h1></div>
-                        <div class="action-btn-group"><button type="button" class="action-btn" id="add-world-book-category-btn" aria-label="新增类别">+</button></div>
+                        <div class="action-btn-group"><button type="button" class="action-btn" id="add-world-book-category-btn" aria-label="新增类别"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div>
                     </header>
                     <header class="app-header wb-select-header" id="wb-directory-select-header" style="display: none;">
                         <span class="wb-select-count" aria-live="polite">选择 0 个类别</span>
@@ -2225,7 +2225,7 @@
                     </main>
                     <header class="app-header" id="regex-directory-header" hidden>
                         <div class="title-container"><h1 class="title">正则</h1></div>
-                        <div class="action-btn-group"><button type="button" class="action-btn" id="add-regex-category-btn" aria-label="新增正则类别">+</button></div>
+                        <div class="action-btn-group"><button type="button" class="action-btn" id="add-regex-category-btn" aria-label="新增正则类别"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div>
                     </header>
                     <header class="app-header wb-select-header" id="regex-directory-select-header" style="display: none;" hidden>
                         <span class="wb-select-count" aria-live="polite">选择 0 个类别</span>
@@ -2249,7 +2249,7 @@
                 <div class="title-container"><h1 class="title" id="world-book-category-title">世界书类别</h1></div>
                 <div class="action-btn-group">
                     <button type="button" class="action-btn" id="rename-world-book-category-btn" aria-label="重命名类别" title="重命名类别"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button>
-                    <button class="action-btn" id="add-world-book-btn" aria-label="新增条目">+</button>
+                    <button class="action-btn" id="add-world-book-btn" aria-label="新增条目"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                 </div>
             </header>
             <header class="app-header wb-select-header" id="wb-category-select-header" style="display: none;">
@@ -2312,7 +2312,7 @@
                 <div class="title-container"><h1 class="title" id="regex-category-title">正则类别</h1></div>
                 <div class="action-btn-group">
                     <button type="button" class="action-btn" id="rename-regex-category-btn" aria-label="重命名类别" title="重命名类别"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button>
-                    <button type="button" class="action-btn" id="add-regex-rule-btn" aria-label="新增正则">+</button>
+                    <button type="button" class="action-btn" id="add-regex-rule-btn" aria-label="新增正则"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                 </div>
             </header>
             <header class="app-header wb-select-header" id="regex-category-select-header" style="display: none;">
@@ -2328,7 +2328,10 @@
         <div id="edit-regex-screen" class="screen">
             <header class="app-header">
                 <button class="back-btn" data-target="regex-category-screen" aria-label="返回正则列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="1.5" d="m15 19-7-7 7-7"/></svg></button>
-                <div class="title-container"><h1 class="title" id="edit-regex-title">创建正则</h1></div><div class="placeholder"></div>
+                <div class="title-container"><h1 class="title" id="edit-regex-title">创建正则</h1></div>
+                <div class="action-btn-group">
+                    <button type="button" class="action-btn" id="regex-help-btn" title="正则使用说明" aria-label="正则使用说明"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5"/><path d="M12 16.5h.01"/></svg></button>
+                </div>
             </header>
             <main class="content">
                 <form id="edit-regex-form">
@@ -2336,19 +2339,14 @@
                     <div class="form-group"><label for="regex-category">类别</label><select id="regex-category" required></select></div>
                     <div class="form-group"><label for="regex-pattern">匹配表达式</label><textarea id="regex-pattern" rows="3" placeholder="只填表达式，不含两侧 /" required spellcheck="false"></textarea></div>
                     <div class="form-group"><label for="regex-replacement">替换内容</label><textarea id="regex-replacement" rows="5" placeholder="支持多行、$1 捕获组与 HTML" spellcheck="false"></textarea></div>
-                    <div class="form-group"><label for="regex-flags">标志</label><input type="text" id="regex-flags" value="g" placeholder="g / gi / gm" spellcheck="false"></div>
+                    <div class="form-group"><label for="regex-flags">标志（匹配选项）</label><input type="text" id="regex-flags" value="g" placeholder="g：全部替换；留空：只替换第一处" spellcheck="false" autocapitalize="off"></div>
                     <div class="form-group"><label for="regex-mode">处理方式</label><select id="regex-mode"><option value="storage">修改并保存</option><option value="display">仅显示替换</option></select></div>
                     <div class="form-group"><label for="regex-order">执行顺序（小的先执行）</label><input type="number" id="regex-order" value="0" step="1"></div>
-                    <button type="submit" class="btn btn-primary" id="save-regex-rule-btn">保存正则</button>
+                    <div class="regex-editor-actions">
+                        <button type="button" class="btn btn-neutral" id="preview-regex-rule-btn">预览</button>
+                        <button type="submit" class="btn btn-primary" id="save-regex-rule-btn">保存正则</button>
+                    </div>
                 </form>
-                <section class="regex-test-section">
-                    <div class="form-group"><label for="regex-test-original">测试原文</label><textarea id="regex-test-original" rows="4" spellcheck="false"></textarea></div>
-                    <button type="button" class="btn btn-neutral" id="test-regex-rule-btn">测试替换</button>
-                    <p id="regex-test-status" role="status"></p>
-                    <div class="form-group"><label for="regex-test-output">替换结果</label><textarea id="regex-test-output" rows="4" readonly></textarea></div>
-                    <h3>HTML 预览</h3><div id="regex-test-preview"></div>
-                    <p class="regex-help">预览保留静态样式，不执行脚本。测试不会保存或改变聊天记录。</p>
-                </section>
             </main>
         </div>
         <!-- 设置页面 -->
@@ -4004,12 +4002,12 @@
                         </svg>
                     </button>
                           <!-- 新增联系人 -->
-                    <button class="action-btn" id="peek-messages-add-btn" title="新增联系人">+</button>
+                    <button class="action-btn" id="peek-messages-add-btn" title="新增联系人" aria-label="新增联系人"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                 </div>
             </header>
             <main class="content">
                 <ul class="list-container" id="peek-chat-list-container">
-                    <!-- Simulated chat list will be rendered here -->
+                    <!-- 模拟聊天列表由脚本渲染。 -->
                 </ul>
             </main>
         </div>
@@ -4467,11 +4465,12 @@
                         </div>
                     </div>
 
-                    <!-- Tab 2: 世界书 (默认隐藏) -->
+                    <!-- 第二个页签：世界书（默认隐藏） -->
                     <div id="world-tab-wb" class="world-tab-pane">
-                        <!-- 新增：跳转按钮 -->
+                        <!-- 快捷入口保留文字，加号复用统一的线框图标。 -->
                         <div id="jump-to-wb-edit-btn" class="world-book-shortcut-btn">
-                            + 去管理/添加世界书
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            去管理/添加世界书
                         </div>
                         <div class="world-section-title">生效的世界书</div>
 
@@ -4485,7 +4484,8 @@
                     <!-- 第三个页签：正则只关联大类，不展开单条规则，复用论坛世界书样式 -->
                     <div id="world-tab-regex" class="world-tab-pane">
                         <div id="jump-to-regex-edit-btn" class="world-book-shortcut-btn">
-                            + 去管理/添加正则
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            去管理/添加正则
                         </div>
                         <div class="world-section-title">生效的正则类别</div>
                         <div class="world-list-container">
@@ -4980,7 +4980,7 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
     </button>
 
        
-            <button class="btn btn-secondary" id="rpg-choose-partner-btn">+ 选择共同冒险伙伴</button>
+            <button class="btn btn-secondary" id="rpg-choose-partner-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>选择共同冒险伙伴</button>
             
        
 
@@ -5441,7 +5441,7 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                 <h1 class="title">书架</h1>
             </div>
             <div class="action-btn-group">
-                <button class="action-btn" id="study-import-btn" title="导入书籍">+</button>
+                <button class="action-btn" id="study-import-btn" title="导入书籍" aria-label="导入书籍"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
             </div>
         </header>
         <div id="st-resume-section" style="display:none"></div>
@@ -6640,12 +6640,12 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                                 d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.2,5.77C8.61,6.01,8.08,6.33,7.58,6.71L5.19,5.75C4.97,5.68,4.72,5.75,4.6,5.97L2.68,9.29 c-0.11,0.2-0.06,0.47,0.12,0.61l2.03,1.58C4.78,11.66,4.76,11.97,4.76,12.3c0,0.32,0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.36-2.54c0.59-0.24,1.12-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" />
                         </svg>
                     </button>
-                    <button class="action-btn" id="pomodoro-create-task-btn" title="创建任务">+</button>
+                    <button class="action-btn" id="pomodoro-create-task-btn" title="创建任务" aria-label="创建任务"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                 </div>
             </header>
             <main class="content">
                 <div class="task-list-container" id="pomodoro-task-list">
-                    <!-- Task cards will be rendered here by JS -->
+                    <!-- 任务卡片由脚本在此渲染。 -->
                 </div>
                 <p class="placeholder-text" id="pomodoro-no-tasks-placeholder">还没有专注任务，点击右上角“+”创建一个吧。</p>
             </main>
@@ -7190,6 +7190,26 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
             </div>
         </div>
 
+        <!-- 预览放在统一弹窗区，避免被底部操作条盖住；普通与 HTML 共用测试文本，不参与保存。 -->
+        <div id="regex-preview-modal" class="modal-overlay">
+            <div class="modal-window" role="dialog" aria-modal="true" aria-labelledby="regex-preview-title">
+                <h3 id="regex-preview-title">正则预览</h3>
+                <div class="regex-preview-tabs" role="tablist" aria-label="预览方式">
+                    <button type="button" id="regex-preview-text-tab" role="tab" aria-selected="true" aria-controls="regex-preview-text-panel">普通</button>
+                    <button type="button" id="regex-preview-html-tab" role="tab" aria-selected="false" aria-controls="regex-preview-html-panel" tabindex="-1">HTML</button>
+                </div>
+                <section class="regex-test-section">
+                    <div id="regex-preview-text-panel" role="tabpanel" aria-labelledby="regex-preview-text-tab">
+                        <div class="form-group"><label for="regex-test-original">测试原文</label><textarea id="regex-test-original" rows="4" placeholder="只测试当前填写的这一条规则，无需保存，也不会改变聊天记录。&#10;粘贴一段原文，看看替换后的效果。" spellcheck="false"></textarea></div>
+                        <button type="button" class="btn btn-neutral" id="test-regex-rule-btn">测试替换</button>
+                        <div class="form-group regex-test-result"><label for="regex-test-output">替换结果</label><textarea id="regex-test-output" rows="4" placeholder="没有匹配" readonly aria-live="polite"></textarea></div>
+                    </div>
+                    <div id="regex-preview-html-panel" role="tabpanel" aria-labelledby="regex-preview-html-tab" hidden>
+                        <div id="regex-test-preview"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
         <div id="regex-selection-modal" class="modal-overlay">
             <div class="modal-window">
                 <h3>选择要关联的正则类别</h3><ul id="regex-selection-list"></ul>
