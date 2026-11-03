@@ -736,10 +736,10 @@ function renderGroupMembersInSettings(group) {
         groupMembersListContainer.appendChild(memberDiv);
     });
 
-    // ── 添加按钮 ──────────────────────────────────────────
+    // ── 添加按钮：加号复用统一的线框图标，保留原有委托点击入口 ──
     const addBtn = document.createElement('div');
     addBtn.className = 'add-member-btn';
-    addBtn.innerHTML = `<div class="add-icon">+</div><span>添加</span>`;
+    addBtn.innerHTML = `<div class="add-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div><span>添加</span>`;
     groupMembersListContainer.appendChild(addBtn);
 
     // ── 移除按钮（紧跟添加按钮）───────────────────────────
