@@ -228,12 +228,15 @@ function renderWorldBookCategoryList() {
     for (const book of books) {
         const row = worldBookElement('li', 'list-item world-book-item');
         row.dataset.id = book.id;
+        const icon = worldBookElement('div', 'wb-entry-icon');
+        // 单本书与目录的四本书区分层级；固定 SVG 尺寸，不依赖系统字体或 iOS 的默认尺寸。
+        icon.innerHTML = '<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5h22v30H10a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"/><path d="M11 5v24M6 31a4 4 0 0 1 4-4h22M16 12h10M16 17h7"/></svg>';
         const details = worldBookElement('div', 'item-details');
         // 先截断再处理空白，不为一行预览扫描/解析全文，更不让正文中的 HTML 变成资源节点。
         const raw = String(book.content || '');
         const preview = raw.slice(0, 120).replace(/\s+/g, ' ').trim() + (raw.length > 120 ? '…' : '');
         details.append(worldBookElement('div', 'item-name', book.name), worldBookElement('div', 'item-preview', preview));
-        row.append(worldBookElement('span', 'wb-row-check'), details, worldBookElement('span', 'wb-row-arrow', '›'));
+        row.append(worldBookElement('span', 'wb-row-check'), icon, details, worldBookElement('span', 'wb-row-arrow', '›'));
         fragment.appendChild(row);
     }
     list.replaceChildren(fragment);

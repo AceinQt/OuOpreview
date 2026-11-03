@@ -1,4 +1,49 @@
 // 正则管理只负责目录、编辑和聊天关联；编译/替换/隔离预览由 ChatRegex 负责。
+// 说明紧贴本模块维护：重点是描述需求和迁移边界，不把编辑页变成正则语法课。
+AppHelp.register('regex', {
+    page: {
+        title: '正则怎么用',
+        content: String.raw`正则就是「按固定规律查找，再替换」。不用先学会写语法，把想改的句子交给 AI，再用预览检查即可。
+
+【怎么告诉 AI】
+可以复制下面这段，把例子换成自己的：
+
+请帮我写用于 JavaScript String.replace 的正则，分别给出「匹配表达式」「替换内容」「标志」三个字段。
+需求：把「把XXXX给YYYY了」改成「把XXXXYYYY了」，只删除这个句式中间的「给」，保留前后内容。不跨换行或句子标点匹配。
+应当修改：把衣服给洗了。→ 把衣服洗了。
+应当修改：把作业给写完了！→ 把作业写完了！
+不应修改：请给我一本书。
+匹配表达式不要带两侧 /；替换内容用 $1、$2 等 JavaScript 捕获组，不用酒馆宏。请同时给出测试原文与预期结果，并指出可能误改的情况。
+
+【上面这个例子怎么填】
+匹配表达式：把([^，。！？；\r\n]+?)给([^，。！？；\r\n]+?)了
+替换内容：把$1$2了
+标志：g
+
+$1、$2 就是保留匹配到的前后两段。它只认文字规律，不懂句意：「把礼物给你了」也会被改。如果有不想改的句子，也要作为反例交给 AI，不能指望一条正则理解所有中文。
+
+【「标志」是什么】
+它是匹配选项，不是规则名称：
+g：一段文字里所有匹配都替换；留空只替换第一处。
+i：忽略英文字母大小写，可与 g 合写为 gi。
+m：让 ^ 和 $ 按每一行的开头、结尾匹配。
+s：让 . 也能匹配换行。它与 m 不是一回事。
+一般保留 g；需要别的选项，让 AI 直接给出标志即可。
+
+【从 SillyTavern（酒馆）搬过来】
+普通 JavaScript 查找与替换通常可以迁移，但不是整份配置直接粘贴：
+• Find Regex → 匹配表达式；Replace With → 替换内容。
+• /表达式/gi 要拆成「表达式」与标志「gi」，不能把两侧 / 和末尾标志一起贴进表达式框。原规则没带标志时，这里的默认 g 也要清空，才能保留只替换一次的行为。
+• $1、$2 可沿用；替换内容里的 {{match}} 要改成 $&（整个匹配）。{{user}}、{{char}} 等宏不会自动展开。
+• Trim Out、深度、作用位置、提示词选项、脚本命令等酒馆设置不会一起迁移，需要重新适配；这里也不能直接导入酒馆正则 JSON。
+• HTML 可以预览静态排版与样式，但不执行脚本、不支持交互控件；依赖酒馆页面结构或外部资源的效果需要另行适配。
+
+【预览和正式使用】
+点「预览」，在「普通」页填入测试原文并点「测试替换」，结果框也会显示没有匹配或表达式错误的提示。「HTML」页只显示静态渲染结果，切入时自动按最新原文测试，不执行脚本；切换页签不会清空原文。点击弹窗外的遮罩即可关闭。测试只运行当前这一条，即使还没填名称、还没保存也能试。
+确认正例和反例都符合预期后再保存，并在聊天或论坛设置中关联它所在的正则类别。规则按执行顺序依次处理。
+「修改并保存」会改写适用的新 AI 正文，取消关联也不会还原已经改写的内容；「仅显示替换」不改存储原文。拿不准时，先选「仅显示替换」。`
+    }
+});
 const regexViewState = {
     initialized: false, busy: false, dialogPending: false, categoryId: null, editingId: null, editingCategoryId: null,
     directoryScroll: 0, categoryScrolls: new Map(), writeQueue: Promise.resolve(),
@@ -185,6 +230,9 @@ function renderRegexRuleList() {
     const rules = (category?.rules || []).slice().sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
     for (const [index, rule] of rules.entries()) {
         const row = regexElement('li', 'draft-card-item regex-rule-card'); row.dataset.ruleId = rule.id;
+        const icon = regexElement('div', 'wb-entry-icon');
+        // 规则也使用单本书，封面的正则符号区分世界书条目，且不再依赖字符字体绘制。
+        icon.innerHTML = '<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5h22v30H10a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"/><path d="M11 5v24M6 31a4 4 0 0 1 4-4h22M17 19h.01M24 11v9M20 13l8 5M28 13l-8 5"/></svg>';
         const details = regexElement('div', 'draft-card-content regex-rule-open');
         details.append(regexElement('div', 'draft-card-title', rule.name), regexElement('div', 'draft-card-subtitle', `${regexModeLabel(rule)} · 顺序 ${rule.order}`));
         const controls = regexElement('div', 'regex-rule-controls');
@@ -194,7 +242,7 @@ function renderRegexRuleList() {
             button.addEventListener('click', event => { event.stopPropagation(); if (!regexViewState.views['regex-category-screen'].selecting) runRegexUI(async () => { await moveRegexRule(rule.id, direction); renderRegexRuleList(); }, '顺序已更新'); });
             controls.appendChild(button);
         }
-        row.append(details, controls); list.appendChild(row);
+        row.append(icon, details, controls); list.appendChild(row);
     }
     document.getElementById('no-regex-rules').hidden = rules.length > 0;
     refreshRegexSelectUI('regex-category-screen');
@@ -214,19 +262,21 @@ function openRegexEditor(id = null) {
     for (const field of ['name', 'pattern', 'replacement', 'flags', 'mode', 'order']) document.getElementById(`regex-${field}`).value = rule[field];
     document.getElementById('edit-regex-title').textContent = id ? '编辑正则' : '创建正则';
     for (const field of ['regex-test-original', 'regex-test-output']) document.getElementById(field).value = '';
-    document.getElementById('regex-test-status').textContent = '';
+    document.getElementById('regex-test-output').placeholder = '没有匹配';
     document.getElementById('regex-test-preview').replaceChildren();
+    closeRegexPreview();
+    setRegexPreviewTab('text');
     navigateTo('edit-regex-screen');
 }
 function readRegexDraft() {
     return { categoryId: document.getElementById('regex-category').value, name: document.getElementById('regex-name').value,
         pattern: document.getElementById('regex-pattern').value, replacement: document.getElementById('regex-replacement').value,
-        flags: document.getElementById('regex-flags').value, mode: document.getElementById('regex-mode').value,
+        flags: document.getElementById('regex-flags').value.trim(), mode: document.getElementById('regex-mode').value,
         order: document.getElementById('regex-order').value };
 }
 function setRegexBusy(busy) {
     regexViewState.busy = busy;
-    for (const id of ['add-regex-category-btn', 'add-regex-rule-btn', 'rename-regex-category-btn', 'save-regex-rule-btn', 'test-regex-rule-btn']) document.getElementById(id).disabled = busy;
+    for (const id of ['add-regex-category-btn', 'add-regex-rule-btn', 'rename-regex-category-btn', 'save-regex-rule-btn', 'preview-regex-rule-btn', 'test-regex-rule-btn']) document.getElementById(id).disabled = busy;
     for (const view of Object.values(regexViewState.views)) document.getElementById(view.listId).classList.toggle('regex-busy', busy);
     Object.keys(regexViewState.views).forEach(refreshRegexSelectUI);
 }
@@ -253,23 +303,53 @@ function consumeRegexBack() {
     const active = document.querySelector('.screen.active');
     if (!active || (!['regex-category-screen', 'edit-regex-screen'].includes(active.id) && !(active.id === 'world-book-screen' && worldBookViewState.featureTab === 'regex'))) return false;
     if (cancelRegexDialog(document.getElementById('app-global-dialog'))) return true;
+    if (document.getElementById('regex-preview-modal').classList.contains('visible')) { closeRegexPreview(); return true; }
     if (regexViewState.busy) return true;
     if (!regexViewState.views[active.id]?.selecting) return false;
     exitRegexMultiSelectMode(active.id);
     return true;
 }
+function setRegexPreviewTab(tab) {
+    for (const name of ['text', 'html']) {
+        const active = name === tab;
+        const button = document.getElementById(`regex-preview-${name}-tab`);
+        button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1;
+        document.getElementById(`regex-preview-${name}-panel`).hidden = !active;
+    }
+    // HTML 页没有测试按钮，切入时用最新原文重算；面板先显示，避免 iframe 在隐藏容器里量到零宽度。
+    document.getElementById('regex-test-preview').replaceChildren();
+    if (tab === 'html' && document.getElementById('regex-preview-modal').classList.contains('visible')) testRegexDraft();
+}
+function openRegexPreview() {
+    if (regexViewState.busy) return;
+    document.getElementById('regex-preview-modal').classList.add('visible');
+    testRegexDraft();
+    const tab = document.getElementById('regex-preview-text-panel').hidden ? 'html' : 'text';
+    document.getElementById(`regex-preview-${tab}-tab`).focus();
+}
+function closeRegexPreview() {
+    const modal = document.getElementById('regex-preview-modal');
+    const wasOpen = modal.classList.contains('visible');
+    modal.classList.remove('visible');
+    document.getElementById('regex-test-preview').replaceChildren();
+    if (wasOpen) document.getElementById('preview-regex-rule-btn').focus();
+}
 function testRegexDraft() {
     const preview = document.getElementById('regex-test-preview'); preview.replaceChildren();
-    document.getElementById('regex-test-output').value = '';
+    const output = document.getElementById('regex-test-output');
+    output.value = ''; output.placeholder = '没有匹配';
     try {
         const rule = readRegexDraft(); compileRegexDraft(rule);
         const original = document.getElementById('regex-test-original').value;
         const result = window.ChatRegex.replaceText(original, [rule]);
         if (result.errors.length) throw new Error(result.errors[0].message);
-        document.getElementById('regex-test-output').value = result.text;
-        document.getElementById('regex-test-status').textContent = result.matched ? '匹配成功' : '没有匹配';
-        window.ChatRegex.renderHtmlPreview(preview, result.text);
-    } catch (error) { document.getElementById('regex-test-status').textContent = `表达式无效：${error.message}`; }
+        // 状态收进结果框，不把提示拼到结果里；空替换也要和「没有匹配」区分。
+        output.value = result.matched ? result.text : '';
+        output.placeholder = result.matched ? '匹配成功，替换结果为空' : '没有匹配';
+        if (!document.getElementById('regex-preview-html-panel').hidden && document.getElementById('regex-preview-modal').classList.contains('visible')) {
+            window.ChatRegex.renderHtmlPreview(preview, result.text);
+        }
+    } catch (error) { output.placeholder = `表达式无效：${error.message}`; }
 }
 // 关联只到类别，不提供子规则展开或半选；空类别先关联，之后新增规则自动跟随。
 function renderRegexSelection(container, chat, chatType) {
@@ -447,10 +527,29 @@ function setupRegexApp() {
         if (saved) document.querySelector('#edit-regex-screen .back-btn').click();
     });
     document.querySelector('#edit-regex-screen .back-btn').addEventListener('click', () => { if (!regexViewState.busy) regexViewState.categoryId = regexViewState.editingCategoryId; });
+    document.getElementById('regex-help-btn').addEventListener('click', () => AppHelp.show('regex', 'page'));
+    document.getElementById('preview-regex-rule-btn').addEventListener('click', openRegexPreview);
+    const previewModal = document.getElementById('regex-preview-modal');
+    previewModal.addEventListener('click', event => { if (event.target === previewModal) closeRegexPreview(); });
+    previewModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRegexPreview(); }
+    });
+    for (const tab of ['text', 'html']) {
+        const button = document.getElementById(`regex-preview-${tab}-tab`);
+        button.addEventListener('click', () => setRegexPreviewTab(tab));
+        button.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const target = event.key === 'Home' ? 'text' : event.key === 'End' ? 'html' : tab === 'text' ? 'html' : 'text';
+            setRegexPreviewTab(target); document.getElementById(`regex-preview-${target}-tab`).focus();
+        });
+    }
     document.getElementById('test-regex-rule-btn').addEventListener('click', testRegexDraft);
     document.getElementById('save-regex-selection-btn').addEventListener('click', confirmChatRegexSelection);
     document.getElementById('cancel-regex-selection-btn').addEventListener('click', () => { if (!document.getElementById('save-regex-selection-btn').disabled) document.getElementById('regex-selection-modal').classList.remove('visible'); });
     window._screenLeaveHooks = window._screenLeaveHooks || {};
+    const previousEditorLeave = window._screenLeaveHooks['edit-regex-screen'];
+    window._screenLeaveHooks['edit-regex-screen'] = target => { closeRegexPreview(); previousEditorLeave?.(target); };
     for (const id of Object.keys(regexViewState.views)) {
         const previous = window._screenLeaveHooks[id];
         window._screenLeaveHooks[id] = target => {
