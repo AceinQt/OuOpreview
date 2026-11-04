@@ -136,7 +136,7 @@
 #world-book-screen .title,
 #world-book-screen .wb-select-count {
     font-size: 20px;
-    font-weight: 600;
+    font-weight: bold;
     color: #1A1A1A;
     text-align: left;
     white-space: nowrap;
@@ -145,13 +145,16 @@
     max-width: 100%;
 }
 
-/* Georgia/Times 没有中文字形；显式提供 Noto Serif SC，再回退到其他平台的中文衬线字体。
-   5.56vw 是屏宽的 5.56%，360px 屏约 20px、430px 屏约 24px，再由 clamp 限制在 20–24px。
+/* 5.56vw 是屏宽的 5.56%，360px 屏约 20px、430px 屏约 24px，再由 clamp 限制在 20–24px。
    仅目录标题随屏宽调整，多选计数、按钮和列表维持原字号。 */
 #world-book-screen .app-header .title {
-    font-family: 'Noto Serif SC', 'Noto Serif CJK SC', 'Songti SC', 'Songti TC', 'STSong', 'SimSun', 'Georgia', 'Times New Roman', serif;
+    /* 1. 安卓系统自带的思源宋体名字叫 'Noto Serif CJK SC' 或 'Source Han Serif SC' / 'Droid Serif'
+       2. 电脑端自带 'Songti SC' / 'SimSun'
+       3. 以上本地字体都找不到时（即 iOS），才会触发最后的 'Noto Serif SC' 网络字体 */
+    font-family: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Source Han Serif CN', 'Songti SC', 'STSong', 'SimSun', 'Noto Serif SC', serif;
     font-size: clamp(20px, 5.56vw, 24px);
 }
+
 
 #world-book-screen .action-btn-group {
     flex-shrink: 0;
