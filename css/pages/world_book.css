@@ -145,11 +145,11 @@
     max-width: 100%;
 }
 
-/* Georgia/Times 没有中文字形；显式提供 iOS 宋体，再回退到其他平台的中文衬线字体。
+/* Georgia/Times 没有中文字形；显式提供 Noto Serif SC，再回退到其他平台的中文衬线字体。
    5.56vw 是屏宽的 5.56%，360px 屏约 20px、430px 屏约 24px，再由 clamp 限制在 20–24px。
    仅目录标题随屏宽调整，多选计数、按钮和列表维持原字号。 */
 #world-book-screen .app-header .title {
-    font-family: 'Songti SC', 'Songti TC', 'STSong', 'SimSun', 'Noto Serif CJK SC', 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+    font-family: 'Noto Serif SC', 'Noto Serif CJK SC', 'Songti SC', 'Songti TC', 'STSong', 'SimSun', 'Georgia', 'Times New Roman', serif;
     font-size: clamp(20px, 5.56vw, 24px);
 }
 
