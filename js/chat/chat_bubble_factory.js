@@ -67,6 +67,19 @@ function messageTimeText(timestamp) {
     return formatMessageTimestamp(timestamp, fmt);
 }
 
+// 转账卡的内部结构由聊天和外观预览共用，避免预览还在用旧图片模板。
+// 金额、状态和备注都按纯文本填入；备注里的尖括号不应变成 HTML。
+function createTransferCardContent(amount, statusText, remarkText) {
+    const content = document.createElement('div');
+    content.className = 'transfer-content';
+    // 图标来自 Lucide 的 circle-letter-q（ISC）；线条粗细统一在 chat_room.css 的 .transfer-icon 调整。
+    content.innerHTML = `<div class="transfer-header"><svg class="transfer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="m16 16-2.5-2.5"/><circle cx="12" cy="12" r="10"/></svg><div class="transfer-details"><p class="transfer-amount"></p><p class="transfer-status"></p></div></div><div class="transfer-divider" aria-hidden="true"></div><p class="transfer-remark"></p>`;
+    content.querySelector('.transfer-amount').textContent = `¥${amount}`;
+    content.querySelector('.transfer-status').textContent = statusText;
+    content.querySelector('.transfer-remark').textContent = remarkText || '无备注';
+    return content;
+}
+
 // ================================================================
 // === isMultiSelectBlockingDetail: 多选模式下拦掉"看详情"的动作 ===
 // ================================================================
@@ -181,7 +194,19 @@ function createMessageBubbleElement(message) {
     const narrationMatch = content.match(narrationRegex);
     const mineNarrationMatch = narrationMatch ? null : content.match(mineNarrationRegex);
 
-    if (narrationMatch || mineNarrationMatch) {
+    // 卡片先对完整正文判断，不能先按旁白的 ] 或双语括号拆开 HTML/脚本。
+    let regexCardResult = null;
+    if (window.ChatRegex && role === 'assistant' && !message.isHidden && !isWithdrawn
+        && !message.media && !stickerData && !transferStatus && !giftStatus && !message.callSessionId && !chat?.callMode
+        && (!message.parts || message.parts.every(part => ['text', 'html'].includes(part.type)))
+        && (message.regexHtml === true || ChatRegex.getRules(chat, currentChatType, 'display').some(rule => rule.html === true))) {
+        const body = ChatRegex.messageBody(message);
+        if (body) {
+            const result = ChatRegex.resolveBody(body.text, message, chat, currentChatType);
+            if (result.html) regexCardResult = result;
+        }
+    }
+    if (!regexCardResult && (narrationMatch || mineNarrationMatch)) {
         let text = (narrationMatch || mineNarrationMatch)[1].trim();
         text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
@@ -207,7 +232,7 @@ function createMessageBubbleElement(message) {
     // --- 双语模式判断逻辑 ---
     const isBilingualMode = chat.bilingualModeEnabled;
     let bilingualMatch = null;
-    if (isBilingualMode && role === 'assistant') {
+    if (!regexCardResult && isBilingualMode && role === 'assistant') {
         const bilingualSource = message.regexKind === 'text' ? message.content : content;
         const contentMatch = bilingualSource.match(/^\[.*?的消息：([\s\S]+)\]$/);
         if (contentMatch) {
@@ -454,13 +479,18 @@ function createMessageBubbleElement(message) {
         shareData = parseLegacyForumShare(content);
     }
 
-    if (pomodoroMatch) {
+    if (regexCardResult) {
+        bubbleElement = document.createElement('div');
+        bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
+        ChatRegex.renderBody(bubbleElement, '', message, chat, currentChatType, { result: regexCardResult });
+    } else if (pomodoroMatch) {
         const taskName = pomodoroMatch[1];
         const duration = pomodoroMatch[2];
         const pokeCount = pomodoroMatch[3];
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'pomodoro-record-card';
-        bubbleElement.innerHTML = `<img src="./png/card_pomodoro.png" class="pomodoro-record-icon" alt="pomodoro complete"><div class="pomodoro-record-body"><p class="task-name">${taskName}</p></div>`;
+        // Lucide party-popper（ISC）；只在 pomodoro.css 翻转图标，卡片文字保持原方向。
+        bubbleElement.innerHTML = `<svg class="pomodoro-record-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/></svg><div class="pomodoro-record-body"><p class="task-name">${taskName}</p></div>`;
         const detailsDiv = document.createElement('div');
         detailsDiv.className = 'pomodoro-record-details';
         detailsDiv.innerHTML = `<p><strong>任务名称:</strong> ${taskName}</p><p><strong>专注时长:</strong> ${duration}</p><p><strong>"戳一戳"次数:</strong> ${pokeCount}</p>`;
@@ -512,7 +542,8 @@ function createMessageBubbleElement(message) {
         } else {
             giftText = isSent ? '您有一份礼物～' : '您有一份礼物～';
         }
-        bubbleElement.innerHTML = `<img src="./png/card_gift.png" alt="gift" class="gift-card-icon"><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div>`;
+        // Lucide gift（ISC），线条粗细在 chat_room.css 的 .gift-card-icon 调整。
+        bubbleElement.innerHTML = `<svg class="gift-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14"/><path d="M20 11v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"/><path d="M7.5 7a1 1 0 0 1 0-5A4.8 8 0 0 1 12 7a4.8 8 0 0 1 4.5-5 1 1 0 0 1 0 5"/><rect x="3" y="7" width="18" height="4" rx="1"/></svg><div class="gift-card-text">${giftText}</div><div class="gift-card-received-stamp">已查收</div>`;
         const description = groupGiftMatch ? groupGiftMatch[3].trim() : match[1].trim();
         const descriptionDiv = document.createElement('div');
         descriptionDiv.className = 'gift-card-description';
@@ -620,40 +651,25 @@ function createMessageBubbleElement(message) {
 
         const overlay = document.createElement('div');
         overlay.className = 'pv-card-image-overlay';
-        overlay.style.backgroundImage = `url("${isSent ? './png/card_photo_sent.jpg' : './png/card_photo_recv.jpg'}")`;
+        overlay.style.backgroundImage = 'url("./png/card_photo.jpg")';
 
-        const footer = document.createElement('div');
-        footer.className = 'pv-card-footer';
-        const coverIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        coverIcon.setAttribute('viewBox', '0 0 24 24');
-        coverIcon.setAttribute('aria-hidden', 'true');
-        const coverPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        coverPath.setAttribute('d', 'M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,6V18H20V6H4M10,9A1,1 0 0,1 11,10A1,1 0 0,1 10,11A1,1 0 0,1 9,10A1,1 0 0,1 10,9M8,17L11,13L13,15L17,10L20,14V17H8Z');
-        coverIcon.appendChild(coverPath);
+        // 图片面不叠加提示文字，包括生成中／中断／失败和加载异常；正文仅在翻面后显示。
         const media = hasImageMedia && typeof normalizeImageMedia === 'function'
             ? normalizeImageMedia(message.media)
             : (hasImageMedia ? message.media : null);
         const livePending = !!(media && media.state === 'pending'
             && typeof isImageGenerationPending === 'function'
             && isImageGenerationPending(message.id, typeof currentChatId !== 'undefined' ? currentChatId : ''));
-        const footerText = document.createElement('span');
-        footerText.textContent = !hasImageMedia
-            ? '照片/视频・点击查看'
-            : livePending
-                ? '正在生成图片・点击查看描述'
-                : media && media.state === 'pending'
-                    ? '生成已中断・点击重试'
-                : media && media.state === 'failed'
-                    ? '生成失败・点击查看描述'
-                    : '图片加载中・点击查看描述';
-        footer.append(coverIcon, footerText);
 
+        // 两种动作共用右上角槽位；切到文字面时隐藏整组，不改各按钮的媒体状态。
+        const actions = document.createElement('div');
+        actions.className = 'pv-card-actions';
         const generateButton = document.createElement('button');
         generateButton.type = 'button';
         generateButton.className = 'pv-card-generate';
         generateButton.title = media && (media.state === 'failed' || media.state === 'pending') ? '重试生成图片' : '生成图片';
         generateButton.setAttribute('aria-label', generateButton.title);
-        generateButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="m19 14 .7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14Z"/></svg>';
+        generateButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>';
         generateButton.hidden = hasImageMedia && (!media || livePending || media.state === 'ready');
         generateButton.addEventListener('click', async event => {
             event.preventDefault();
@@ -677,7 +693,7 @@ function createMessageBubbleElement(message) {
                 generateButton.disabled = false;
             }
         });
-        footer.appendChild(generateButton);
+        actions.appendChild(generateButton);
 
         if (hasImageMedia) {
             // 右上角放大按钮：真实图片加载成功后才出现，点击打开图片查看器
@@ -696,10 +712,9 @@ function createMessageBubbleElement(message) {
                 const src = overlay.dataset.imageObjectUrl;
                 if (src && typeof openImageViewer === 'function') openImageViewer(message, src);
             });
-            bubbleElement.appendChild(zoomButton);
+            actions.appendChild(zoomButton);
             bubbleElement.dataset.imageMedia = 'true';
             bubbleElement._imageGenerateButton = generateButton;
-            bubbleElement._imageFooterText = footerText;
             bubbleElement._imageHydrationToken = Symbol('image-card');
             const token = bubbleElement._imageHydrationToken;
             Promise.resolve().then(async () => {
@@ -708,13 +723,6 @@ function createMessageBubbleElement(message) {
                     if (bubbleElement._imageHydrationToken !== token) return;
                     if (bubbleElement.ownerDocument && bubbleElement.ownerDocument.body && !bubbleElement.ownerDocument.body.contains(bubbleElement)) return;
                     if (!result || !result.bytes) {
-                        footerText.textContent = livePending
-                            ? '正在生成图片・点击查看描述'
-                            : media && media.state === 'pending'
-                                ? '生成已中断・点击重试'
-                            : media && media.state === 'failed'
-                                ? '生成失败・点击查看描述'
-                                : '图片暂不可用・点击查看描述';
                         generateButton.hidden = !!(livePending || media && media.source === 'uploaded');
                         bubbleElement.classList.add('pv-card-unavailable');
                         return;
@@ -728,7 +736,6 @@ function createMessageBubbleElement(message) {
                     overlay.style.backgroundImage = `url("${objectUrl}")`;
                     overlay.dataset.imageObjectUrl = objectUrl;
                     overlay.classList.remove('is-placeholder');
-                    footerText.textContent = '照片/视频・点击查看';
                     generateButton.hidden = true;
                     zoomButton.hidden = false;
                     bubbleElement.classList.add('pv-card-real-image');
@@ -743,15 +750,12 @@ function createMessageBubbleElement(message) {
                     };
                     probe.src = objectUrl;
                 } catch (error) {
-                    footerText.textContent = error.code === 'image-repo-missing'
-                        ? '图片仓库不可用・点击查看描述'
-                        : '图片加载失败・点击查看描述';
                     generateButton.hidden = !!(media && media.source === 'uploaded');
                     bubbleElement.classList.add('pv-card-unavailable');
                 }
             });
         }
-        bubbleElement.append(description, overlay, footer);
+        bubbleElement.append(description, overlay, actions);
     } else if (locationMatch) {
         const body = locationMatch[1].trim();
         const sepIndex = body.indexOf('；地址：');
@@ -780,8 +784,8 @@ function createMessageBubbleElement(message) {
         }
         bubbleElement = document.createElement('div');
         bubbleElement.className = `transfer-card ${isSentTransfer ? 'sent-transfer' : 'received-transfer'}`;
-        let statusText = isSentTransfer ? '待查收' : '转账给你';
-        if (groupTransferMatch && !isSent) statusText = '转账给Ta';
+        // 群聊原来的收发对象放进状态行，不再额外占一行标题。
+        let statusText = groupTransferMatch ? titleText : (isSentTransfer ? '待查收' : '转账给你');
         if (transferStatus === 'received') {
             statusText = '已收款';
             bubbleElement.classList.add('received');
@@ -792,8 +796,7 @@ function createMessageBubbleElement(message) {
         if ((transferStatus !== 'pending' && currentChatType === 'private') || currentChatType === 'group') {
             bubbleElement.style.cursor = 'default';
         }
-        const remarkHTML = remarkText ? `<p class="transfer-remark">${remarkText}</p>` : '';
-        bubbleElement.innerHTML = `<div class="overlay"></div><div class="transfer-content"><p class="transfer-title">${titleText}</p><p class="transfer-amount">¥${amount}</p>${remarkHTML}<p class="transfer-status">${statusText}</p></div>`;
+        bubbleElement.appendChild(createTransferCardContent(amount, statusText, remarkText));
     } else if (imageRecogMatch || urlRegex.test(content)) {
         bubbleElement = document.createElement('div');
         bubbleElement.className = 'image-bubble';
@@ -818,9 +821,9 @@ function createMessageBubbleElement(message) {
         });
         bubbleElement.appendChild(legacyZoom);
 
-        // 右下角转文字按钮：和 pv-card 的生图按钮同一个位置，两种图片气泡的
-        // "右下角动作键"就统一了。只有真的带 base64 的图片能转 —— 纯 URL 图片
-        // 走的是同一个分支但没有 parts，convert 那边也拿不到数据。
+        // 真实图片的转文字按钮仍放右下角，与右上角的放大键分开。
+        // 只有真的带 base64 的图片能转；纯 URL 图片走同一分支但没有 parts，
+        // 转化函数也拿不到数据。
         if (imagePart && typeof convertImageMessageToText === 'function') {
             const ocrButton = document.createElement('button');
             ocrButton.type = 'button';

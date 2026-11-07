@@ -67,7 +67,10 @@ function normalizeRegexCategories(value) {
                 flags: typeof rule.flags === 'string' ? rule.flags : 'g',
                 // 空替换串代表删除命中内容，必须原样保留。
                 replacement: typeof rule.replacement === 'string' ? rule.replacement : '',
-                mode: rule.mode === 'display' ? 'display' : 'storage',
+                // 卡片模板只能在显示阶段展开，恢复旧备份时也不能把整段 HTML 写进上下文。
+                mode: rule.html === true || rule.mode === 'display' ? 'display' : 'storage',
+                // 必须显式勾选才执行卡片脚本，旧规则和字符串 "true" 均保持静态。
+                html: rule.html === true,
                 order: typeof rule.order === 'number' && Number.isFinite(rule.order) ? rule.order : index
             });
         }
@@ -249,7 +252,8 @@ window.db = {
         defaultPresetId: '',
         localCacheLimitMB: 10
     },
-    homeStatusBarColor: '#ffffff',
+    // 仅首页未自定义时贴合默认壁纸顶部；加载时仍以已保存的颜色为准（包括白色）。
+    homeStatusBarColor: '#BEC9CB',
     homeNavigationBarColor: '#ffffff',
 
     // --- 基础设置 ---

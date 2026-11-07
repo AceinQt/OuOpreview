@@ -3,6 +3,17 @@
 // ==========================================
 let callAbortController = null;   // ← 新增：通话请求中止器
 
+// 撤回原文可能含嵌套方括号，必须找到整个动作的外层结尾，不能停在第一个 ]。
+function getAiWithdrawBlockEnd(text, start) {
+    if (!/^\[[^\[\]\r\n]*?撤回了(?:上一条|一条)消息[:：]/.test(text.slice(start))) return -1;
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+        if (text[i] === '[') depth++;
+        if (text[i] === ']' && --depth === 0) return i;
+    }
+    return -1;
+}
+
 function getMixedContent(responseData) {
     const results =[];
     let i = 0;
@@ -76,6 +87,12 @@ function getMixedContent(responseData) {
         }
 
         if (responseData[i] === '[') {
+            const withdrawEnd = getAiWithdrawBlockEnd(responseData, i);
+            if (withdrawEnd !== -1) {
+                results.push({ type: 'text', content: responseData.slice(i, withdrawEnd + 1) });
+                i = withdrawEnd + 1;
+                continue;
+            }
             // 分享卡片要特殊对待：它是多行的，而且「内容」是大段自由文本，
             // 里面很可能出现 ] （"第[三]章"、"价格[特价]39元"）。下面那条按
             // **第一个** ] 收尾的通用规则会把卡片截半截，剩下的半张卡还会漏成
@@ -386,9 +403,30 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 shareBlocks = masked.blocks;
             }
 
+            // 同样保护撤回块：原文中的方括号与换行必须原样参与全文匹配。
+            // 先遮住分享卡片，避免把卡片引用的撤回文本误当作要执行的指令。
+            const withdrawBlocks = [];
+            let withdrawToken = '__OUO_WITHDRAW__';
+            while (processedResponse.includes(withdrawToken)) withdrawToken += '_';
+            const withdrawHead = /\[[^\[\]\r\n]*?撤回了(?:上一条|一条)消息[:：]/g;
+            let withdrawHeadMatch;
+            while ((withdrawHeadMatch = withdrawHead.exec(processedResponse))) {
+                const start = withdrawHeadMatch.index;
+                const end = getAiWithdrawBlockEnd(processedResponse, start);
+                if (end === -1) continue;
+                const token = `${withdrawToken}${withdrawBlocks.length}__`;
+                withdrawBlocks.push({ token, content: processedResponse.slice(start, end + 1) });
+                processedResponse = processedResponse.slice(0, start) + token + processedResponse.slice(end + 1);
+                withdrawHead.lastIndex = start + token.length;
+            }
+
             processedResponse = processedResponse.replace(/\]\s*\[/g, ']\n[');
             processedResponse = processedResponse.replace(/([^\n>])\s*\[(?!system-narration|system-display)/g, '$1\n[');
             processedResponse = processedResponse.replace(/\]\s*([^\n<])/g, ']\n$1');
+
+            for (const block of withdrawBlocks) {
+                processedResponse = processedResponse.replace(block.token, () => `\n${block.content}\n`);
+            }
 
             // 填回去，并保证每张卡片独占一行（占位符前后可能粘着别的话）
             if (shareBlocks.length && typeof restoreShareBlocks === 'function') {
@@ -458,14 +496,14 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 if (capturedCallSessionId && chat.currentCallSessionId !== capturedCallSessionId) return;
                 isFirstMsg = false;
 
-                const aiWithdrawRegex = /\[(.*?)撤回了上一条消息：([\s\S]*?)\]/;
+                const aiWithdrawRegex = /^\[(.*?)撤回了(?:上一条|一条)消息[:：]([\s\S]*)\]$/;
                 const withdrawMatch = item.content.match(aiWithdrawRegex);
                 if (withdrawMatch) {
                     const characterName = withdrawMatch[1];
                     const originalContent = withdrawMatch[2].trim();
                     let messageToWithdraw = null;
                     let cleanOriginalContent = '';
-                    // 指令仍沿用「上一条」格式，但目标由原文决定，不能再无条件撤最后一句。
+                    // 新指令使用「一条」，兼容旧「上一条」；两种都按原文定位，绝不无条件撤最后一句。
                     // 倒序取最近的全文匹配；只忽略首尾空白，不做子串/模糊匹配，找不到就跳过。
                     for (let i = chat.history.length - 1; originalContent && i >= 0; i--) {
                         const candidate = chat.history[i];
@@ -481,8 +519,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     if (messageToWithdraw) {
                         messageToWithdraw.isWithdrawn = true;
                         messageToWithdraw.originalContent = cleanOriginalContent;
-                        messageToWithdraw.content = `[system: ${characterName} withdrew a message. Original: ${cleanOriginalContent}]`;
-                        // 后续上下文优先读 parts，必须和 content 一起更新，否则模型仍把原文当普通消息。
+                        messageToWithdraw.content = `[${characterName}撤回了一条消息：${cleanOriginalContent}]`;
+                        // content 与 parts 同步保留撤回事实和全文，避免其他读取入口仍拿到旧发言。
                         if (messageToWithdraw.parts) {
                             messageToWithdraw.parts = [{ type: 'text', text: messageToWithdraw.content }];
                         }
@@ -889,7 +927,8 @@ if (chatType === 'private' && chat.offlineModeEnabled) {
             //    就地改会把内存和随后落库的格式一起改掉，气泡当场退化成普通文字条。
             // ⚠️ content 和 parts[].text 两边都要改 —— 下面两个 provider 分支
             //    读的是 parts，只改 content 等于没改。
-            if (!msg || !msg.callSessionId) return msg;
+            // 撤回原文不能再经过语音/旁白等格式改写，否则行为记录中的全文会失真。
+            if (!msg || msg.isWithdrawn || !msg.callSessionId) return msg;
             const swap = t => (typeof t === 'string' ? t.replace(/的语音[:：]/g, '的消息：') : t);
             return {
                 ...msg,
@@ -983,7 +1022,9 @@ if (cachePlan) {
                 const role = (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user';
                 let parts;
                 
-                if (msg.parts && msg.parts.length > 0) {
+                if (msg.isWithdrawn) {
+                    parts = [{ text: msg.content }];
+                } else if (msg.parts && msg.parts.length > 0) {
      parts = msg.parts.map(p => {
         if (p.type === 'text' || p.type === 'html') {
             let text = p.text; 
@@ -1058,7 +1099,10 @@ if (cachePlan) {
             
             historySlice.forEach(msg => {
                 let content;
-                if (msg.role === 'user' && msg.quote) {
+                if (msg.isWithdrawn) {
+                    // content 已是带原文的撤回记录；不能被残留 quote 重新包装成普通回复。
+                    content = msg.content;
+                } else if (msg.role === 'user' && msg.quote) {
                      const replyTextMatch = msg.content.match(/\[.*?[:：]([\s\S]+?)\]/); 
                      const replyText = replyTextMatch ? replyTextMatch[1] : msg.content;
                      content = `[${chat.myName}引用"${msg.quote.content}"并回复：${replyText}]`;

@@ -21,10 +21,12 @@
     }
 
     function renderBody(container, record, format) {
-        container.classList.remove('regex-html-bubble');
+        container.classList.remove('regex-html-bubble', 'regex-html-card');
         const result = replaceBody(record, 'display');
-        if ((result.changed || record.forumRegexApplied) && /<\/?[a-z][^>]*>/i.test(result.text)) {
-            ChatRegex.renderHtmlPreview(container, result.text);
+        // 旧存储卡片只保留渲染兼容，新规则不会再写 forumRegexHtml 或保存模板。
+        const interactive = !record.isUser && !record.forumUserAuthored && (result.html || record.forumRegexHtml === true);
+        if (interactive || ((result.changed || record.forumRegexApplied) && /<\/?[a-z][^>]*>/i.test(result.text))) {
+            ChatRegex.renderHtmlPreview(container, result.text, { interactive });
         } else {
             container.innerHTML = DOMPurify.sanitize(format(result.text));
         }
