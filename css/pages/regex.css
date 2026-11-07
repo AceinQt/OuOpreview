@@ -24,6 +24,13 @@
 #preview-regex-rule-btn { background: var(--accent-color); color: #fff; }
 /* 公共 action-btn-group 会填充 SVG，问号必须显式恢复为空心描边。 */
 #regex-help-btn svg { fill: none; }
+/* 字段标题沿用公共表单的蓝色粗体，说明按钮独立于 label，点击问号不会切换开关。 */
+.regex-field-heading { display: flex; align-items: center; margin-bottom: 8px; }
+#edit-regex-screen .regex-field-heading label { margin-bottom: 0; }
+#edit-regex-screen .form-group-switch .regex-field-heading,
+#edit-regex-screen .form-group-switch .switch { margin-bottom: 0; }
+.regex-field-help { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; }
+.regex-field-help svg { width: 100%; height: 100%; fill: none; }
 #regex-preview-modal { padding: 16px; box-sizing: border-box; }
 #regex-preview-modal .modal-window { width: 100%; max-width: 440px; max-height: 90%; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
 /* 标题沿用公共弹窗的居中样式；只限制高度，让正文滚动而不挤走页签。 */
@@ -50,6 +57,16 @@
 #regex-selection-list .regex-group-row input { width: 20px; height: 20px; }
 /* 气泡 iframe 用父容器宽度布局；窄屏仍受气泡栏限制，不会横向溢出。 */
 .regex-html-bubble { width: 280px; max-width: 100%; min-width: 0; }
+#message-edit-html-fields[hidden] { display: none !important; }
+/* 卡片取代气泡外观，不动消息 wrapper：头像、引用、时间与多选仍归聊天管理。 */
+#chat-room-screen .message-bubble.regex-html-card {
+    width: 350px; max-width: 100%; padding: 0 !important; border: 0 !important;
+    background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+}
+#chat-room-screen .message-bubble.regex-html-card::before,
+#chat-room-screen .message-bubble.regex-html-card::after { display: none !important; }
+/* 多选时让点击落到外层 wrapper，不能被 iframe 内的按钮抢走。 */
+#chat-room-screen.multi-select-active .regex-html-card iframe { pointer-events: none; }
 @media (max-width: 380px) {
     .regex-rule-card { gap: 6px; padding: 12px; }
     .regex-rule-controls { gap: 3px; }

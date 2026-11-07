@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
     <title>OuO</title>
-    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="theme-color" content="#BEC9CB" />
     
     <!-- 2. iOS Safari 伪装原生 App 三连击 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2335,13 +2335,38 @@
             </header>
             <main class="content">
                 <form id="edit-regex-form">
-                    <div class="form-group"><label for="regex-name">名称</label><input type="text" id="regex-name" required></div>
-                    <div class="form-group"><label for="regex-category">类别</label><select id="regex-category" required></select></div>
-                    <div class="form-group"><label for="regex-pattern">匹配表达式</label><textarea id="regex-pattern" rows="3" placeholder="只填表达式，不含两侧 /" required spellcheck="false"></textarea></div>
-                    <div class="form-group"><label for="regex-replacement">替换内容</label><textarea id="regex-replacement" rows="5" placeholder="支持多行、$1 捕获组与 HTML" spellcheck="false"></textarea></div>
-                    <div class="form-group"><label for="regex-flags">标志（匹配选项）</label><input type="text" id="regex-flags" value="g" placeholder="g：全部替换；留空：只替换第一处" spellcheck="false" autocapitalize="off"></div>
-                    <div class="form-group"><label for="regex-mode">处理方式</label><select id="regex-mode"><option value="storage">修改并保存</option><option value="display">仅显示替换</option></select></div>
-                    <div class="form-group"><label for="regex-order">执行顺序（小的先执行）</label><input type="number" id="regex-order" value="0" step="1"></div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-name">名称</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'name')" aria-label="名称说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <input type="text" id="regex-name" required>
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-category">类别</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'category')" aria-label="类别说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <select id="regex-category" required></select>
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-pattern">匹配表达式</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'pattern')" aria-label="匹配表达式说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <textarea id="regex-pattern" rows="3" placeholder="只填表达式，不含两侧 /" required spellcheck="false"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-replacement">替换内容</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'replacement')" aria-label="替换内容说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <textarea id="regex-replacement" rows="5" placeholder="支持多行、$1 捕获组与 HTML" spellcheck="false"></textarea>
+                    </div>
+                    <div class="form-group form-group-switch">
+                        <div class="regex-field-heading"><label for="regex-html">HTML 卡片</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'html')" aria-label="HTML 卡片说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <label class="switch"><input type="checkbox" id="regex-html"><span class="slider round"></span></label>
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-flags">标志（匹配选项）</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'flags')" aria-label="标志说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <input type="text" id="regex-flags" value="g" placeholder="g：全部替换；留空：只替换第一处" spellcheck="false" autocapitalize="off">
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-mode">处理方式</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'mode')" aria-label="处理方式说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <select id="regex-mode"><option value="storage">修改并保存</option><option value="display">仅显示替换</option></select>
+                    </div>
+                    <div class="form-group">
+                        <div class="regex-field-heading"><label for="regex-order">执行顺序（小的先执行）</label><button type="button" class="settings-group-info-icon regex-field-help" onclick="showHelp('regex', 'order')" aria-label="执行顺序说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button></div>
+                        <input type="number" id="regex-order" value="0" step="1">
+                    </div>
                     <div class="regex-editor-actions">
                         <button type="button" class="btn btn-neutral" id="preview-regex-rule-btn">预览</button>
                         <button type="submit" class="btn btn-primary" id="save-regex-rule-btn">保存正则</button>
@@ -3575,7 +3600,7 @@
                     <input type="color" id="home-status-bar-color-picker" title="点击选择颜色">
                 </div>
                 <!-- 文本输入框 -->
-                <input type="text" id="home-status-bar-color-input" placeholder="#FFFFFF">
+                <input type="text" id="home-status-bar-color-input" placeholder="#BEC9CB">
             </div>
         </div>
                 <div class="form-group">
@@ -7043,10 +7068,15 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
                     <option value="photo-video">文字图片</option>
                     <option value="user-narration">用户剧情旁白</option>
                     <option value="narration">线下模式旁白</option>
+                    <option value="regex-html">HTML 块（正则显示）</option>
                     <option value="display">屏幕提示（通话/模式）</option>
                 </select>
             </div>
 
+            <div id="message-edit-html-fields" class="form-group" hidden>
+                <label for="message-edit-html-rule">卡片正则</label>
+                <select id="message-edit-html-rule" class="form-control"></select>
+            </div>
             <div class="form-group">
                 <textarea id="message-edit-textarea" rows="4" required></textarea>
             </div>

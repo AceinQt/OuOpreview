@@ -148,9 +148,8 @@
 /* 5.56vw 是屏宽的 5.56%，360px 屏约 20px、430px 屏约 24px，再由 clamp 限制在 20–24px。
    仅目录标题随屏宽调整，多选计数、按钮和列表维持原字号。 */
 #world-book-screen .app-header .title {
-    /* 1. 安卓系统自带的思源宋体名字叫 'Noto Serif CJK SC' 或 'Source Han Serif SC' / 'Droid Serif'
-       2. 电脑端自带 'Songti SC' / 'SimSun'
-       3. 以上本地字体都找不到时（即 iOS），才会触发最后的 'Noto Serif SC' 网络字体 */
+    /* 按列表优先使用设备上可用的思源宋体、宋体；不同系统及版本不保证预装相同字体。
+       本地候选都不可用时，回退到 fonts.css 引入的 'Noto Serif SC' 网络字体，再回退到系统衬线体。 */
     font-family: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Source Han Serif CN', 'Songti SC', 'STSong', 'SimSun', 'Noto Serif SC', serif;
     font-size: clamp(20px, 5.56vw, 24px);
 }
@@ -243,7 +242,7 @@
     padding-right: 56px;
 }
 
-/* 单条内容共用书本尺寸与配色；图标不参与压缩，把剩余空间交给可截断的标题/预览。 */
+/* 单条内容共用书本尺寸与配色；保留 40px 占位，内部使用 24px 图标，不挤压标题/预览。 */
 .wb-entry-icon {
     display: flex;
     align-items: center;
@@ -253,18 +252,11 @@
     height: 40px;
 }
 
+/* 只指定尺寸与颜色，空心填充和线宽沿用 Lucide SVG 自身属性，避免旧书本样式覆盖。 */
 .wb-entry-icon svg {
-    width: 40px;
-    height: 40px;
-    fill: #FDFDFB;
-    stroke: #C8C8C3;
-    stroke-width: 1;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.wb-entry-icon svg path + path {
-    fill: none;
+    width: 24px;
+    height: 24px;
+    color: #C8C8C3;
 }
 
 /* 类别内条目与正则规则统一为独立卡片；仅覆盖本页，不改变其他列表。 */
