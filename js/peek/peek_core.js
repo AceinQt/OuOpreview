@@ -399,7 +399,7 @@ function getPeekProactiveFormatPrompt(char) {
     }
     prompt += `c) 照片/视频:[HH:MM|${senderName}发来的照片/视频: 照片画面的详细描述]\n`;
     prompt += `d) 语音消息:[HH:MM|${senderName}的语音: 语音转述的文字内容]\n`;
-    prompt += `e) 撤回消息:[HH:MM|${senderName}撤回了上一条消息: 被撤回消息的原文]\n`;
+    prompt += `e) 撤回消息:[HH:MM|${senderName}撤回了一条消息: 被撤回消息的原文]\n`;
     prompt += `f) 主动转账或送礼物: 转账格式必须为[HH:MM|${senderName}的转账:xxx元；备注：xxx]。送礼物格式必须为[HH:MM|${senderName}送来的礼物:xxx]\n`;
     prompt += `g) 话题会在未来一小时到三天中的某一时刻发出，因此消息中的 HH:MM 时间必须晚于当前时间的一小时后。生成的消息中也请不要使用确切日期以及"今天""刚刚"指代某件事的发生时间，应使用"之前""上次"等模糊词语指代某件事的发生时间。\n`;
 

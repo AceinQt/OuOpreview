@@ -229,8 +229,8 @@ function renderWorldBookCategoryList() {
         const row = worldBookElement('li', 'list-item world-book-item');
         row.dataset.id = book.id;
         const icon = worldBookElement('div', 'wb-entry-icon');
-        // 单本书与目录的四本书区分层级；固定 SVG 尺寸，不依赖系统字体或 iOS 的默认尺寸。
-        icon.innerHTML = '<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5h22v30H10a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"/><path d="M11 5v24M6 31a4 4 0 0 1 4-4h22M16 12h10M16 17h7"/></svg>';
+        // 类别内条目使用 Lucide 单本书，与目录的四本书区分层级；占位和配色由共用 CSS 保持一致。
+        icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book preview-icon" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>';
         const details = worldBookElement('div', 'item-details');
         // 先截断再处理空白，不为一行预览扫描/解析全文，更不让正文中的 HTML 变成资源节点。
         const raw = String(book.content || '');
@@ -317,9 +317,10 @@ function refreshWorldBookSelectUI(screenId) {
     });
 }
 
-// AppUI 的 promise 只在点按钮时结束。返回键不能只隐藏弹窗，否则 busy 永远不会释放。
+// 页面返回也必须结束弹窗等待，不能只隐藏。与遮罩、系统返回共用 AppUI 取消入口。
 function cancelWorldBookDialog(overlay) {
     if (!worldBookViewState.dialogPending || !overlay || overlay.id !== 'app-global-dialog') return false;
+    if (typeof AppUI.dismiss === 'function') return AppUI.dismiss(overlay);
     const cancel = overlay.querySelector('.btn-neutral');
     if (!cancel) return false;
     cancel.click();

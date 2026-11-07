@@ -145,7 +145,8 @@
                 return true;
             }
             untrack(top);
-            // 世界书/正则确认和输入弹窗必须真正点取消以结束 promise，光隐藏会让页面一直处于忙状态。
+            // 所有通用弹窗都走自己的取消回调，避免只隐藏后留下忙锁、临时控件或悬空 Promise。
+            if (typeof AppUI !== 'undefined' && typeof AppUI.dismiss === 'function' && AppUI.dismiss(top)) return true;
             if (typeof cancelWorldBookDialog === 'function' && cancelWorldBookDialog(top)) return true;
             if (typeof cancelRegexDialog === 'function' && cancelRegexDialog(top)) return true;
             top.classList.remove('visible');

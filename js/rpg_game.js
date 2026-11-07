@@ -861,7 +861,9 @@ function rpgShowApiPickerDialog() {
             showToast(label);
             resolve(window.rpgSelectedApiPreset);
         }));
-        actionsEl.appendChild(createBtn('取消', 'btn-neutral', () => resolve(undefined)));
+        const cancelBtn = createBtn('取消', 'btn-neutral', () => resolve(undefined));
+        cancelBtn.dataset.appuiDismiss = ''; // 遮罩/返回复用原取消回调，不改选择值。
+        actionsEl.appendChild(cancelBtn);
 
         overlay.classList.add('visible');
     });

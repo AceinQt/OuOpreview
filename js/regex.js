@@ -1,5 +1,5 @@
 // 正则管理只负责目录、编辑和聊天关联；编译/替换/隔离预览由 ChatRegex 负责。
-// 说明紧贴本模块维护：重点是描述需求和迁移边界，不把编辑页变成正则语法课。
+// 说明紧贴本模块维护：字段细节放在各自问号里，总教程只保留入门、迁移边界和使用流程。
 AppHelp.register('regex', {
     page: {
         title: '正则怎么用',
@@ -22,26 +22,55 @@ AppHelp.register('regex', {
 
 $1、$2 就是保留匹配到的前后两段。它只认文字规律，不懂句意：「把礼物给你了」也会被改。如果有不想改的句子，也要作为反例交给 AI，不能指望一条正则理解所有中文。
 
-【「标志」是什么】
-它是匹配选项，不是规则名称：
-g：一段文字里所有匹配都替换；留空只替换第一处。
-i：忽略英文字母大小写，可与 g 合写为 gi。
-m：让 ^ 和 $ 按每一行的开头、结尾匹配。
-s：让 . 也能匹配换行。它与 m 不是一回事。
-一般保留 g；需要别的选项，让 AI 直接给出标志即可。
-
 【从 SillyTavern（酒馆）搬过来】
-普通 JavaScript 查找与替换通常可以迁移，但不是整份配置直接粘贴：
-• Find Regex → 匹配表达式；Replace With → 替换内容。
-• /表达式/gi 要拆成「表达式」与标志「gi」，不能把两侧 / 和末尾标志一起贴进表达式框。原规则没带标志时，这里的默认 g 也要清空，才能保留只替换一次的行为。
-• $1、$2 可沿用；替换内容里的 {{match}} 要改成 $&（整个匹配）。{{user}}、{{char}} 等宏不会自动展开。
-• Trim Out、深度、作用位置、提示词选项、脚本命令等酒馆设置不会一起迁移，需要重新适配；这里也不能直接导入酒馆正则 JSON。
-• HTML 可以预览静态排版与样式，但不执行脚本、不支持交互控件；依赖酒馆页面结构或外部资源的效果需要另行适配。
+普通 JavaScript 查找与替换通常可以迁移，但不是整份配置直接粘贴。各字段的填写与转换方法见标题旁的问号。
+Trim Out、深度、作用位置、提示词选项、脚本命令等酒馆设置不会一起迁移，需要重新适配；这里也不能直接导入酒馆正则 JSON。
 
 【预览和正式使用】
-点「预览」，在「普通」页填入测试原文并点「测试替换」，结果框也会显示没有匹配或表达式错误的提示。「HTML」页只显示静态渲染结果，切入时自动按最新原文测试，不执行脚本；切换页签不会清空原文。点击弹窗外的遮罩即可关闭。测试只运行当前这一条，即使还没填名称、还没保存也能试。
-确认正例和反例都符合预期后再保存，并在聊天或论坛设置中关联它所在的正则类别。规则按执行顺序依次处理。
-「修改并保存」会改写适用的新 AI 正文，取消关联也不会还原已经改写的内容；「仅显示替换」不改存储原文。拿不准时，先选「仅显示替换」。`
+点「预览」，在「普通」页填入测试原文并点「测试替换」，结果框也会显示没有匹配或表达式错误的提示。「HTML」页切入时自动按最新原文测试；只有当前规则勾选「HTML 卡片」且实际命中，才启用交互。切换页签不会清空原文。点击弹窗外的遮罩即可关闭。测试只运行当前这一条，即使还没填名称、还没保存也能试。
+确认正例和反例都符合预期后再保存，并在聊天或论坛设置中关联使用。
+正则仅处理 AI 消息及 AI 论坛正文，不处理自己发送的消息、手写帖子或评论；自行发测试串不会替换，请用预览或 AI 消息测试。`
+    },
+    name: {
+        title: '名称',
+        content: '给这条正则起一个方便辨认的名称，保存时必填。名称只用于管理，不参与匹配。'
+    },
+    category: {
+        title: '类别',
+        content: '选择这条正则所属的类别。保存后，在聊天或论坛设置中关联整个类别即可使用其中的规则。私聊还要勾选当前使用的线上/线下模式。'
+    },
+    pattern: {
+        title: '匹配表达式',
+        content: String.raw`填写 JavaScript 正则表达式，只填表达式本身，不带两侧 /。
+
+从酒馆迁移时，Find Regex 对应这里。/表达式/gi 要拆成这里的「表达式」与标志字段的「gi」，不能整段粘贴。
+
+它只认文字规律，不懂句意。先用预览测试应当修改和不应修改的例子，避免误改。`
+    },
+    replacement: {
+        title: '替换内容',
+        content: String.raw`填写匹配后要换成的内容，支持多行；留空会删除匹配到的部分。
+$1、$2 等表示捕获组，$& 表示整个匹配，也可以填写 HTML 模板。
+
+从酒馆迁移时，Replace With 对应这里。$1、$2 可沿用；{{match}} 要改成 $&。{{user}}、{{char}} 等酒馆宏不会自动展开。
+
+需要卡片交互时开启「HTML 卡片」，具体能力见该字段旁的问号。`
+    },
+    html: {
+        title: 'HTML 卡片',
+        content: '命中后用卡片代替普通气泡，支持展开、翻面等内联脚本交互。固定为“仅显示替换”，不把模板写入消息或模型上下文。仅对 AI 消息生效。\n\n整段替换结果都放进卡片，未匹配的文字不会被删除；最外层的 HTML 代码围栏会自动去掉。不开启时，HTML 仍只显示静态排版。\n\n请只启用可信模板。卡片在隔离页面中运行，无法读取聊天数据或主页面存储；仅支持内联脚本、样式和 data 资源，不加载外链脚本、图片、样式或字体，也不提供酒馆接口。卡片内输入与展开状态不保存，离开后重建会重置。\n\n【手动修正卡片】\nAI 输出格式有误时，长按消息→编辑→「HTML 块（正则显示）」，在「卡片正则」中选择当前聊天已启用的卡片规则。下方只填写修正后的原始短文本（例如 status 块），不要粘贴完整 HTML 模板。保存前会检查规则是否匹配；保存只记录修正原文和规则 ID，显示时才展开模板。没有可选规则时，请先在聊天中关联并启用 HTML 卡片类别。'
+    },
+    flags: {
+        title: '标志（匹配选项）',
+        content: '它是匹配选项，不是规则名称：\ng：一段文字里所有匹配都替换；留空只替换第一处。\ni：忽略英文字母大小写，可与 g 合写为 gi。\nm：让 ^ 和 $ 按每一行的开头、结尾匹配。\ns：让 . 也能匹配换行。它与 m 不是一回事。\n\n一般保留 g；需要别的选项，让 AI 直接给出标志即可。从酒馆迁移时，原规则没带标志就要清空默认 g，才能保留只替换一次的行为。'
+    },
+    mode: {
+        title: '处理方式',
+        content: '「修改并保存」会改写适用的新 AI 正文，取消关联也不会还原已经改写的内容。\n\n「仅显示替换」只改变显示，不改写原始消息或模型上下文。\n\n开启「HTML 卡片」后固定使用「仅显示替换」，不能切到「修改并保存」，避免把模板写入消息。'
+    },
+    order: {
+        title: '执行顺序',
+        content: '数字小的规则先执行，后面的规则继续处理前面替换后的结果。多条规则可能互相影响；预览只测试当前这一条，关联多个规则后还要检查实际显示效果。'
     }
 });
 const regexViewState = {
@@ -142,7 +171,7 @@ function saveRegexRule(values, editingId = null) {
         if (!Number.isFinite(order)) throw new Error('执行顺序必须是有效数字');
         const rule = { id: previous ? previous.rule.id : `regex_rule_${crypto.randomUUID()}`, name,
             pattern: String(values.pattern ?? ''), flags: String(values.flags ?? 'g').trim(), replacement: String(values.replacement ?? ''),
-            mode: values.mode === 'display' ? 'display' : 'storage', order };
+            mode: values.html === true || values.mode === 'display' ? 'display' : 'storage', html: values.html === true, order };
         compileRegexDraft(rule);
         if (previous) previous.category.rules = previous.category.rules.filter(item => item.id !== editingId);
         category.rules.push(rule);
@@ -231,10 +260,10 @@ function renderRegexRuleList() {
     for (const [index, rule] of rules.entries()) {
         const row = regexElement('li', 'draft-card-item regex-rule-card'); row.dataset.ruleId = rule.id;
         const icon = regexElement('div', 'wb-entry-icon');
-        // 规则也使用单本书，封面的正则符号区分世界书条目，且不再依赖字符字体绘制。
-        icon.innerHTML = '<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M10 5h22v30H10a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"/><path d="M11 5v24M6 31a4 4 0 0 1 4-4h22M17 19h.01M24 11v9M20 13l8 5M28 13l-8 5"/></svg>';
+        // 类别内规则与世界书条目共用 Lucide 单本书，目录首页的正则符号保持不变。
+        icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book preview-icon" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>';
         const details = regexElement('div', 'draft-card-content regex-rule-open');
-        details.append(regexElement('div', 'draft-card-title', rule.name), regexElement('div', 'draft-card-subtitle', `${regexModeLabel(rule)} · 顺序 ${rule.order}`));
+        details.append(regexElement('div', 'draft-card-title', rule.name), regexElement('div', 'draft-card-subtitle', `${regexModeLabel(rule)}${rule.html ? ' · HTML 卡片' : ''} · 顺序 ${rule.order}`));
         const controls = regexElement('div', 'regex-rule-controls');
         for (const [direction, text] of [[-1, '↑'], [1, '↓']]) {
             const button = regexElement('button', 'regex-order-btn', text); button.type = 'button'; button.disabled = index === (direction < 0 ? 0 : rules.length - 1);
@@ -260,6 +289,8 @@ function openRegexEditor(id = null) {
     for (const category of getRegexCategories()) { const option = regexElement('option', '', category.name); option.value = category.id; select.appendChild(option); }
     select.value = regexViewState.editingCategoryId;
     for (const field of ['name', 'pattern', 'replacement', 'flags', 'mode', 'order']) document.getElementById(`regex-${field}`).value = rule[field];
+    document.getElementById('regex-html').checked = rule.html === true;
+    syncRegexHtmlMode();
     document.getElementById('edit-regex-title').textContent = id ? '编辑正则' : '创建正则';
     for (const field of ['regex-test-original', 'regex-test-output']) document.getElementById(field).value = '';
     document.getElementById('regex-test-output').placeholder = '没有匹配';
@@ -268,11 +299,18 @@ function openRegexEditor(id = null) {
     setRegexPreviewTab('text');
     navigateTo('edit-regex-screen');
 }
+function syncRegexHtmlMode() {
+    const html = document.getElementById('regex-html').checked;
+    const mode = document.getElementById('regex-mode');
+    if (html) mode.value = 'display';
+    mode.disabled = html;
+}
 function readRegexDraft() {
+    syncRegexHtmlMode();
     return { categoryId: document.getElementById('regex-category').value, name: document.getElementById('regex-name').value,
         pattern: document.getElementById('regex-pattern').value, replacement: document.getElementById('regex-replacement').value,
         flags: document.getElementById('regex-flags').value.trim(), mode: document.getElementById('regex-mode').value,
-        order: document.getElementById('regex-order').value };
+        html: document.getElementById('regex-html').checked, order: document.getElementById('regex-order').value };
 }
 function setRegexBusy(busy) {
     regexViewState.busy = busy;
@@ -291,9 +329,10 @@ async function awaitRegexDialog(action) {
     regexViewState.dialogPending = true;
     try { return await action(); } finally { regexViewState.dialogPending = false; }
 }
-// 系统返回先处理遮罩层，尚未走到页面返回守卫；两条路径都必须点取消来结束 AppUI 的 promise。
+// 页面返回与遮罩、系统返回共用取消入口，必须结束 AppUI 等待才能释放忙锁。
 function cancelRegexDialog(overlay) {
     if (!regexViewState.dialogPending || !overlay || overlay.id !== 'app-global-dialog') return false;
+    if (typeof AppUI.dismiss === 'function') return AppUI.dismiss(overlay);
     const cancel = overlay.querySelector('.btn-neutral');
     if (!cancel) return false;
     cancel.click();
@@ -347,7 +386,7 @@ function testRegexDraft() {
         output.value = result.matched ? result.text : '';
         output.placeholder = result.matched ? '匹配成功，替换结果为空' : '没有匹配';
         if (!document.getElementById('regex-preview-html-panel').hidden && document.getElementById('regex-preview-modal').classList.contains('visible')) {
-            window.ChatRegex.renderHtmlPreview(preview, result.text);
+            window.ChatRegex.renderHtmlPreview(preview, result.text, { interactive: result.html === true });
         }
     } catch (error) { output.placeholder = `表达式无效：${error.message}`; }
 }
@@ -527,6 +566,7 @@ function setupRegexApp() {
         if (saved) document.querySelector('#edit-regex-screen .back-btn').click();
     });
     document.querySelector('#edit-regex-screen .back-btn').addEventListener('click', () => { if (!regexViewState.busy) regexViewState.categoryId = regexViewState.editingCategoryId; });
+    document.getElementById('regex-html').addEventListener('change', syncRegexHtmlMode);
     document.getElementById('regex-help-btn').addEventListener('click', () => AppHelp.show('regex', 'page'));
     document.getElementById('preview-regex-rule-btn').addEventListener('click', openRegexPreview);
     const previewModal = document.getElementById('regex-preview-modal');
