@@ -23,8 +23,9 @@ AppHelp.register('regex', {
 $1、$2 就是保留匹配到的前后两段。它只认文字规律，不懂句意：「把礼物给你了」也会被改。如果有不想改的句子，也要作为反例交给 AI，不能指望一条正则理解所有中文。
 
 【从 SillyTavern（酒馆）搬过来】
-普通 JavaScript 查找与替换通常可以迁移，但不是整份配置直接粘贴。各字段的填写与转换方法见标题旁的问号。
-Trim Out、深度、作用位置、提示词选项、脚本命令等酒馆设置不会一起迁移，需要重新适配；这里也不能直接导入酒馆正则 JSON。
+导入 PNG / JSON 角色卡时，会一并读取卡内的正则，按角色名建立类别；重名时依次加（1）（2）。条目名称和顺序保留，查找表达式会拆出标志，替换内容里的 {{match}} 自动改成 $&。单独的酒馆正则 JSON 暂不支持导入。
+导入后默认不关联聊天，请先检查规则再去聊天设置关联类别。这里按整类启用，不保留酒馆的单条开关；原卡关闭的规则也会导入，不想启用的请先移出或删除。作用位置、Trim Out、深度、提示词选项、编辑重跑和酒馆宏等需要手动适配，不能保证整套配置直接运行。
+导入的正则默认勾选「HTML 卡片」并使用「仅显示替换」，不修改已保存的消息。若只需要普通替换，可在条目中取消勾选「HTML 卡片」。手工迁移各字段的方法见标题旁的问号。
 
 【预览和正式使用】
 点「预览」，在「普通」页填入测试原文并点「测试替换」，结果框也会显示没有匹配或表达式错误的提示。「HTML」页切入时自动按最新原文测试；只有当前规则勾选「HTML 卡片」且实际命中，才启用交互。切换页签不会清空原文。点击弹窗外的遮罩即可关闭。测试只运行当前这一条，即使还没填名称、还没保存也能试。
@@ -586,7 +587,6 @@ function setupRegexApp() {
     }
     document.getElementById('test-regex-rule-btn').addEventListener('click', testRegexDraft);
     document.getElementById('save-regex-selection-btn').addEventListener('click', confirmChatRegexSelection);
-    document.getElementById('cancel-regex-selection-btn').addEventListener('click', () => { if (!document.getElementById('save-regex-selection-btn').disabled) document.getElementById('regex-selection-modal').classList.remove('visible'); });
     window._screenLeaveHooks = window._screenLeaveHooks || {};
     const previousEditorLeave = window._screenLeaveHooks['edit-regex-screen'];
     window._screenLeaveHooks['edit-regex-screen'] = target => { closeRegexPreview(); previousEditorLeave?.(target); };

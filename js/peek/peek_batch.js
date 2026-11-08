@@ -32,9 +32,9 @@ const PEEK_BATCH_APPS = [
                 .map(c => c.partnerName)
                 .filter(Boolean);
 
-            let t = `只生成 1 段最近的对话，对话内容需要强烈反映 ${char.realName} 的人设以及最近聊天上下文。\n`;
+            let t = `生成 1 段最近的对话，对话内容需要反映 ${char.realName} 的人设以及最近聊天上下文。\n`;
             if (existingNames.length > 0) {
-                t += `当前手机里已有以下联系人：${existingNames.join('、')}。但联系人不仅仅局限于这些人，你应该根据聊天上下文情况，优先创造一个**新的联系人**来对话。\n`;
+                t += `当前手机里已有以下联系人：${existingNames.join('、')}。但联系人不仅仅局限于这些人，如果有必要的话，你也可以根据聊天上下文情况，创造一个**陌生联系人**来对话。\n`;
             }
             t += `需要提供对话对象的称呼(#PARTNER#)以及聊天记录(#HISTORY#)。在 #HISTORY# 中，${char.realName} 发送的消息以 "char: " 开头，对方发送的消息以 "partner: " 开头，一来一回 4-6 句即可。`;
             return t;
@@ -56,7 +56,7 @@ partner: 对方发送的消息内容`;
         appType: 'memos',
         name: '备忘录',
         task(char) {
-            return `只生成 1 条备忘录，可以反映 ${char.realName} 的计划、灵感或者日常琐事。内容可以多行。`;
+            return `生成 1 条备忘录，可以反映 ${char.realName} 的计划、灵感或者日常琐事。内容可以多行。`;
         },
         format() {
             return `#TITLE#
@@ -74,7 +74,7 @@ partner: 对方发送的消息内容`;
         appType: 'cart',
         name: '购物车',
         task(char) {
-            return `只生成 1 件购物车内的商品，要能反映 ${char.realName} 近期的兴趣、生活需求或最近聊到的话题。`;
+            return `生成 1 件购物车内的商品，要能反映 ${char.realName} 近期的兴趣、生活需求或最近聊到的话题。`;
         },
         format() {
             return `#TITLE#
@@ -93,7 +93,7 @@ partner: 对方发送的消息内容`;
         appType: 'transfer',
         name: '中转站',
         task(char) {
-            return `只生成 1 条 ${char.realName} 发送给自己的、简短零碎的消息（文件传输助手）。内容像是临时备忘、灵感闪现或随手保存的链接，比"备忘录"更随意、更口语化。`;
+            return `生成 1 条 ${char.realName} 发送给自己的、简短零碎的消息（文件传输助手）。内容像是临时备忘、灵感闪现或随手保存的链接，比"备忘录"更随意、更口语化。`;
         },
         format() {
             return `#ENTRY#
@@ -108,7 +108,7 @@ partner: 对方发送的消息内容`;
         appType: 'browser',
         name: '浏览器',
         task(char) {
-            return `只生成 1 条浏览记录。记录本身要符合 ${char.realName} 的人设和最近聊天上下文，#ANNOTATION# 则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。`;
+            return `生成 1 条浏览记录。记录本身要符合 ${char.realName} 的人设和最近聊天上下文，#ANNOTATION# 则要站在角色自己的视角，记录Ta对这条浏览记录的想法或批注。`;
         },
         format() {
             return `#TITLE#
@@ -144,7 +144,7 @@ ${char.myName}
         appType: 'album',
         name: '相册',
         task(char) {
-            return `只生成 1 个 ${char.realName} 拍摄的照片或视频。#TYPE# 只能是 photo 或 video；#IMAGE_DESC# 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户；#ANNOTATION# 是 ${char.realName} 自己对这张照片/视频的批注。`;
+            return `生成 1 个 ${char.realName} 拍摄的照片或视频。#TYPE# 只能是 photo 或 video；#IMAGE_DESC# 是对这张照片/视频的详细文字描述，它将代替真实的图片展示给用户；#ANNOTATION# 是 ${char.realName} 自己对这张照片/视频的批注。`;
         },
         format() {
             return `#TYPE#

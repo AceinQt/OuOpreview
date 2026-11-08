@@ -481,7 +481,10 @@ function createMessageBubbleElement(message) {
 
     if (regexCardResult) {
         bubbleElement = document.createElement('div');
-        bubbleElement.className = `message-bubble ${isSent ? 'sent' : 'received'}`;
+        // 和转账、分享一样使用独立卡片类，不挂 message-bubble 或收发方向类。
+        // 不能靠 padding:0 !important 抵消气泡外观：自定义 CSS 提权后仍会盖回来。
+        // 收发方向、头像和时间继续由外层 wrapper 管理，HTML 自己决定内部样式。
+        bubbleElement.className = 'regex-html-card';
         ChatRegex.renderBody(bubbleElement, '', message, chat, currentChatType, { result: regexCardResult });
     } else if (pomodoroMatch) {
         const taskName = pomodoroMatch[1];

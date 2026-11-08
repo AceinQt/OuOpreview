@@ -138,7 +138,7 @@
         const overlays = document.querySelectorAll('.modal-overlay.visible, .action-sheet-overlay.visible');
         if (overlays.length > 0) {
             const top = overlays[overlays.length - 1];
-            // 正则关联提交中的返回和界面取消按钮一样被锁住；保留遮罩及跟踪，再补回已弹出的历史层。
+            // 正则关联提交中锁住系统返回；保留遮罩及跟踪，再补回已弹出的历史层。
             // 不能先 untrack/隐藏，否则事务失败后弹窗已经消失，用户也无法原地重试。
             if (top.id === 'regex-selection-modal' && document.getElementById('save-regex-selection-btn')?.disabled) {
                 pushEntry();

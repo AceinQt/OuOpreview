@@ -227,16 +227,15 @@
     function renderHtmlPreview(container, source, options = {}) {
         container.replaceChildren();
         container.classList.add('regex-html-bubble');
+        // 超大结果也保留独立卡片外壳，错误提示不能退回普通气泡的宽度与样式。
+        if (options.interactive === true) container.classList.add('regex-html-card');
+        else container.classList.remove?.('regex-html-card');
         // 错误的全局/空匹配可能复制几百张完整卡片；渲染前止损，原始替换结果仍可在普通预览检查。
         if (String(source ?? '').length > 512 * 1024) {
             container.textContent = 'HTML 结果过大，已暂停渲染。请检查正则是否重复匹配，并在普通预览查看结果。';
             return null;
         }
-        if (options.interactive === true) {
-            container.classList.add('regex-html-card');
-            return renderInteractiveHtml(container, source);
-        }
-        container.classList.remove?.('regex-html-card');
+        if (options.interactive === true) return renderInteractiveHtml(container, source);
         const frame = document.createElement('iframe');
         frame.className = 'regex-html-frame';
         frame.title = '正则 HTML 展示';
