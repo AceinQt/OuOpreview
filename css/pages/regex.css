@@ -55,16 +55,19 @@
 #regex-selection-list .regex-group-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 4px; }
 #regex-selection-list .regex-group-row .wb-mode-cell { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 0; }
 #regex-selection-list .regex-group-row input { width: 20px; height: 20px; }
-/* 气泡 iframe 用父容器宽度布局；窄屏仍受气泡栏限制，不会横向溢出。 */
+/* 静态 HTML 与规则预览沿用原宽度；iframe 始终按父容器布局。 */
 .regex-html-bubble { width: 280px; max-width: 100%; min-width: 0; }
 #message-edit-html-fields[hidden] { display: none !important; }
-/* 卡片取代气泡外观，不动消息 wrapper：头像、引用、时间与多选仍归聊天管理。 */
-#chat-room-screen .message-bubble.regex-html-card {
-    width: 350px; max-width: 100%; padding: 0 !important; border: 0 !important;
-    background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+/* 交互卡片是独立消息块，不再挂普通 message-bubble 类，也不接气泡的描边补偿。
+   内容列单独给 350px 上限，解除普通气泡的 70% 限制；min-width:0 让 flex 在窄屏、
+   大头像或尾部时间占位时按剩余空间收缩。只改聊天室，论坛与规则预览不受影响。 */
+#chat-room-screen .message-content-col:has(> .regex-html-card) {
+    width: 350px; max-width: 100%; min-width: 0;
 }
-#chat-room-screen .message-bubble.regex-html-card::before,
-#chat-room-screen .message-bubble.regex-html-card::after { display: none !important; }
+#chat-room-screen .regex-html-card {
+    width: 100%; max-width: 100%; min-width: 0; margin: 0; padding: 0;
+    border: 0; background: transparent; box-shadow: none; border-radius: 0;
+}
 /* 多选时让点击落到外层 wrapper，不能被 iframe 内的按钮抢走。 */
 #chat-room-screen.multi-select-active .regex-html-card iframe { pointer-events: none; }
 @media (max-width: 380px) {
