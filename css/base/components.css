@@ -46,6 +46,11 @@
     pointer-events: none !important;
 }
 
+/* 云仓库迁移锁住页面，但保留取消键；业务层仍单独拦截后台写入。 */
+#github-repos-screen.ui-busy #gh-migrate-cancel {
+    pointer-events: auto !important;
+}
+
 .screen.ui-busy .app-header .back-btn {
     opacity: 0.35;
     cursor: not-allowed;
