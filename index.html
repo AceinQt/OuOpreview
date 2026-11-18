@@ -2416,7 +2416,7 @@
                 </div>
                 <svg class="chevron-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </div>
-            <!-- GitHub 仓库 -->
+            <!-- 云端仓库（GitHub / VPS） -->
             <div class="settings-item" data-target="github-repos-screen">
                 <div class="setting-icon-box">
 <svg width="24px" height="24px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" version="1.1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3">
@@ -2425,7 +2425,7 @@
 </svg>
                 </div>
                 <div class="item-details">
-                    <span class="item-name">GitHub 仓库</span>
+                    <span class="item-name">云端仓库（GitHub / VPS）</span>
                 </div>
                 <span id="github-repos-summary" class="item-value"></span>
                 <svg class="chevron-icon" style="margin-left:5px;" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
@@ -3160,7 +3160,7 @@
                         <input type="number" id="api-voice-cache-limit" min="1" step="10" placeholder="10">
                     </div>
 
-                    <p class="voice-api-footnote">注意：用量计数按秒统计仅供参考（MiniMax 实际按字符计费），准确用量请在各服务商官方控制台查询。API Key 明文存在这台设备的浏览器里，纯前端没法真正藏住，请勿使用共享的公共 Key。总开关和「收到就自动合成」在聊天列表的侧边栏里，归档仓库在设置页的「GitHub 仓库」里。</p>
+                    <p class="voice-api-footnote">注意：用量计数按秒统计仅供参考（MiniMax 实际按字符计费），准确用量请在各服务商官方控制台查询。API Key 明文存在这台设备的浏览器里，纯前端没法真正藏住，请勿使用共享的公共 Key。总开关和「收到就自动合成」在聊天列表的侧边栏里，归档仓库在设置页的「云端仓库（GitHub / VPS）」里。</p>
                     <details class="api-usage-pricing" id="api-voice-usage-pricing">
                         <summary>费用设置</summary>
                         <p>每 1,000,000 token 的单价，只填非负数；默认 0。未返回 token 用量的合成不会推算费用。请自行保持计价单位一致。</p>
@@ -3335,7 +3335,7 @@
     </main>
 </div>
 
-<!-- GitHub 仓库页面 -->
+<!-- 云端仓库页面（GitHub / VPS WebDAV） -->
 <!-- 版式沿用 notification-settings-screen：settings-group-title + settings-card。
      页面上不放说明文字，全部收进问号里（小标题右边讲这一段，header 右边讲整页），
      文案注册在 js/settings/github_repos.js，机制在 core/utils.js 的 AppHelp。 -->
@@ -3347,7 +3347,7 @@
             </svg>
         </button>
         <div class="title-container">
-            <h1 class="title">GitHub 仓库</h1>
+            <h1 class="title">云端仓库（GitHub / VPS）</h1>
         </div>
         <div class="action-btn-group">
             <!-- 整个页面的说明 -->
@@ -3408,9 +3408,33 @@
             <div class="settings-item column-layout">
                 <div class="item-header">
                     <div class="setting-icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2"></rect><rect x="2" y="13" width="20" height="8" rx="2"></rect><path d="M6 7h.01M6 17h.01"></path></svg>
+                    </div>
+                    <label class="item-name" for="gh-repo-provider">存储类型</label>
+                </div>
+                <select id="gh-repo-provider" class="form-control settings-input-text">
+                    <option value="github">GitHub</option>
+                    <option value="webdav">VPS / WebDAV</option>
+                </select>
+            </div>
+
+            <!-- 显式控制 display，避免设置项的 flex 样式盖过 hidden。 -->
+            <div class="settings-item column-layout" id="gh-repo-base-url-row" style="display:none;">
+                <div class="item-header">
+                    <div class="setting-icon-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a16 16 0 0 0 0 20 16 16 0 0 0 0-20"></path></svg>
+                    </div>
+                    <label class="item-name" for="gh-repo-base-url">WebDAV 目录地址</label>
+                </div>
+                <input type="url" id="gh-repo-base-url" class="form-control settings-input-text" placeholder="https://dav.example.com/ouo/" autocomplete="off" autocapitalize="none" spellcheck="false">
+            </div>
+
+            <div class="settings-item column-layout">
+                <div class="item-header">
+                    <div class="setting-icon-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
                     </div>
-                    <span class="item-name">访问令牌</span>
+                    <label class="item-name" id="gh-repo-token-label" for="gh-repo-token">GitHub 访问令牌</label>
                 </div>
                 <input type="password" id="gh-repo-token" class="form-control settings-input-text" placeholder="github_pat_..." autocomplete="off">
             </div>
@@ -3420,12 +3444,12 @@
                     <div class="setting-icon-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                     </div>
-                    <span class="item-name">用户名</span>
+                    <label class="item-name" id="gh-repo-username-label" for="gh-repo-username">GitHub 用户名</label>
                 </div>
-                <input type="text" id="gh-repo-username" class="form-control settings-input-text" placeholder="你的 GitHub 用户名" autocomplete="off">
+                <input type="text" id="gh-repo-username" class="form-control settings-input-text" placeholder="你的 GitHub 用户名" autocomplete="off" autocapitalize="none" spellcheck="false">
             </div>
 
-            <div class="settings-item column-layout">
+            <div class="settings-item column-layout" id="gh-repo-repo-row">
                 <div class="item-header">
                     <div class="setting-icon-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -3435,18 +3459,19 @@
                 <input type="text" id="gh-repo-repo" class="form-control settings-input-text" placeholder="例如：ouo-voice" autocomplete="off">
             </div>
 
-            <!-- 分支 + 测试连接：填完就地验一下，不用滚到别处找按钮 -->
-            <div class="settings-item column-layout">
+            <div class="settings-item column-layout" id="gh-repo-branch-row">
                 <div class="item-header">
                     <div class="setting-icon-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
                     </div>
                     <span class="item-name">分支</span>
                 </div>
-                <div class="gh-inline-row">
-                    <input type="text" id="gh-repo-branch" class="form-control settings-input-text" placeholder="main" autocomplete="off">
-                    <button type="button" class="btn-test" id="gh-test-btn">测试连接</button>
-                </div>
+                <input type="text" id="gh-repo-branch" class="form-control settings-input-text" placeholder="main" autocomplete="off">
+            </div>
+
+            <!-- 测试按钮独立于 GitHub 分支字段，WebDAV 下也必须可见。 -->
+            <div class="settings-item">
+                <button type="button" class="btn-test" id="gh-test-btn">测试连接</button>
             </div>
         </div>
 
@@ -3466,6 +3491,17 @@
 
         <div class="bottom-actions">
             <button type="button" class="btn btn-primary action-btn-full" id="gh-save-btn">保存仓库配置</button>
+        </div>
+
+        <div class="settings-group-title"><span>GitHub → VPS 迁移</span></div>
+        <div class="settings-card">
+            <div class="settings-item"><label for="gh-migrate-source">来源</label><select id="gh-migrate-source" style="min-width:0;max-width:75%"></select></div>
+            <div class="settings-item"><label for="gh-migrate-target">目标</label><select id="gh-migrate-target" style="min-width:0;max-width:75%"></select></div>
+            <div class="settings-item">
+                <button type="button" class="btn-test" id="gh-migrate-start" onclick="startCloudRepoMigration()">盘点并迁移</button>
+                <button type="button" class="btn-test" id="gh-migrate-cancel" onclick="CloudRepoMigration.cancel()" disabled>取消迁移</button>
+            </div>
+            <p id="gh-migrate-status" role="status" style="padding:12px 16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">先保存两个仓库。复制并读回校验后更新引用，保留 GitHub 原件；仅迁移本机仍引用的归档文件，并生成新的无密钥备份。</p>
         </div>
     </main>
 </div>
@@ -3507,7 +3543,7 @@
                 <!-- 列表项将由 JS 生成 -->
             </div>
         </div>
-<!-- Card 3: GitHub 云端备份 (已修改) -->
+<!-- 第三个卡片：云端备份（GitHub / VPS WebDAV） -->
         <div class="storage-card cloud-card" id="github-card">
             <div class="cloud-left">
                 <div class="cloud-icon-bg" id="github-status-icon">
@@ -8590,7 +8626,7 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
         </div>
     </div>
     
-    <!-- 原 GitHub 连接配置弹窗已移除：仓库定义统一在「设置 > GitHub 仓库」页，
+    <!-- 原 GitHub 连接配置弹窗已移除：仓库定义统一在「设置 > 云端仓库（GitHub / VPS）」页，
          存储备份页的「云端同步」只负责从那里挑一个仓库（GitHubService.openConfigDialog，
          复用 AppUI.form，不需要专门的 modal HTML）。 -->
 
@@ -8848,6 +8884,7 @@ a 链接 / ul ol li 列表 / code 代码"></textarea>
     <script src="js/settings/backup_data.js"></script>
     <script src="js/settings/data_storage.js"></script>
     <script src="js/settings/github_repos.js"></script>
+    <script src="js/settings/cloud_repo_migration.js"></script>
 
     <script src="js/home.js"></script>
     <script src="js/main.js"></script>
