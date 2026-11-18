@@ -184,6 +184,9 @@ function calculateTypingDelay(text, isFirstMessage) {
 // 处理 AI 回复内容解析与渲染
 // ==========================================
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return [];
+    try {
     if (!fullResponse) {
     showToast('AI返回了空内容，可能被截断或拦截了');
     console.error("AI返回了空内容，可能被截断或拦截了"); 
@@ -804,6 +807,10 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         //   persistReply 自带幂等，正常路径走到这里是空转。
         await persistReply();
     }
+    } finally {
+        // 包住上面的落库 finally；写库/界面收尾抛错也不能让迁移闸门永久锁住。
+        endMediaWork();
+    }
 }
 
 // ==========================================
@@ -812,6 +819,10 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
 // 修改函数签名，增加 isBackground = false
 // 修改函数签名，增加第四个参数 proactiveApiPresetName
 async function getAiReply(chatId, chatType, isBackground = false, proactiveApiPresetName = null) {
+    // 前台/后台共用完整作用域：图片预生成结束到打字机落盘之间仍携带旧仓库指针。
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return;
+    try {
     // 【核心新增】：如果后台触发时，用户恰好在这个聊天室里盯着看，直接转为"前台处理"
     const isCurrentChat = (typeof currentChatId !== 'undefined' && currentChatId === chatId && currentChatType === chatType);
     if (isCurrentChat) {
@@ -1253,6 +1264,9 @@ document.getElementById('call-mic-btn')?.removeAttribute('disabled');
             // ★ 移除通话光晕
             document.getElementById('call-identity')?.classList.remove('ai-generating');
         }
+    }
+    } finally {
+        endMediaWork();
     }
 }
 

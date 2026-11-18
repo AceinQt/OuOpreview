@@ -170,6 +170,10 @@ function _voiceArchivePath(pathPrefix, voiceKey) {
  * @returns {Promise<boolean>} 是否上传成功
  */
 async function _archiveVoiceClip(voiceKey, bytes) {
+    // 合成入口不会 await 归档，这一份必须独立持有到云端状态落库完成。
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return false;
+    try {
     const target = getVoiceArchiveTarget();
     if (!target) return false;
     const path = _voiceArchivePath(target.pathPrefix, voiceKey);
@@ -182,6 +186,9 @@ async function _archiveVoiceClip(voiceKey, bytes) {
         await markVoiceClipCloudFailed(voiceKey);
         return false;
     }
+    } finally {
+        endMediaWork();
+    }
 }
 
 /**
@@ -190,12 +197,18 @@ async function _archiveVoiceClip(voiceKey, bytes) {
  *   这样不需要额外维护一条重试队列。不 await。
  */
 async function retryVoiceArchive(voiceKey) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return false;
+    try {
     if (!getVoiceArchiveTarget()) return false;
     const meta = await getVoiceClip(voiceKey);
     if (!meta || (meta.cloudState === 'uploaded' && meta.cloudPath)) return false;
     const bytes = await getVoiceClipBytes(voiceKey);
     if (!bytes) return false;
     return await _archiveVoiceClip(voiceKey, bytes);
+    } finally {
+        endMediaWork();
+    }
 }
 
 // ============================================================
@@ -249,6 +262,9 @@ async function peekVoiceClip(text, profile) {
 async function ensureVoiceClip({ text, profile, chatId, msgId,
                                  allowSynthesize = true, quotaOncePerDay = false,
                                  signal } = {}) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) throw new Error('云端仓库正在迁移，请稍后再播放或生成语音');
+    try {
     const line = String(text || '').trim();
     if (!line || !profile || !profile.speakerId) return null;
 
@@ -340,6 +356,9 @@ async function ensureVoiceClip({ text, profile, chatId, msgId,
     } finally {
         // 无论成败都要清掉，否则失败过一次的 key 会永久返回那个被拒的 Promise
         _voiceInflight.delete(voiceKey);
+    }
+    } finally {
+        endMediaWork();
     }
 }
 

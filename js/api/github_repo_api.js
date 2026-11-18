@@ -1,17 +1,17 @@
 // ============================================================
-// github_repo_api.js — GitHub 仓库 API 层（凭据 / 归一化 / 带超时重试的请求）
+// github_repo_api.js — GitHub / WebDAV 存储 API 层（凭据 / 归一化 / 带超时重试的请求）
 // ============================================================
-// 这一层只管"怎么跟 GitHub 说话"，不认识任何页面，也不认识语音/图片。
+// 这一层只管远端存储协议，不认识任何页面，也不认识语音/图片。
+// 历史 github 符号、仓库 ID 和三用途绑定保持不变，provider 缺省仍是 github。
 // 消费方：
-//   · js/settings/github_repos.js  → 仓库设置 screen（增删改、测试连接）
-//   · js/chat/chat_voice_service.js → 语音归档读写（Phase 6）
+//   · js/settings/github_repos.js   → 仓库设置页（增删改、测试连接）
+//   · js/chat/chat_voice_service.js → 语音归档读写
+//   · js/chat/chat_image_store.js   → 图片归档读写
+//   · js/settings/backup_data.js    → 全量云备份上传与流式恢复
 //
-// ★ 为什么不复用 backup_data.js 里的 GitHubService：
-//   1. 那套整个文件零重试零超时 —— 移动网络下一个挂起的 fetch 能永远卡死队列
-//   2. 它把 getFileInfo 的**所有**异常都吞掉当"新建文件"，401/断网会让 PUT 丢 sha，
-//      结果报出误导性的 409/422。本模块里只有**真 404** 才等于"文件不存在"
-//   3. 它在 settings 层，js/api/ 依赖它会形成反向依赖
-//   备份链路迁过来是独立的一步，不进语音功能的关键路径。
+// ★ 备份原先有另一套 GitHubService 传输：没有超时，还把所有查文件错误当成新建。
+//   现在三种用途都走本层，只有真 404 才代表不存在，避免出现媒体支持 VPS 而备份不支持。
+//   GitHubService 仅保留设置/入口职责；不要再从 API 层反向依赖 settings。
 //
 // ★ 仓库是一种可被多个用途共享的资源，不是某个功能的私有字段。所以数据分两层：
 //   db.githubRepos    —— 仓库定义（凭据在这儿，改一次全用途生效）
@@ -21,16 +21,16 @@
 // 对外符号：
 //   GITHUB_PURPOSES / GITHUB_BRANCH_DEFAULT
 //   _newGithubRepoId / _normalizeGithubRepo / _normalizeGithubRepos / _normalizeGithubBindings
-//   getGithubRepo / getGithubBinding / describeGithubRepo
+//   getGithubRepo / getGithubBinding / describeGithubRepo / isGithubRepoConfigured
 //   migrateLegacyGithubConfig
 //   _ghFetch / checkGithubRepo
-//   uploadGithubFile / downloadGithubFile / deleteGithubFile
+//   uploadGithubFile / downloadGithubFile / downloadGithubResponse / deleteGithubFile
 // ============================================================
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_BRANCH_DEFAULT = 'main';
 
-// 单次请求超时。GitHub Contents API 一般一两秒返回，20 秒已经很宽松；
+// 单次普通请求超时覆盖响应体；流式大备份则按块续期，只限制无进展的等待。
 // 给上限是因为移动网络下 fetch 不会自己失败，会一直挂着。
 const GITHUB_TIMEOUT_MS = 20000;
 const GITHUB_RETRY_TIMES = 2;
@@ -63,10 +63,14 @@ function _newGithubRepoId() {
 
 function _normalizeGithubRepo(raw) {
     const r = raw || {};
+    const provider = r.provider || 'github';
     return {
         id: r.id || _newGithubRepoId(),
         name: String(r.name || '').trim() || '未命名仓库',
-        token: String(r.token || '').trim(),
+        provider,
+        baseUrl: String(r.baseUrl || '').trim(),
+        // WebDAV 密码可能合法地包含首尾空格，不能照 GitHub Token 的方式 trim。
+        token: provider === 'webdav' ? String(r.token || '') : String(r.token || '').trim(),
         username: String(r.username || '').trim(),
         repo: String(r.repo || '').trim(),
         branch: String(r.branch || '').trim() || GITHUB_BRANCH_DEFAULT
@@ -75,8 +79,30 @@ function _normalizeGithubRepo(raw) {
 
 function _normalizeGithubRepos(raw) {
     return Array.isArray(raw)
-        ? raw.filter(r => r && (r.id || r.repo)).map(_normalizeGithubRepo)
+        ? raw.filter(r => r && (r.id || r.repo || r.baseUrl)).map(_normalizeGithubRepo)
         : [];
+}
+
+/** 统一检查用途绑定与读写配置；未知 provider 不能偷偷退回 GitHub。 */
+function isGithubRepoConfigured(repo) {
+    try {
+        _requireGithubRepo(repo);
+        return true;
+    } catch (_) { return false; }
+}
+
+function _requireGithubRepo(repo) {
+    const cfg = _normalizeGithubRepo(repo);
+    if (!['github', 'webdav'].includes(cfg.provider)) throw _githubError('不支持的存储服务');
+    if (!cfg.token) throw _githubError(cfg.provider === 'webdav' ? '还没填 WebDAV 密码' : '还没填访问令牌');
+    if (!cfg.username) throw _githubError('还没填用户名');
+    if (cfg.provider === 'webdav') {
+        if (cfg.username.includes(':') || /[\x00-\x1f\x7f]/.test(cfg.username + cfg.token)) {
+            throw _githubError('WebDAV 用户名不能含冒号，凭据不能含控制字符');
+        }
+        _webdavBaseUrl(cfg.baseUrl);
+    } else if (!cfg.repo) throw _githubError('还没填仓库名');
+    return cfg;
 }
 
 function _normalizeGithubBindings(raw) {
@@ -118,7 +144,7 @@ function getGithubBinding(purpose) {
     const binding = bindings[purpose];
     if (!binding || !binding.enabled || !binding.repoId) return null;
     const repo = getGithubRepo(binding.repoId);
-    if (!repo || !repo.token || !repo.username || !repo.repo) return null;
+    if (!isGithubRepoConfigured(repo)) return null;
     return { repo, pathPrefix: binding.pathPrefix };
 }
 
@@ -144,7 +170,7 @@ async function migrateLegacyGithubConfig() {
     if (!legacy || !legacy.token || !legacy.username || !legacy.repo) return false;
 
     const repos = _normalizeGithubRepos(db.githubRepos);
-    const already = repos.find(r =>
+    const already = repos.find(r => r.provider === 'github' &&
         r.username === legacy.username && r.repo === legacy.repo);
 
     const bindings = _normalizeGithubBindings(db.githubBindings);
@@ -182,6 +208,11 @@ async function migrateLegacyGithubConfig() {
 /** 供下拉/提示显示的人类可读描述 */
 function describeGithubRepo(repo) {
     if (!repo) return '';
+    if (repo.provider === 'webdav') {
+        // 未通过验证的原始 URL 不能直接显示，里面可能误填了密码或 query 密钥。
+        try { return `WebDAV · ${_webdavBaseUrl(repo.baseUrl)}`; }
+        catch (_) { return 'WebDAV · 未填或无效的目录地址'; }
+    }
     const path = repo.username && repo.repo ? `${repo.username}/${repo.repo}` : '未填仓库';
     return `${path}${repo.branch ? ` · ${repo.branch}` : ''}`;
 }
@@ -221,137 +252,235 @@ function _describeGithubStatus(status, detail) {
 }
 
 /**
- * 打一次 GitHub API。带超时和重试，错误一律转成人话后抛出。
- *
- * ★ 只有真 404 会把 notFound 标成 true 并正常返回 null，其他异常一律抛出。
- *   这是和 GitHubService 最重要的区别：把网络故障当成"文件不存在"会导致
- *   上传时丢 sha，进而覆盖或报出莫名其妙的 409。
- *
- * @param {string} path      /repos/... 开头的路径
- * @param {object} opts      { token, method, body, signal, allow404, retry }
- * @returns {Promise<object|null>} 解析后的 JSON；allow404 且确实 404 时返回 null
- * @throws {Error} message 已是可直接展示的文案；retryable 标记是否值得重试
+ * 共用请求生命周期。普通请求的超时覆盖响应体；流式响应仅在等待下一块网络数据时计时。
+ * 解压/清库/批量写库和背压等待不算网络停滞，避免大备份恢复中途被误判超时。
+ * 重试只发生在交还响应之前，绝不把已交给恢复器的半截备份重新从头拼上去。
  */
-async function _ghFetch(path, { token, method = 'GET', body, signal,
-                                allow404 = false, retry = GITHUB_RETRY_TIMES } = {}) {
-    if (!token) throw _githubError('还没填这个仓库的访问令牌');
-
-    let lastError = null;
+async function _githubStorageRequest(url, { service = 'GitHub', method = 'GET', headers,
+    body, signal, allow404 = false, allowStatuses = [], retry = GITHUB_RETRY_TIMES,
+    consume } = {}) {
+    let lastError;
     for (let attempt = 0; attempt <= retry; attempt++) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
-        const onAbort = () => controller.abort();
-        if (signal) {
-            if (signal.aborted) controller.abort();
-            else signal.addEventListener('abort', onAbort, { once: true });
-        }
-
-        let response;
-        try {
-            response = await fetch(`${GITHUB_API_BASE}${path}`, {
-                method,
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/vnd.github+json',
-                    'X-GitHub-Api-Version': '2022-11-28',
-                    ...(body ? { 'Content-Type': 'application/json' } : {})
-                },
-                body: body ? JSON.stringify(body) : undefined,
-                signal: controller.signal
-            });
-        } catch (error) {
-            if (signal && signal.aborted) throw _githubError('操作已取消', { aborted: true });
-            lastError = error.name === 'AbortError'
-                ? _githubError(`连接 GitHub 超时（超过 ${GITHUB_TIMEOUT_MS / 1000} 秒）`,
-                    { retryable: true })
-                : _githubError(`连接 GitHub 失败：${error.message}`, { retryable: true });
-            continue;   // 网络层失败值得重试
-        } finally {
+        let timer;
+        let handedOff = false;
+        const resetTimer = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => controller.abort(_githubError(
+                `${service} 请求超时（超过 ${GITHUB_TIMEOUT_MS / 1000} 秒未完成传输）`,
+                { retryable: true })), GITHUB_TIMEOUT_MS);
+        };
+        const onAbort = () => controller.abort(_githubError('操作已取消', { aborted: true }));
+        const cleanup = () => {
             clearTimeout(timer);
             if (signal) signal.removeEventListener('abort', onAbort);
+        };
+        if (signal) {
+            if (signal.aborted) onAbort();
+            else signal.addEventListener('abort', onAbort, { once: true });
         }
-
-        if (response.status === 404 && allow404) return null;
-
-        if (!response.ok) {
-            const detail = await _readGithubMessage(response);
-            // 5xx 和 429 是服务端/限流问题，重试有意义；4xx 是我们自己的问题，重试只是浪费
-            const worthRetry = response.status >= 500 || response.status === 429;
-            const error = _githubError(_describeGithubStatus(response.status, detail), {
-                status: response.status,
-                retryable: worthRetry,
-                notFound: response.status === 404
-            });
-            if (!worthRetry || attempt === retry) throw error;
-            lastError = error;
-            continue;
-        }
-
-        // 204 No Content 没有响应体
-        if (response.status === 204) return {};
+        resetTimer();
         try {
-            return await response.json();
-        } catch (_) {
-            return {};
+            if (controller.signal.aborted) throw controller.signal.reason;
+            const response = await fetch(url, {
+                method, headers, body, signal: controller.signal,
+                // WebDAV 凭据不得随跳转泄漏；GitHub 仓库重命名也应重新配置，而不是带密钥跟随。
+                redirect: 'error', credentials: 'omit', cache: 'no-store'
+            });
+            if (controller.signal.aborted) throw controller.signal.reason;
+            if (response.status === 404 && allow404) {
+                if (response.body) await response.body.cancel();
+                return null;
+            }
+            if (!response.ok && !allowStatuses.includes(response.status)) {
+                const detail = service === 'GitHub' ? await _readGithubMessage(response) : '';
+                if (service !== 'GitHub' && response.body) await response.body.cancel();
+                if (controller.signal.aborted) throw controller.signal.reason;
+                throw _githubError(service === 'GitHub'
+                    ? _describeGithubStatus(response.status, detail)
+                    : `WebDAV 返回 HTTP ${response.status}（请检查目录地址、用户名、密码和权限）`, {
+                    status: response.status,
+                    notFound: response.status === 404,
+                    retryable: response.status >= 500 || response.status === 429
+                });
+            }
+            if (consume) {
+                const result = await consume(response);
+                if (controller.signal.aborted) throw controller.signal.reason;
+                return result;
+            }
+            // 不预读整个文件，也不在下游背压时抢读下一块；完成/取消/失败都会释放资源。
+            if (!response.body) return response;
+            const reader = response.body.getReader();
+            clearTimeout(timer);
+            let streamController;
+            let finished = false;
+            const finish = () => {
+                finished = true;
+                controller.signal.removeEventListener('abort', abortStream);
+                cleanup();
+            };
+            const abortStream = () => {
+                streamController.error(controller.signal.reason);
+                reader.cancel(controller.signal.reason).catch(() => {});
+                finish();
+            };
+            const stream = new ReadableStream({
+                start(c) {
+                    streamController = c;
+                    controller.signal.addEventListener('abort', abortStream, { once: true });
+                },
+                async pull(c) {
+                    if (finished) return;
+                    try {
+                        resetTimer();
+                        const { done, value } = await reader.read();
+                        clearTimeout(timer);
+                        if (finished) return;
+                        if (done) { c.close(); finish(); }
+                        else c.enqueue(value);
+                    } catch (error) {
+                        if (!finished) c.error(error);
+                        finish();
+                    }
+                },
+                async cancel(reason) {
+                    finish();
+                    await reader.cancel(reason);
+                }
+            }, { highWaterMark: 0 });
+            const wrapped = new Response(stream, {
+                status: response.status, statusText: response.statusText, headers: response.headers
+            });
+            handedOff = true;
+            return wrapped;
+        } catch (error) {
+            lastError = controller.signal.aborted ? controller.signal.reason
+                : error.retryable !== undefined ? error
+                : _githubError(`连接 ${service} 失败，请检查网络、跨域设置和目录地址`, { retryable: true });
+            if (!lastError.retryable || attempt === retry) throw lastError;
+        } finally {
+            if (!handedOff) cleanup();
         }
     }
-    throw lastError || _githubError('连接 GitHub 失败');
+    throw lastError;
+}
+
+/** GitHub 的 JSON/原始内容共享鉴权头，不走无鉴权的 download_url。 */
+function _githubHeaders(token, raw = false) {
+    if (!token) throw _githubError('还没填这个仓库的访问令牌');
+    return {
+        Authorization: `Bearer ${token}`,
+        Accept: raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
+}
+
+/** 带超时、重试的 GitHub JSON 请求；只有 allow404 且真 404 才返回 null。 */
+async function _ghFetch(path, { token, method = 'GET', body, signal,
+                                allow404 = false, retry = GITHUB_RETRY_TIMES } = {}) {
+    return _githubStorageRequest(`${GITHUB_API_BASE}${path}`, {
+        method, signal, allow404, retry,
+        headers: { ..._githubHeaders(token), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        consume: async response => {
+            if (response.status === 204) return {};
+            // 先读完再解析，不能把读 body 时的断网/超时误吞成成功的空对象。
+            const text = await response.text();
+            if (!text.trim()) return {};
+            try { return JSON.parse(text); }
+            catch (_) { throw _githubError('GitHub 返回了无效的 JSON'); }
+        }
+    });
+}
+
+/** 保留旧内部符号；原始字节读取的超时同样覆盖完整响应体。 */
+async function _ghFetchBytes(path, { token, signal, retry = GITHUB_RETRY_TIMES } = {}) {
+    return _githubStorageRequest(`${GITHUB_API_BASE}${path}`, {
+        headers: _githubHeaders(token, true), signal, retry, allow404: true,
+        consume: async response => new Uint8Array(await response.arrayBuffer())
+    });
 }
 
 /**
- * 读取 GitHub Contents API 的原始字节响应。
- * 大于 1MB 的文件不会在普通 JSON 响应里返回 base64 content；使用 raw media type
- * 可继续走 api.github.com，并始终携带私有仓库 Token，避免无鉴权 download_url 失败。
+ * 文件名是未编码的相对路径。逐层检查百分号编码，防代理再次解码后出现 dot/separator。
+ * 不先交给 URL：URL 会悄悄消掉 a/../b，校验时就已经看不见危险输入了。
  */
-async function _ghFetchBytes(path, { token, signal, retry = GITHUB_RETRY_TIMES } = {}) {
-    if (!token) throw _githubError('还没填这个仓库的访问令牌');
-
-    let lastError = null;
-    for (let attempt = 0; attempt <= retry; attempt++) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
-        const onAbort = () => controller.abort();
-        if (signal) {
-            if (signal.aborted) controller.abort();
-            else signal.addEventListener('abort', onAbort, { once: true });
-        }
-
-        let response;
-        try {
-            response = await fetch(`${GITHUB_API_BASE}${path}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/vnd.github.raw+json',
-                    'X-GitHub-Api-Version': '2022-11-28'
-                },
-                signal: controller.signal
-            });
-        } catch (error) {
-            if (signal && signal.aborted) throw _githubError('操作已取消', { aborted: true });
-            lastError = error.name === 'AbortError'
-                ? _githubError(`下载 GitHub 文件超时（超过 ${GITHUB_TIMEOUT_MS / 1000} 秒）`, { retryable: true })
-                : _githubError(`下载 GitHub 文件失败：${error.message}`, { retryable: true });
-            continue;
-        } finally {
-            clearTimeout(timer);
-            if (signal) signal.removeEventListener('abort', onAbort);
-        }
-
-        if (!response.ok) {
-            const detail = await _readGithubMessage(response);
-            const worthRetry = response.status >= 500 || response.status === 429;
-            const error = _githubError(_describeGithubStatus(response.status, detail), {
-                status: response.status,
-                retryable: worthRetry,
-                notFound: response.status === 404
-            });
-            if (!worthRetry || attempt === retry) throw error;
-            lastError = error;
-            continue;
-        }
-        return new Uint8Array(await response.arrayBuffer());
+function _githubSafeSegments(path, allowEmpty = false) {
+    const text = String(path || '');
+    const parts = text.split('/');
+    if ((!allowEmpty && (!text || parts.some(p => !p))) || /[\\\x00-\x1f\x7f]/.test(text)) {
+        throw _githubError('文件路径必须是安全的相对路径');
     }
-    throw lastError || _githubError('下载 GitHub 文件失败');
+    return parts.filter(Boolean).map(part => {
+        let decoded = part;
+        for (;;) {
+            if (decoded === '.' || decoded === '..' || /[\\/\x00-\x1f\x7f]/.test(decoded)) {
+                throw _githubError('路径不能包含目录穿越或编码分隔符');
+            }
+            if (!/%[0-9a-f]{2}/i.test(decoded)) break;
+            let next;
+            try { next = decodeURIComponent(decoded); }
+            catch (_) { throw _githubError('路径包含无效的百分号编码'); }
+            if (next === decoded) break;
+            decoded = next;
+        }
+        return part;
+    });
+}
+
+/** 只接受 HTTPS 目录（本机回环调试可用 HTTP），URL 不能藏用户名、密码、query 或 hash。 */
+function _webdavBaseUrl(baseUrl) {
+    const text = String(baseUrl || '').trim();
+    const match = text.match(/^https?:\/\/([^/?#]+)(\/[^?#]*)?$/i);
+    if (!match || /[@\\\x00-\x20\x7f]/.test(match[1]) || /[\\\x00-\x1f\x7f]/.test(text)) {
+        throw _githubError('WebDAV 地址必须是目录 URL，不能含凭据、查询参数或片段');
+    }
+    _githubSafeSegments(match[2] || '', true);
+    let url;
+    try { url = new URL(text); }
+    catch (_) { throw _githubError('WebDAV 目录地址无效'); }
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && local))
+        || url.username || url.password || url.search || url.hash) {
+        throw _githubError('WebDAV 必须使用 HTTPS（仅 localhost 可用 HTTP），凭据请单独填写');
+    }
+    // 已编码目录先解一次再逐段编码，既兼容粘贴 URL，又避免中文/空格或 % 被二次编码。
+    const path = (match[2] || '').split('/').filter(Boolean).map(part => {
+        try { return encodeURIComponent(decodeURIComponent(part)); }
+        catch (_) { throw _githubError('WebDAV 目录地址编码无效'); }
+    }).join('/');
+    return `${url.origin}/${path}${path ? '/' : ''}`;
+}
+
+function _webdavFileUrl(repo, filePath) {
+    return _webdavBaseUrl(repo.baseUrl) + _githubSafeSegments(filePath).map(encodeURIComponent).join('/');
+}
+
+function _webdavRequest(repo, url, options = {}) {
+    return _githubStorageRequest(url, {
+        ...options, service: 'WebDAV',
+        headers: {
+            ...options.headers,
+            // btoa 不接受中文；沿用项目字节工具，先 UTF-8 编码再生成 Basic 凭据。
+            Authorization: `Basic ${bytesToBase64(new TextEncoder().encode(`${repo.username}:${repo.token}`))}`
+        }
+    });
+}
+
+/** 只读验证资源类型；207 内部仍可能是 401/404，不能只看外层 HTTP 成功。 */
+function _webdavIsCollection(xml) {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) return false;
+    const responses = Array.from(doc.getElementsByTagNameNS('DAV:', 'response'));
+    // Depth:0 应当仅返回被请求的这个资源，不能借别的目录的成功掩盖本目录失败。
+    if (responses.length !== 1) return false;
+    return Array.from(responses[0].getElementsByTagNameNS('DAV:', 'propstat')).some(propstat => {
+        const status = propstat.getElementsByTagNameNS('DAV:', 'status')[0];
+        return status && /^HTTP\/\S+\s+2\d\d(?:\s|$)/.test(status.textContent.trim())
+            && Array.from(propstat.getElementsByTagNameNS('DAV:', 'resourcetype'))
+                .some(type => type.getElementsByTagNameNS('DAV:', 'collection').length > 0);
+    });
 }
 
 /**
@@ -360,10 +489,23 @@ async function _ghFetchBytes(path, { token, signal, retry = GITHUB_RETRY_TIMES }
  *          不抛异常 —— 这个函数的用途就是把失败原因说清楚
  */
 async function checkGithubRepo(rawRepo) {
-    const cfg = _normalizeGithubRepo(rawRepo);
-    if (!cfg.token) return { ok: false, message: '还没填访问令牌', canWrite: false };
-    if (!cfg.username) return { ok: false, message: '还没填用户名', canWrite: false };
-    if (!cfg.repo) return { ok: false, message: '还没填仓库名', canWrite: false };
+    let cfg;
+    try {
+        cfg = _requireGithubRepo(rawRepo);
+        if (cfg.provider === 'webdav') {
+            const collection = await _webdavRequest(cfg, _webdavBaseUrl(cfg.baseUrl), {
+                method: 'PROPFIND', headers: { Depth: '0', 'Content-Type': 'application/xml; charset=utf-8' },
+                body: '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>',
+                consume: async response => _webdavIsCollection(await response.text())
+            });
+            if (!collection) throw _githubError('WebDAV 未返回可访问的目录，请检查目录地址和读取权限');
+            // PROPFIND 只能确认可读；不写探针，也不把「能读」谎称成「已验证能写」。
+            return { ok: true, canWrite: false,
+                message: 'WebDAV 目录连接成功；仅验证读取，写入权限将在实际上传时验证' };
+        }
+    } catch (error) {
+        return { ok: false, message: error.message, canWrite: false };
+    }
 
     const base = `/repos/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.repo)}`;
     let info;
@@ -410,8 +552,7 @@ async function checkGithubRepo(rawRepo) {
 
 /** 拼 Contents API 的路径。路径段要逐段编码，斜杠本身不能编码掉 */
 function _ghContentsPath(repo, filePath) {
-    const encoded = String(filePath || '').split('/').filter(Boolean)
-        .map(encodeURIComponent).join('/');
+    const encoded = _githubSafeSegments(filePath).map(encodeURIComponent).join('/');
     return `/repos/${encodeURIComponent(repo.username)}/${encodeURIComponent(repo.repo)}`
          + `/contents/${encoded}`;
 }
@@ -419,20 +560,39 @@ function _ghContentsPath(repo, filePath) {
 /**
  * 上传（或覆盖）一个文件。
  *
- * ★ 这里是 backup_data.js 里 GitHubService.uploadBlob 那个缺陷的正确写法：
- *   它把 getFileInfo 的**所有**异常都 catch 成"新建文件"，于是 401 或断网时
- *   sha 拿不到却照样 PUT，GitHub 因为缺 sha 拒掉，报出误导性的 409/422。
- *   这里只有**真 404** 才等于"文件不存在、无需 sha"，其他异常一律中止并原样抛出。
+ * ★ 原备份传输曾把 getFileInfo 的所有异常当成新建，导致 401/断网后缺 sha。
+ *   现在备份也共用这里：只有真 404 才等于无需 sha，其他异常直接中止。
  *
- * @param {object} repo     { username, repo, token, branch }
+ * @param {object} repo     GitHub 或 WebDAV 仓库配置
  * @param {string} filePath 仓库内路径，如 voice/ab/xxx.mp3
  * @param {Uint8Array} bytes
- * @param {object} [opts]   { message, signal }
+ * @param {object} [opts]   { message, signal, ifAbsent, migration }；仅迁移内部可绕过忙锁
  * @returns {Promise<{path: string, sha: string}>}
  */
-async function uploadGithubFile(repo, filePath, bytes, { message, signal } = {}) {
-    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+async function uploadGithubFile(repo, filePath, bytes, { message, signal, ifAbsent = false, migration = false } = {}) {
+    if (!migration && typeof window !== 'undefined' && window.CloudRepoMigration?.isBusy()) {
+        throw _githubError('正在迁移云端仓库，暂缓上传，请迁移完成后重试');
+    }
+    repo = _requireGithubRepo(repo);
     if (!filePath) throw _githubError('没有指定上传路径');
+    if (repo.provider === 'webdav') {
+        const url = _webdavFileUrl(repo, filePath);
+        const parts = _githubSafeSegments(filePath);
+        let directory = _webdavBaseUrl(repo.baseUrl);
+        for (const part of parts.slice(0, -1)) {
+            directory += `${encodeURIComponent(part)}/`;
+            await _webdavRequest(repo, directory, {
+                method: 'MKCOL', signal, allowStatuses: [405],
+                // 405 是「已存在」的常见返回；其他错误绝不能吞掉继续写。
+                consume: response => response.text()
+            });
+        }
+        await _webdavRequest(repo, url, {
+            method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', ...(ifAbsent ? { 'If-None-Match': '*' } : {}) },
+            body: bytes, signal, retry: 0, consume: response => response.text()
+        });
+        return { path: filePath, sha: '' };
+    }
 
     const apiPath = _ghContentsPath(repo, filePath);
 
@@ -441,6 +601,8 @@ async function uploadGithubFile(repo, filePath, bytes, { message, signal } = {})
     const existing = await _ghFetch(
         `${apiPath}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`,
         { token: repo.token, allow404: true, signal });
+    if (existing && ifAbsent) throw _githubError('目标文件已存在，不能覆盖', { status: 412 });
+    if (existing && !existing.sha) throw _githubError('GitHub 未返回文件 sha，无法安全覆盖');
 
     const body = {
         message: message || `Add ${filePath}`,
@@ -462,13 +624,38 @@ async function uploadGithubFile(repo, filePath, bytes, { message, signal } = {})
 }
 
 /**
+ * 获取带鉴权的下载响应，供大备份流式恢复使用；真 404 返回 null。
+ * GitHub 直接用 raw+json 和 ref，不先把大文件装进 JSON，也不跟随 download_url。
+ * 响应头到达前限时 20 秒；交还后仅在等待读取下一块网络数据时计时，下游背压不计时。
+ * 调用者必须读完或 cancel 响应体（提前退出的 reader 在 finally 中 cancel），也可传 signal 取消。
+ * 不限制整份大备份的总时长；一旦交还流，途中失败不再重试，避免重复导入半截内容。
+ */
+async function downloadGithubResponse(repo, filePath, { signal } = {}) {
+    repo = _requireGithubRepo(repo);
+    if (!filePath) throw _githubError('没有指定下载路径');
+    if (repo.provider === 'webdav') {
+        return _webdavRequest(repo, _webdavFileUrl(repo, filePath), { signal, allow404: true });
+    }
+    const path = `${_ghContentsPath(repo, filePath)}?ref=${encodeURIComponent(repo.branch)}`;
+    return _githubStorageRequest(`${GITHUB_API_BASE}${path}`, {
+        headers: _githubHeaders(repo.token, true), signal, allow404: true
+    });
+}
+
+/**
  * 下载一个文件的字节。
  * @returns {Promise<Uint8Array|null>} null = 文件确实不存在（真 404）
  * @throws {Error} 其他失败原样抛出，附 retryable 标记
  */
 async function downloadGithubFile(repo, filePath, { signal } = {}) {
-    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+    repo = _requireGithubRepo(repo);
     if (!filePath) throw _githubError('没有指定下载路径');
+    if (repo.provider === 'webdav') {
+        return _webdavRequest(repo, _webdavFileUrl(repo, filePath), {
+            signal, allow404: true,
+            consume: async response => new Uint8Array(await response.arrayBuffer())
+        });
+    }
 
     const contentPath = `${_ghContentsPath(repo, filePath)}?ref=${encodeURIComponent(repo.branch || GITHUB_BRANCH_DEFAULT)}`;
     const info = await _ghFetch(
@@ -501,8 +688,20 @@ async function downloadGithubFile(repo, filePath, { signal } = {}) {
  * @throws {Error} 其他失败原样抛出，附 retryable 标记
  */
 async function deleteGithubFile(repo, filePath, { message, signal } = {}) {
-    if (!repo || !repo.token) throw _githubError('这个仓库还没填访问令牌');
+    repo = _requireGithubRepo(repo);
     if (!filePath) throw _githubError('没有指定删除路径');
+    if (repo.provider === 'webdav') {
+        const result = await _webdavRequest(repo, _webdavFileUrl(repo, filePath), {
+            method: 'DELETE', signal, allow404: true, retry: 0,
+            consume: async response => {
+                await response.text();
+                // 文件 DELETE 不应返回多资源结果；不能把 207 内部失败误当删除成功。
+                if (response.status === 207) throw _githubError('WebDAV 删除返回多资源结果，无法确认文件已删除');
+                return true;
+            }
+        });
+        return { path: filePath, alreadyMissing: result === null };
+    }
 
     const apiPath = _ghContentsPath(repo, filePath);
     const branch = repo.branch || GITHUB_BRANCH_DEFAULT;
@@ -510,16 +709,17 @@ async function deleteGithubFile(repo, filePath, { message, signal } = {}) {
     const existing = await _ghFetch(
         `${apiPath}?ref=${encodeURIComponent(branch)}`,
         { token: repo.token, allow404: true, signal });
-    // 真 404：云端那份早就没了，不用再发 DELETE
-    if (!existing || !existing.sha) return { path: filePath, alreadyMissing: true };
+    // 真 404：云端那份早就没了，不用再发 DELETE；成功响应缺 sha 不能冒充不存在。
+    if (!existing) return { path: filePath, alreadyMissing: true };
+    if (!existing.sha) throw _githubError('GitHub 未返回文件 sha，无法安全删除');
 
-    await _ghFetch(apiPath, {
+    const deleted = await _ghFetch(apiPath, {
         token: repo.token,
         method: 'DELETE',
         body: { message: message || `Delete ${filePath}`, sha: existing.sha, branch },
-        signal,
+        signal, allow404: true,
         // 和上传同理：sha 可能已经变了，盲目重试不安全，失败让上层重走一遍
         retry: 0
     });
-    return { path: filePath, alreadyMissing: false };
+    return { path: filePath, alreadyMissing: deleted === null };
 }

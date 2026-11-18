@@ -15,6 +15,24 @@ window.currentPageIndex = 0;
 window.currentChatId = null;
 window.currentChatType = null;
 window.isGenerating = false;
+
+// 云端迁移与媒体写入互斥：不是只数网络请求，而是覆盖「排队/请求 → 指针落库」完整作用域。
+// 迁移开始必须同步检查 isCloudMediaWorkBusy() 并设置自己的 busy，中间不能 await；
+// 业务入口也同步检查迁移状态并加计数，避免两边都看见空闲后交错覆盖归档指针。
+// 后台归档/淘汰/图片超时补写各自持有一份；释放函数必须在各自 finally 内调用。
+let _cloudMediaWorkDepth = 0;
+window.isCloudMediaWorkBusy = () => _cloudMediaWorkDepth > 0;
+window.beginCloudMediaWork = function () {
+    if (window.CloudRepoMigration?.isBusy?.()) return null;
+    _cloudMediaWorkDepth++;
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        _cloudMediaWorkDepth--;
+    };
+};
+
 window.editingMessageId = null;
 window.currentTransferMessageId = null;
 window.currentStickerActionTarget = null;

@@ -280,6 +280,8 @@ async function markVoiceClipCloudFailed(voiceKey) {
 /** 彻底删掉一段语音（两张表都删）。不动 GitHub 上的文件 */
 async function deleteVoiceClip(voiceKey) {
     if (!voiceKey) return;
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return;
     try {
         await dexieDB.transaction('rw', dexieDB.voiceClips, dexieDB.voiceClipData, async () => {
             await dexieDB.voiceClips.delete(voiceKey);
@@ -287,10 +289,14 @@ async function deleteVoiceClip(voiceKey) {
         });
     } catch (error) {
         console.warn('[语音] 删除失败：', error);
+    } finally {
+        endMediaWork();
     }
 }
 
 async function _deleteVoiceClipsWhere(indexName, value) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return 0;
     try {
         const keys = await dexieDB.voiceClips.where(indexName).equals(value).primaryKeys();
         if (!keys.length) return 0;
@@ -302,6 +308,8 @@ async function _deleteVoiceClipsWhere(indexName, value) {
     } catch (error) {
         console.warn('[语音] 批量删除失败：', error);
         return 0;
+    } finally {
+        endMediaWork();
     }
 }
 
@@ -387,6 +395,9 @@ async function getVoiceCacheStats() {
 async function enforceVoiceCacheLimit(limitMB) {
     const result = { freedBytes: 0, evictedArchived: 0, evictedUnarchived: 0,
                      remainingBytes: 0 };
+    // 业务层不等待淘汰；从读取旧快照到删表都独立占用，不能晚于仓库迁移再删索引。
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return result;
     try {
         if (typeof dexieDB === 'undefined' || !dexieDB.voiceClips) return result;
 
@@ -453,5 +464,7 @@ async function enforceVoiceCacheLimit(limitMB) {
     } catch (error) {
         console.warn('[语音] 缓存淘汰失败：', error);
         return result;
+    } finally {
+        endMediaWork();
     }
 }

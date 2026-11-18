@@ -160,7 +160,10 @@ function _imageTaskKey(chatId, messageId) {
 }
 
 function _enqueueImageTask(task) {
-    const run = _imageGenerationQueueTail.then(task, task);
+    // 入队即占用，直到整项任务结束；预生成调度异常退出时，队列里的产图也仍受保护。
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return Promise.reject(new Error('云端仓库正在迁移，请稍后再生成图片'));
+    const run = _imageGenerationQueueTail.then(task, task).finally(endMediaWork);
     _imageGenerationQueueTail = run.catch(() => {});
     return run;
 }
@@ -280,6 +283,9 @@ function _cloneImageMessage(message) {
 async function archiveUploadedImageMessage(message, {
     chatId = '', chatType = '', description = '', senderName = '', dataUrl = '', saveChat = true
 } = {}) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) throw new Error('云端仓库正在迁移，请稍后再归档图片');
+    try {
     if (!message || !message.id) {
         throw Object.assign(new Error('图片消息无有效 ID'), { code: 'image-message-missing' });
     }
@@ -414,6 +420,9 @@ async function archiveUploadedImageMessage(message, {
         cloudStored: !!cloudResult,
         localOnly: !!localResult.stored && !cloudResult
     };
+    } finally {
+        endMediaWork();
+    }
 }
 
 /**
@@ -596,6 +605,7 @@ function generateImageForMessage(message, options = {}) {
     const key = _imageTaskKey(chatId, target.id);
     if (_imageGenerationInflight.has(key)) return _imageGenerationInflight.get(key);
 
+    // _enqueueImageTask 从排队一直占用到 _generateImageForMessage 的最终落库完成。
     const task = _enqueueImageTask(() => _generateImageForMessage(target, {
         chatId, chatType, auto: !!options.auto
     }));
@@ -623,6 +633,9 @@ function generateImageForMessage(message, options = {}) {
  * 所以「重新生成」不需要单独的按钮，删掉再点生成即可。
  */
 async function deleteImageMessageMedia(message, options = {}) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) throw new Error('云端仓库正在迁移，请稍后再删除图片');
+    try {
     const chatId = options.chatId || (typeof currentChatId !== 'undefined' ? currentChatId : '');
     const chatType = options.chatType || (typeof currentChatType !== 'undefined' ? currentChatType : '');
     if (!isImageMediaMessage(message)) throw new Error('这条消息没有可删除的图片');
@@ -651,6 +664,9 @@ async function deleteImageMessageMedia(message, options = {}) {
     await _saveImageMessage(target, chatId, chatType);
     _refreshImageMessageBubble(target, chatId, chatType);
     return true;
+    } finally {
+        endMediaWork();
+    }
 }
 
 /** 每批自动最多取一条，避免一次 AI 回复意外产生多张付费图片。 */
@@ -682,6 +698,9 @@ const IMAGE_PREPARE_TIMEOUT_MS = 90000;
  * 生成一结束就按结果把它翻成真实图片或失败态。
  */
 function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, availability }) {
+    // 注册 then 前同步接过一份计数：不能等任务完成后才占用，中间会误报空闲。
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return;
     const settle = async (readyPatch, error) => {
         // 消息可能压根没被推出来（比如群聊里没匹配到说话人），那就什么都不用做
         const message = _findImageMessageById(messageId, chatId, chatType);
@@ -703,10 +722,11 @@ function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, av
         _refreshImageMessageBubble(message, chatId, chatType);
     };
 
-    task.then(
+    return task.then(
         produced => settle(produced.readyPatch).then(() => _noticeImageLocalOnly(produced.localOnly)),
         error => settle(null, error)
-    ).catch(err => console.error('[图片] 预生成补写失败：', err));
+    ).catch(err => console.error('[图片] 预生成补写失败：', err))
+        .finally(endMediaWork);
 }
 
 /**
@@ -732,6 +752,8 @@ function _reconcilePreparedImage(task, { messageId, chatId, chatType, preset, av
  * @param {{timeoutMs?: number}} [options] timeoutMs 仅供测试注入，默认 IMAGE_PREPARE_TIMEOUT_MS
  */
 async function prepareImageForMessages(messages, chat, chatId, chatType, options = {}) {
+    const endMediaWork = window.beginCloudMediaWork ? window.beginCloudMediaWork() : () => {};
+    if (!endMediaWork) return null;
     try {
         if (!Array.isArray(messages) || !messages.length || !chat || !chat.imageAutoGenerate) return null;
         if (typeof resolveImagePresetForChat !== 'function') return null;
@@ -807,6 +829,9 @@ async function prepareImageForMessages(messages, chat, chatId, chatType, options
     } catch (error) {
         _logImageFailure('预生成调度', error, { chatId, chatType });
         return null;
+    } finally {
+        // 正常路径交回完整 AI 回复作用域，超时路径已由 reconcile 独立接手。
+        endMediaWork();
     }
 }
 
