@@ -1,7 +1,15 @@
-// --- START OF FILE js/settings/backup_data.js ---
+// --- 文件位置：js/settings/backup_data.js ---
 
 // 全局变量防止重复点击
 window.isBackupLoading = false;
+
+// 迁移先传文件再切索引；期间恢复/清空会换掉它正在使用的仓库与元数据，必须在碰表前拦住。
+// 导出不受此锁限制：迁移完成切换后仍需用同一生成器补做无凭据备份。
+function _assertNoCloudRepoMigration() {
+    if (typeof window.CloudRepoMigration?.isBusy === 'function' && window.CloudRepoMigration.isBusy()) {
+        throw new Error('云端仓库正在迁移，请完成后再导入、恢复或清空数据');
+    }
+}
 
 // --- 1. 核心工具:压缩与解压 ---
 
@@ -27,13 +35,11 @@ async function compressDataToEeBase64(dataObj) {
 }
 
 /**
- * ★ V5：把 JSONL 生成器流式压缩为 Gzip Base64（用于云端上传）。
- * 与 compressDataToEeBase64 的区别：不需要先把整个数据 JSON.stringify 成巨串，
- * 任意时刻内存只持有生成器 yield 的当前一行 + 压缩器缓冲。
- * 注：最终的 base64 字符串本身仍需驻留内存（GitHub Contents API 的要求），
- * 26MB 备份 → ~35MB base64，这在可接受范围；巨串风险在"解压后的 JSON"，不在这里。
+ * ★ V5：把 JSONL 生成器流式压缩为 Gzip Blob（用于云端上传）。
+ * 不先把整个数据 JSON.stringify 成巨串；VPS 直接传压缩字节，
+ * 只有 GitHub Contents API 才在传输层把字节转为 base64。
  */
-async function compressStreamToEeBase64(jsonChunkGenerator) {
+async function compressStreamToEeBlob(jsonChunkGenerator) {
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
@@ -57,6 +63,12 @@ async function compressStreamToEeBase64(jsonChunkGenerator) {
         writePromise,
     ]);
 
+    return compressedBlob;
+}
+
+/** 兼容旧调用；新云备份直接使用 Blob，避免 VPS 多占一份 base64 内存。 */
+async function compressStreamToEeBase64(jsonChunkGenerator) {
+    const compressedBlob = await compressStreamToEeBlob(jsonChunkGenerator);
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result.split(',')[1]);
@@ -69,12 +81,8 @@ async function compressStreamToEeBase64(jsonChunkGenerator) {
  * 从 GitHub 下载并解压 .ee 文件 (用于恢复)
  */
 async function fetchAndDecompressGitHubFile(config, fileName) {
-    const fileInfo = await GitHubService.getFileInfo(config, fileName);
-    if (!fileInfo || !fileInfo.download_url) {
-        throw new Error(`找不到文件: ${fileName}`);
-    }
-    const response = await fetch(fileInfo.download_url);
-    if (!response.ok) throw new Error(`下载失败 ${fileName}: ${response.status}`);
+    const response = await downloadGithubResponse(config, fileName);
+    if (!response) throw new Error(`找不到文件: ${fileName}`);
     
     const blob = await response.blob();
     const ds = new DecompressionStream('gzip');
@@ -89,12 +97,8 @@ async function fetchAndDecompressGitHubFile(config, fileName) {
  * 工单 C：供惰性切分导入路径使用，避免 jsonResponse.json() 一次性 parse 大文件导致 OOM。
  */
 async function fetchAndDecompressGitHubFileAsString(config, fileName) {
-    const fileInfo = await GitHubService.getFileInfo(config, fileName);
-    if (!fileInfo || !fileInfo.download_url) {
-        throw new Error(`找不到文件: ${fileName}`);
-    }
-    const response = await fetch(fileInfo.download_url);
-    if (!response.ok) throw new Error(`下载失败 ${fileName}: ${response.status}`);
+    const response = await downloadGithubResponse(config, fileName);
+    if (!response) throw new Error(`找不到文件: ${fileName}`);
 
     const blob = await response.blob();
     const ds = new DecompressionStream('gzip');
@@ -316,6 +320,9 @@ window.CLEAR_FOLLOWS_CHARACTERS = ['memory', 'peek'];
  * @param {string} categoryKey dataStorage.categoryOrder 里的分类键
  */
 window.clearPartialData = async function (categoryKey) {
+    _assertNoCloudRepoMigration();
+    const release = window.beginCloudMediaWork?.();
+    try {
     if (!window.db || typeof dexieDB === 'undefined') throw new Error('数据库未就绪');
     const T = dexieDB;
     // 老库升级上来可能还没建某张表，带个兜底免得整个 Promise.all 一起挂掉
@@ -412,9 +419,9 @@ window.clearPartialData = async function (categoryKey) {
             db.studyExamRecords = [];
             break;
 
-        // 本地媒体：语音字节 + 语音元数据 + 生图字节。不参与备份，清掉纯属释放空间。
-        // ⚠️ 已归档到 GitHub 的语音，元数据里存着 cloudRepoId/cloudPath，
-        //    清掉等于丢了「云端还有副本」的指针（仓库里的文件本身还在，只是找不回来了）。
+        // 本地媒体：语音字节 + 语音元数据 + 生图字节。字节不参与备份，已归档语音索引随全量备份保存。
+        // ⚠️ 语音元数据里存着 cloudRepoId/cloudPath；主动清空仍会删除本机的云端指针，
+        //    只有含索引的新全量备份能恢复，仓库里的音频文件本身不会被删除。
         case 'localMedia':
             await Promise.all([
                 clearIfAny(T.voiceClips), clearIfAny(T.voiceClipData), clearIfAny(T.imageCache)
@@ -424,6 +431,7 @@ window.clearPartialData = async function (categoryKey) {
         default:
             throw new Error(`未知分类: ${categoryKey}`);
     }
+    } finally { release?.(); }
 };
 
 /**
@@ -431,12 +439,15 @@ window.clearPartialData = async function (categoryKey) {
  *
  * ★ 刻意不另写一份"全部表"的清单：那份 23 张表的列表在本文件里已经被复制了 3 份
  *   （importJsonlStream 的 processMeta / lazyImportBackupData / importBackupData），
- *   而且三份都漏了 voiceClips/voiceClipData —— 再加第 4 份只会让漂移更难收。
+ *   语音两表在恢复时故意不清：旧备份没有索引，新备份也仅合并归档索引、保留本地字节。
  *   改成「遍历 categoryOrder 逐类清」之后，往那个数组加新分类就自动被覆盖到，
  *   不会再出现「加了分类、全部清空漏了它」。
  * @returns {Promise<string[]>} 实际清过的分类键
  */
 window.clearAllData = async function () {
+    _assertNoCloudRepoMigration();
+    const release = window.beginCloudMediaWork?.();
+    try {
     // dataStorage 是 data_storage.js 里的脚本级 const，挂不到 window 上，
     // 只能按裸名引用（两个文件都在全局词法作用域里，调用时早就初始化好了）。
     const order = (typeof dataStorage !== 'undefined' && Array.isArray(dataStorage.categoryOrder))
@@ -449,6 +460,7 @@ window.clearAllData = async function () {
         await window.clearPartialData(key);
     }
     return keys;
+    } finally { release?.(); }
 };
 
 // --- 4. 导入逻辑 (文件选择) ---
@@ -593,8 +605,8 @@ async function downloadDataStream(jsonChunkGenerator, filenameSuffix) {
 // 单行体积始终控制在几百 KB —— 导入端逐行 parse 入库，内存峰值极低。
 // 第一行固定是 meta（_type 必须是第一个 key，导入端靠文件头探测格式）。
 /**
- * 备份用的推送设置副本：保留 Worker 地址、VAPID 密钥、令牌这些可搬的服务端配置，
- * 剥掉 subscription（绑定这台设备浏览器的凭证）并把开关置为关。
+ * 备份用的推送设置副本：本地备份保留可迁移的 Worker/VAPID 配置，
+ * 云备份还会在 meta 输出前统一剥离私钥/令牌；两者都移除设备订阅并关闭推送。
  * @see createFullBackupStream 里的注释
  */
 function _sanitizePushSettingsForBackup(raw) {
@@ -603,7 +615,81 @@ function _sanitizePushSettingsForBackup(raw) {
     return { ...portable, enabled: false, subscription: null };
 }
 
-async function* createFullBackupStream() {
+// 只处理配置域，不对聊天正文/世界书做全局 key/token 替换，避免误删用户内容。
+const CLOUD_CREDENTIAL_DOMAINS = [
+    'apiSettings', 'apiPresets', 'embeddingSettings', 'globalVisionSettings',
+    'studySettings', 'voiceSettings', 'imageSettings', 'weatherSettings',
+    'globalPushSettings', 'githubRepos'
+];
+function _isCloudCredentialKey(key) {
+    const name = key.replace(/[-_]/g, '').toLowerCase();
+    return /^(key|apikey|token|accesstoken|refreshtoken|clienttoken|authtoken|bearertoken|githubtoken|password|passwd|secret|secretkey|clientsecret|apisecret|privatekey|vapidprivatekey|authorization|accesskey|accesskeyid|accesskeysecret|credentials?)$/.test(name)
+        || name.endsWith('apikey');
+}
+
+/** 地址本身也可能夹带鉴权参数；仅剥离服务地址的凭据，不碰模型名/提示词等普通字符串。 */
+function _cloudSafeServiceUrl(value) {
+    try {
+        const url = new URL(value);
+        if (!/^https?:$/.test(url.protocol)) return value;
+        url.username = '';
+        url.password = '';
+        url.hash = '';
+        for (const key of [...url.searchParams.keys()]) {
+            if (_isCloudCredentialKey(key)) url.searchParams.delete(key);
+        }
+        return url.href;
+    } catch (_) { return value; }
+}
+function _isCloudServiceUrlKey(key) {
+    return /(?:url|host|endpoint)$/i.test(key);
+}
+function _stripCloudCredentials(value) {
+    if (Array.isArray(value)) return value.map(_stripCloudCredentials);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+        _isCloudCredentialKey(key) ? ''
+            : typeof item === 'string' && _isCloudServiceUrlKey(key) ? _cloudSafeServiceUrl(item)
+            : _stripCloudCredentials(item)
+    ]));
+}
+
+/**
+ * 无密钥备份恢复到原设备时，只给同一 ID、同一服务地址的配置补回本机凭据。
+ * 不按数组下标配对：预设顺序可能不同，错配会把一家服务的 Key 发给另一家。
+ * 新设备或服务定位已变则保持空串，明确要求重新填写；本地完整备份仍沿用原行为。
+ */
+function _restoreLocalCloudCredentials(incoming, local) {
+    if (Array.isArray(incoming)) {
+        const candidates = Array.isArray(local) ? local : [];
+        return incoming.map(item => {
+            const identity = item && (item.id ? 'id' : item.name ? 'name' : null);
+            const matches = identity ? candidates.filter(old => old && old[identity] === item[identity]) : [];
+            return _restoreLocalCloudCredentials(item, matches.length === 1 ? matches[0] : undefined);
+        });
+    }
+    if (!incoming || typeof incoming !== 'object') return incoming;
+    let source = local && typeof local === 'object' ? local : {};
+    const identityKeys = ['id', 'name', 'type', 'provider', 'activePreset', 'projectId', 'username', 'repo', 'branch'];
+    const keys = new Set([...Object.keys(incoming), ...Object.keys(source)]);
+    for (const key of keys) {
+        if (!identityKeys.includes(key) && !_isCloudServiceUrlKey(key)) continue;
+        // 有稳定 ID 时名称只是备注；旧预设没有 ID，仍须按唯一同名配对。
+        if (key === 'name' && incoming.id && incoming.id === source.id) continue;
+        const left = incoming[key] ?? '';
+        const right = source[key] ?? '';
+        const equal = _isCloudServiceUrlKey(key)
+            ? _cloudSafeServiceUrl(left) === _cloudSafeServiceUrl(right)
+            : left === right;
+        if (!equal) { source = {}; break; }
+    }
+    return Object.fromEntries(Object.entries(incoming).map(([key, item]) => [key,
+        _isCloudCredentialKey(key) ? (source[key] ?? '')
+            : _restoreLocalCloudCredentials(item, source[key])
+    ]));
+}
+
+async function* createFullBackupStream({ excludeCredentials = false } = {}) {
     // ── 1. meta 行：所有小数据（设置、世界书等）──
     const meta = {
         _type: 'meta',                       // ★ 必须是第一个 key（格式探测依据）
@@ -656,8 +742,8 @@ async function* createFullBackupStream() {
         globalPushSettings:     _sanitizePushSettingsForBackup(db.globalPushSettings),
         voiceSettings:          db.voiceSettings,
         imageSettings:          db.imageSettings,
-        // ★ githubRepos 里含访问令牌。必须进备份，否则换设备恢复后
-        //   语音/图片记录里的 cloudRepoId 找不到对应凭据，已归档内容就读不回来了。
+        // 保留仓库 ID/地址供历史云文件定位；本地备份带凭据，云备份在下面统一剥离。
+        // 云端 gzip 只是压缩，不是加密，不能再把 PAT/WebDAV 密码上传回仓库本身。
         githubRepos:            db.githubRepos             || [],
         githubBindings:         db.githubBindings          || {},
         studyBanks:             db.studyBanks              || [],
@@ -667,6 +753,12 @@ async function* createFullBackupStream() {
         studyQuestions:         db.studyQuestions          || [],
         studyRecords:           db.studyRecords            || [],
     };
+    if (excludeCredentials) {
+        meta._credentialsExcluded = true;
+        for (const key of CLOUD_CREDENTIAL_DOMAINS) {
+            if (meta[key] !== undefined) meta[key] = _stripCloudCredentials(meta[key]);
+        }
+    }
     yield JSON.stringify(meta) + '\n';
 
     // ── 2. 角色/群组元数据行：剥离 history/memoryChunks（它们独立成行）──
@@ -766,9 +858,78 @@ async function* createFullBackupStream() {
             }
         }
     }
+    // ── 9. 已归档语音索引：只读元数据，每 500 个主键一批，不读取音频字节 ──
+    // 未归档语音只有本机副本，不进备份；原设备恢复时也绝不能清空它的两张表。
+    // 索引必须跟随备份，否则换设备后即使仓库里还有音频，也不知道该去哪里找。
+    if (typeof dexieDB !== 'undefined' && dexieDB.voiceClips) {
+        const keys = await dexieDB.voiceClips.toCollection().primaryKeys();
+        for (let i = 0; i < keys.length; i += 500) {
+            const batch = await dexieDB.voiceClips.bulkGet(keys.slice(i, i + 500));
+            const items = batch.map(_voiceArchiveBackupRecord).filter(Boolean);
+            if (items.length) yield JSON.stringify({ _type: 'voiceClips', items }) + '\n';
+        }
+    }
 }
 
 // --- 7. 数据合并/恢复核心逻辑 ---
+
+/**
+ * 语音备份只允许可定位的归档元数据；白名单同时挡住凭据、音频字节和伪本地缓存标记。
+ * voiceKey 是稳定主键，cloudRepoId / cloudOwner / cloudRepo / cloudPath 原样保留，
+ * 不能按当前归档绑定重算路径：存量文件名可能仍是旧版 voiceKey。
+ */
+function _voiceArchiveBackupRecord(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.cloudState !== 'uploaded') return null;
+    for (const key of ['voiceKey', 'cloudRepoId', 'cloudPath']) {
+        if (typeof raw[key] !== 'string' || !raw[key].trim()) return null;
+    }
+    // 这里只接受仓库内的相对路径，不让错误记录把 URL/上级目录冒充成归档位置。
+    if (/^(?:[a-z][a-z\d+.-]*:|[\\/])/i.test(raw.cloudPath)
+        || raw.cloudPath.split(/[\\/]/).includes('..') || /[\x00-\x1f]/.test(raw.cloudPath)) return null;
+    const row = { voiceKey: raw.voiceKey, cloudState: 'uploaded' };
+    for (const key of ['chatId', 'msgId', 'text', 'presetId', 'mime', 'cloudRepoId', 'cloudOwner', 'cloudRepo', 'cloudPath']) {
+        if (typeof raw[key] === 'string') row[key] = raw[key];
+    }
+    for (const key of ['duration', 'size', 'createdAt', 'lastPlayedAt']) {
+        if (typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] >= 0) row[key] = raw[key];
+    }
+    return row;
+}
+
+/**
+ * 三条恢复入口共用：按 voiceKey 精准合并，不清表，也不把索引挂回内存 db。
+ * 本机仍可定位的归档优先，避免旧备份回退迁移后的仓库；原仓库已被恢复配置替换时，
+ * 才采用备份索引。未归档但仍有字节的同键记录也保留，它可能是后来重新生成的音频，
+ * 不能拿旧备份的云路径把新字节谎标成「已归档」。两种情况都绝不改动 voiceClipData。
+ * cached/hasLocal 不属于元数据协议，本地是否有字节继续由 hasVoiceClipBytes 查真实主键。
+ */
+async function _restoreVoiceArchiveBackup(items) {
+    if (!Array.isArray(items) || !items.length) return;
+    if (typeof dexieDB === 'undefined' || !dexieDB.voiceClips || !dexieDB.voiceClipData) {
+        throw new Error('语音索引表不可用，无法恢复已归档语音');
+    }
+    const repoIds = new Set((db.githubRepos || []).map(repo => repo && repo.id));
+    for (let i = 0; i < items.length; i += 500) {
+        const batch = items.slice(i, i + 500).map(_voiceArchiveBackupRecord).filter(Boolean);
+        if (!batch.length) continue;
+        await dexieDB.transaction('rw', dexieDB.voiceClips, dexieDB.voiceClipData, async () => {
+            for (const row of batch) {
+                const local = await dexieDB.voiceClips.get(row.voiceKey);
+                if (local) {
+                    const archived = _voiceArchiveBackupRecord(local);
+                    if (archived && repoIds.has(local.cloudRepoId)) continue;
+                    if (!archived && await dexieDB.voiceClipData.where(':id').equals(row.voiceKey).count()) continue;
+                }
+                await dexieDB.voiceClips.put(row);
+            }
+        });
+    }
+}
+
+/** 语音两表不参与通用内存赋值/全量写回，防止绕开索引验证或伪造本地字节。 */
+function _isVoiceBackupTable(key) {
+    return key === 'voiceClips' || key === 'voiceClipData';
+}
 
 /**
  * 世界书条目与类别一起恢复。类别是字符串数组，绝不能套通用的按 id 合并逻辑。
@@ -863,6 +1024,9 @@ async function sniffBackupHead(file) {
  * 避免"清完库才发现文件格式不对"导致现有数据丢失。
  */
 async function importJsonlStream(byteStream, onProgress) {
+    _assertNoCloudRepoMigration();
+    const release = window.beginCloudMediaWork?.();
+    try {
     const startTime = Date.now();
     const stream = byteStream
         .pipeThrough(new DecompressionStream('gzip'))
@@ -897,8 +1061,17 @@ async function importJsonlStream(byteStream, onProgress) {
         if (meta._type !== 'meta' || !meta._exportVersion) {
             throw new Error('备份文件第一行不是有效的 meta 记录');
         }
+        // 清库前匹配本机凭据，只作用于明确标记为「无密钥」的新备份。
+        if (meta._credentialsExcluded === true) {
+            for (const key of CLOUD_CREDENTIAL_DOMAINS) {
+                if (meta[key] !== undefined) {
+                    meta[key] = _restoreLocalCloudCredentials(_stripCloudCredentials(meta[key]), db[key]);
+                }
+            }
+        }
         // 校验通过，现在才清空所有表（与 lazyImportBackupData 的清表清单一致）。
         // API 用量日志故意不清：旧备份没有日志，新备份也按安全 ID 合并，保留本机已有记录。
+        // voiceClips/voiceClipData 同样故意不清：归档索引只合并，本机未归档字节不是备份能补回的。
         await Promise.all([
             dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
             dexieDB.myStickers.clear(), dexieDB.userPersonas.clear(), dexieDB.globalSettings.clear(),
@@ -925,8 +1098,9 @@ async function importJsonlStream(byteStream, onProgress) {
         await _restoreRegexBackup(meta, true);
         // 其他小数据整体进内存 db
         Object.keys(meta).forEach(key => {
-            if (!key.startsWith('_') && key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories') db[key] = meta[key];
+            if (!key.startsWith('_') && !_isVoiceBackupTable(key) && key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories') db[key] = meta[key];
         });
+        await _restoreVoiceArchiveBackup(meta.voiceClips);
         // characters/groups/peekData 由后续行逐条填充
         db.characters = [];
         db.groups = [];
@@ -995,6 +1169,10 @@ async function importJsonlStream(byteStream, onProgress) {
                 if (posts.length) await dexieDB.forumPosts.bulkPut(posts);
                 break;
             }
+            case 'voiceClips': {
+                await _restoreVoiceArchiveBackup(item.items);
+                break;
+            }
             case 'apiCallLog': {
                 // 导入必须逐条 await 账本验证与安全 ID 合并，不能把不可信备份直接 bulkPut。
                 // 旧环境缺少账本模块时跳过这类新增行，不影响原有备份格式的恢复。
@@ -1016,19 +1194,25 @@ async function importJsonlStream(byteStream, onProgress) {
     };
 
     // ── 主循环：读流 → 拆行 → 逐行处理 ──
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += value;
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // 最后一段可能不完整，留到下一轮
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            await processLine(line);
-            if (onProgress && lineCount % 50 === 0) onProgress(lineCount);
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += value;
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // 最后一段可能不完整，留到下一轮
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                await processLine(line);
+                if (onProgress && lineCount % 50 === 0) onProgress(lineCount);
+            }
         }
+        if (buffer.trim()) await processLine(buffer); // 收尾：最后一行没有换行符
+    } finally {
+        // meta/解压/写库失败也必须取消下载，避免云端连接与超时计时器留在后台。
+        try { await reader.cancel(); } catch (_) { /* 流已出错时取消也可能拒绝 */ }
+        reader.releaseLock();
     }
-    if (buffer.trim()) await processLine(buffer); // 收尾：最后一行没有换行符
 
     if (!metaProcessed) throw new Error('文件为空或缺少 meta 记录');
 
@@ -1070,6 +1254,7 @@ async function importJsonlStream(byteStream, onProgress) {
 
     const duration = Date.now() - startTime;
     return { success: true, message: `全量数据已恢复 (${lineCount} 行, 耗时${duration}ms, V5流式)` };
+    } finally { release?.(); }
 }
 
 // =========================================================
@@ -1081,7 +1266,7 @@ async function importJsonlStream(byteStream, onProgress) {
 // =========================================================
 
 // 大数组字段：这些 key 的 value 是数组且元素可能很大，需逐元素 parse 入库
-const LAZY_ARRAY_KEYS = new Set(['characters', 'groups', 'studyBookContents', 'studyCoreadMessages', 'studyBookSummaries', 'forumPosts']);
+const LAZY_ARRAY_KEYS = new Set(['characters', 'groups', 'studyBookContents', 'studyCoreadMessages', 'studyBookSummaries', 'forumPosts', 'voiceClips']);
 
 // 跳过空白，返回第一个非空白字符位置
 function _lazySkipWs(str, i) {
@@ -1259,6 +1444,9 @@ function _lazyStripLargeKeysFromObject(objStr, largeKeySet) {
 // 任何步骤抛错由调用方 fallback 到 importBackupData(JSON.parse(jsonString))。
 // =========================================================
 async function lazyImportBackupData(jsonString) {
+    _assertNoCloudRepoMigration();
+    const release = window.beginCloudMediaWork?.();
+    try {
     const startTime = Date.now();
     // 1) 扫描顶层 key 边界（不 parse 整棵树）
     const spans = _lazyParseTopLevelKeys(jsonString);
@@ -1268,7 +1456,7 @@ async function lazyImportBackupData(jsonString) {
         throw new Error('lazyImport: 检测到 _partialType，应走 importBackupData');
     }
 
-    // 3) 清空所有表（与原全量分支一致）
+    // 3) 清空普通数据表（语音两表故意保留，与 V5 流式恢复相同）
     // ★ V9~V12：补清 studyBanks/studyExams/studyExamRecords/studyBookSummaries，避免恢复后旧数据残留
     if (typeof dexieDB !== 'undefined') {
         await Promise.all([
@@ -1323,7 +1511,7 @@ async function lazyImportBackupData(jsonString) {
     await _restoreRegexBackup({ regexCategories: regexSpan
         ? JSON.parse(jsonString.slice(regexSpan.vStart, regexSpan.vEnd)) : [] }, true);
     const smallDataKeys = Object.keys(spans).filter(k =>
-        !LAZY_ARRAY_KEYS.has(k) && k !== 'peekData' && k !== 'worldBooks' && k !== 'worldBookCategories' && k !== 'regexCategories' && !k.startsWith('_')
+        !LAZY_ARRAY_KEYS.has(k) && !_isVoiceBackupTable(k) && k !== 'peekData' && k !== 'worldBooks' && k !== 'worldBookCategories' && k !== 'regexCategories' && !k.startsWith('_')
     );
     for (const key of smallDataKeys) {
         const { vStart, vEnd } = spans[key];
@@ -1548,6 +1736,21 @@ async function lazyImportBackupData(jsonString) {
     if (Array.isArray(db.studyExams) && db.studyExams.length)       await batchBulkPut(dexieDB.studyExams,       db.studyExams);
     if (Array.isArray(db.studyExamRecords) && db.studyExamRecords.length) await batchBulkPut(dexieDB.studyExamRecords, db.studyExamRecords);
 
+    // 11.2) 兼容单体 JSON 中的语音索引，逐元素解析、每 500 条精准合并，不常驻内存 db。
+    // 旧备份没此字段就完全不碰语音；即使混入 voiceClipData，也绝不恢复所谓本地字节。
+    if (spans.voiceClips && jsonString[spans.voiceClips.vStart] === '[') {
+        let voiceBatch = [];
+        const flushVoiceBatch = async () => {
+            await _restoreVoiceArchiveBackup(voiceBatch);
+            voiceBatch = [];
+        };
+        await _lazyIterArrayItemsAsync(jsonString, spans.voiceClips.vStart, spans.voiceClips.vEnd, async (item) => {
+            voiceBatch.push(JSON.parse(item));
+            if (voiceBatch.length >= BATCH_SIZE) await flushVoiceBatch();
+        });
+        await flushVoiceBatch();
+    }
+
     // 12) 兜底补全（与原逻辑一致）
     if (!db.pomodoroTasks) db.pomodoroTasks = [];
     if (!db.forumUserIdentity) db.forumUserIdentity = { nickname: '新用户', avatar: './png/avatar_default.jpg', persona: '', realName: '', anonCode: '0311', customDetailCss: '' };
@@ -1566,11 +1769,15 @@ async function lazyImportBackupData(jsonString) {
 
     const duration = Date.now() - startTime;
     return { success: true, message: `${message} (耗时${duration}ms, 惰性切分)` };
+    } finally { release?.(); }
 }
 
 async function importBackupData(data, isCloudPartialRestore = false) {
     const startTime = Date.now();
+    let release;
     try {
+        _assertNoCloudRepoMigration();
+        release = window.beginCloudMediaWork?.();
         const isPartial = !!data._partialType;
         const restoresWorldBooks = !isPartial || data._partialType === 'worldBooks'
             || Object.prototype.hasOwnProperty.call(data, 'worldBooks')
@@ -1595,7 +1802,7 @@ async function importBackupData(data, isCloudPartialRestore = false) {
         if (isCloudPartialRestore && isPartial) {
             message = `云端数据 (${data._partialType}) 已完整恢复`;
             Object.keys(data).forEach(key => {
-                if (key.startsWith('_') || key === 'worldBooks' || key === 'worldBookCategories' || key === 'regexCategories') return;
+                if (key.startsWith('_') || _isVoiceBackupTable(key) || key === 'worldBooks' || key === 'worldBookCategories' || key === 'regexCategories') return;
                 // 针对 peekData 单独洗数据
                 if (key === 'peekData') {
                     db.peekData = normalizePeek(data.peekData);
@@ -1606,6 +1813,7 @@ async function importBackupData(data, isCloudPartialRestore = false) {
             });
         }
         else if (!isPartial) {
+// 语音索引与字节不参与清表：旧备份无索引，新备份也不能销毁本机唯一的未归档音频。
 if (typeof dexieDB !== 'undefined') {
     await Promise.all([
         dexieDB.characters.clear(), dexieDB.groups.clear(), dexieDB.worldBooks.clear(),
@@ -1630,7 +1838,7 @@ if (typeof dexieDB !== 'undefined') {
 }
             message = "全量数据已恢复";
             Object.keys(db).forEach(key => { 
-                if (key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories' && data[key] !== undefined) {
+                if (!_isVoiceBackupTable(key) && key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories' && data[key] !== undefined) {
                     if (key === 'peekData') {
                         db.peekData = normalizePeek(data[key]);
                     } else {
@@ -1643,7 +1851,7 @@ if (typeof dexieDB !== 'undefined') {
         else {
             message = `部分数据 (${data._partialType}) 已合并`;
             Object.keys(db).forEach(key => {
-                if (key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories' && data[key] !== undefined) {
+                if (!_isVoiceBackupTable(key) && key !== 'worldBooks' && key !== 'worldBookCategories' && key !== 'regexCategories' && data[key] !== undefined) {
                     // 安全合并 peekData，防止覆盖其他角色
                     if (key === 'peekData') {
                         if (!db.peekData) db.peekData = {};
@@ -1672,6 +1880,7 @@ if (typeof dexieDB !== 'undefined') {
         // 旧的系统分片也可能携带 worldBooks，不能只按 _partialType 判断。
         if (restoresWorldBooks) await _restoreWorldBookBackup(data, !isPartial || isCloudPartialRestore);
         if (restoresRegex) await _restoreRegexBackup(data, !isPartial || isCloudPartialRestore);
+        await _restoreVoiceArchiveBackup(data.voiceClips);
 
         // =================================================================
         // ★★★ 数据导入后：把老备份文件包含的 History 对象抽取为独立的消息行入库 ★★★
@@ -1799,11 +2008,11 @@ if (typeof dexieDB !== 'undefined') {
     } catch (error) {
         console.error('导入数据失败:', error);
         return { success: false, error: error.message };
-    }
+    } finally { release?.(); }
 }
 
 // =========================================================
-// --- 8. GitHub Sync Logic (云端备份核心) ---
+// --- 8. 云端备份核心（GitHub / VPS 共用） ---
 // =========================================================
 
 const GH_CONFIG_KEY = 'qchat_github_config';
@@ -1816,73 +2025,35 @@ const GitHubService = {
     /**
      * 读备份用的仓库配置。
      *
-     * ★ 仓库定义已经统一收进「设置 > GitHub 仓库」页（db.githubRepos），备份只是
+     * ★ 仓库定义已经统一收进「设置 > 云端仓库」页（db.githubRepos），备份只是
      *   其中一个"用途"。这里改成先读新数据源、读不到再回落 localStorage，
      *   好处是下面 8 个调用点（含 main.js 的每日自动备份）一行都不用改。
      * ★ localStorage 那份老配置迁移后**不删**，作为保险留着。回落分支也因此保留。
      */
     getConfig: () => {
+        // 新数据源已存在就以它为准，选「不使用」或暂时缺密钥时绝不能复活旧 PAT。
+        // 仅迁移前完全没有仓库定义的环境，才读取 localStorage 的旧配置。
         if (typeof getGithubBinding === 'function') {
             const bound = getGithubBinding('backup');
             if (bound) {
                 const bindings = _normalizeGithubBindings(db.githubBindings);
-                return {
-                    token: bound.repo.token,
-                    username: bound.repo.username,
-                    repo: bound.repo.repo,
-                    autoBackup: !!bindings.backup.autoBackup
-                };
+                return { ...bound.repo, autoBackup: !!bindings.backup.autoBackup };
             }
+            if (db.githubRepos?.length || Object.keys(db.githubBindings || {}).length) return null;
         }
-        // 还没迁移过的老用户走这里
-        try { return JSON.parse(localStorage.getItem(GH_CONFIG_KEY)); } catch (e) { return null; }
-    },
-
-    getFileInfo: async (config, fileName) => {
-        const url = `https://api.github.com/repos/${config.username}/${config.repo}/contents/${fileName}`;
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `token ${config.token}`,
-                'Accept': 'application/vnd.github.v3+json'
-            }
-        });
-        if (response.status === 404) return null;
-        if (!response.ok) throw new Error(`GitHub 连接失败: ${response.status}`);
-        return await response.json();
-    },
-
-    uploadBlob: async (contentBase64, fileName) => {
-        const config = GitHubService.getConfig();
-        if (!config) throw new Error("请先配置 GitHub 连接");
-
-        let sha = null;
         try {
-            const existingFile = await GitHubService.getFileInfo(config, fileName);
-            if (existingFile) sha = existingFile.sha;
-        } catch (e) {
-            console.warn(`新建文件: ${fileName}`);
-        }
+            const legacy = JSON.parse(localStorage.getItem(GH_CONFIG_KEY));
+            if (!legacy?.token || !legacy.username || !legacy.repo) return null;
+            return { ...legacy, provider: 'github' };
+        } catch (_) { return null; }
+    },
 
-        const url = `https://api.github.com/repos/${config.username}/${config.repo}/contents/${fileName}`;
-        const body = {
-            message: `Backup ${fileName}: ${new Date().toLocaleString()}`,
-            content: contentBase64
-        };
-        if (sha) body.sha = sha;
-
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `token ${config.token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
+    // 所有用途共用同一文件传输层：VPS 传二进制，GitHub 才包装 Contents API。
+    uploadBlob: async (bytes, fileName, config = GitHubService.getConfig()) => {
+        if (!config) throw new Error('请先在「云端仓库」绑定数据备份');
+        await uploadGithubFile(config, fileName, bytes, {
+            message: `Backup ${fileName}: ${new Date().toLocaleString()}`
         });
-
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.message || `上传 ${fileName} 失败`);
-        }
         return true;
     },
 
@@ -1904,7 +2075,7 @@ const GitHubService = {
      * 云端同步配置对话框：只选仓库 + 是否每日自动备份。
      *
      * ★ 令牌/用户名/仓库名的输入框从这里去掉了 —— 仓库定义统一在
-     *   「设置 > GitHub 仓库」页。两个地方都能填仓库会让同一个仓库的令牌存两处、
+     *   「设置 > 云端仓库」页。两个地方都能填仓库会让同一个仓库的令牌存两处、
      *   改一次要改两遍。这里只是引用它。
      */
     openConfigDialog: async () => {
@@ -1912,7 +2083,7 @@ const GitHubService = {
         const current = bindings.backup;
         const repo = getGithubRepo(current.repoId);
 
-        // 仓库只展示不可改 —— 换仓库要去「设置 > GitHub 仓库」。
+        // 仓库只展示不可改 —— 换仓库要去「设置 > 云端仓库」。
         // 同一个设置只在一个地方能改，否则改了这边不知道那边是什么状态。
         const where = repo
             ? `${repo.name}（${describeGithubRepo(repo)}）`
@@ -1921,9 +2092,10 @@ const GitHubService = {
             {
                 type: 'note', key: 'repoNote', label: '备份仓库', value: where,
                 hint: repo
-                    ? '要换仓库请到「设置 > GitHub 仓库」，在「数据备份」那一项里选'
-                    : '请先到「设置 > GitHub 仓库」添加仓库，并在「数据备份」那一项里选中它'
+                    ? '要换仓库请到「设置 > 云端仓库」，在「数据备份」那一项里选'
+                    : '请先到「设置 > 云端仓库」添加仓库，并在「数据备份」那一项里选中它'
             },
+            { type: 'note', key: 'privacyNote', label: '密钥保护', value: '云备份不含 API Key、仓库密码或推送私钥；换设备恢复后需重新填写。本地导出仍保留凭据。' },
             { type: 'switch', key: 'autoBackup', label: '每日自动备份', value: current.autoBackup }
         ], { title: '云端同步', confirmText: '保存', cancelText: '取消' });
         if (!result) return;
@@ -1992,7 +2164,9 @@ const GitHubService = {
                      const config = GitHubService.getConfig();
                      const repoUrl = `https://github.com/${config ? config.username : 'your'}/${config ? config.repo : 'repo'}`;
                      
-                     if(await AppUI.confirm(`自动恢复遇到问题: ${e.message}\n\n是否打开 GitHub 仓库手动下载备份文件?\n(下载 .ee 文件后,使用上方的"导入数据"按钮即可)`, "系统提示", "确认", "取消")) {
+                     if (config?.provider === 'webdav') {
+                         await AppUI.alert(`恢复失败：${e.message}\n\n可在 VPS 上下载 ${FILE_NAME_V5}，再使用「导入数据」。请检查 HTTPS、账号密码、目录权限和 CORS。`);
+                     } else if(await AppUI.confirm(`自动恢复遇到问题: ${e.message}\n\n是否打开 GitHub 仓库手动下载备份文件?\n(下载 .ee 文件后,使用上方的"导入数据"按钮即可)`, "系统提示", "确认", "取消")) {
                         window.open(repoUrl, '_blank');
                      }
                  } finally {
@@ -2013,7 +2187,7 @@ const GitHubService = {
         const lastSync = document.getElementById('github-last-sync');
 
         if (isConnected) {
-            statusText.innerText = "已连接 GitHub";
+            statusText.innerText = GitHubService.getConfig()?.provider === 'webdav' ? '已配置 VPS / WebDAV' : '已配置 GitHub';
             statusText.style.color = "#3A9EF6";
             iconBg.style.background = "#3A9EF6";
             btnConfig.innerText = "设置";
@@ -2044,16 +2218,23 @@ const GitHubService = {
  * 不再走 buildFullHistoryMap 把全量消息挂回内存（旧版这一步在手机上就可能 OOM）。
  */
 async function performOptimizedCloudBackup() {
+    _assertNoCloudRepoMigration();
+    const release = window.beginCloudMediaWork?.();
+    try {
     if (!window.db) throw new Error("数据库未加载");
 
-    showToast("正在流式打包全量数据...");
-    const base64 = await compressStreamToEeBase64(createFullBackupStream());
+    // 在打包前固定本次目标，避免自动备份途中用户切换绑定而上传到别的仓库。
+    const config = GitHubService.getConfig();
+    if (!config) throw new Error('请先在「云端仓库」绑定数据备份');
+    showToast('正在打包全量数据（不含 API 密钥）...');
+    const blob = await compressStreamToEeBlob(createFullBackupStream({ excludeCredentials: true }));
 
-    showToast(`正在上传备份 (${(base64.length / 1024 / 1024).toFixed(1)}MB)...`);
-    await GitHubService.uploadBlob(base64, FILE_NAME_V5);
+    showToast(`正在上传备份 (${(blob.size / 1024 / 1024).toFixed(1)}MB)...`);
+    await GitHubService.uploadBlob(new Uint8Array(await blob.arrayBuffer()), FILE_NAME_V5, config);
     console.log('[Backup] V5 云端备份上传成功');
 
     GitHubService.updateUIState(true, new Date());
+    } finally { release?.(); }
 }
 
 /**
@@ -2064,26 +2245,19 @@ async function performOptimizedCloudBackup() {
  */
 async function performOptimizedCloudRestore() {
     const config = GitHubService.getConfig();
-    if (!config) throw new Error("GitHub 未配置");
+    if (!config) throw new Error('请先在「云端仓库」绑定数据备份');
 
-    // ★★★ 步骤0: 优先尝试 V5 流式备份 ★★★
-    let v5Info = null;
-    try {
-        v5Info = await GitHubService.getFileInfo(config, FILE_NAME_V5);
-    } catch (e) {
-        console.warn('[Restore] V5 备份检查失败，回退旧版:', e.message);
-    }
-    if (v5Info && v5Info.download_url) {
-        // 找到 V5 就只走 V5：导入中途失败不回退旧分片（importJsonlStream 校验
-        // meta 后才清库，清库后再失败时旧分片是更早的数据，静默回退反而危险）
-        showToast("发现 V5 备份，正在流式恢复 (边下载边入库)...");
-        const response = await fetch(v5Info.download_url);
-        if (!response.ok) throw new Error(`下载 V5 备份失败: ${response.status}`);
+    // 只有明确的 404 才回退旧格式；鉴权/断网错误必须原样报出，不能误读旧备份。
+    const response = await downloadGithubResponse(config, FILE_NAME_V5);
+    if (response) {
+        showToast('发现 V5 备份，正在流式恢复 (边下载边入库)...');
         const result = await importJsonlStream(response.body);
         if (!result.success) throw new Error(result.error || 'V5 流式恢复失败');
         console.log('[Restore] V5 流式恢复完成:', result.message);
         return;
     }
+    // VPS 是新增存储端，没有历史 GitHub 分片，缺文件时不要触发旧版恢复逻辑。
+    if (config.provider === 'webdav') throw new Error(`VPS 目录中没有 ${FILE_NAME_V5}，请先上传备份`);
     console.log('[Restore] 云端无 V5 备份，尝试旧版分片...');
 
     let systemData = null;
